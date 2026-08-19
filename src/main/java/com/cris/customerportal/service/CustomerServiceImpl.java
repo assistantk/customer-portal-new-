@@ -2,9 +2,11 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
+import com.cris.customerportal.entity.CustomerGstin;
 import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.repository.CustomerRepository;
+import com.cris.customerportal.repository.CustomerGstinRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -13,26 +15,56 @@ import java.util.stream.Collectors;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
- private final CustomerRepository repo; private final Path uploadPath;
- public CustomerServiceImpl(CustomerRepository repo, @Value("${app.upload-dir:uploads/gstin}") String dir) { this.repo=repo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); }
+ private final CustomerRepository repo;
+ private final CustomerGstinRepository gstinRepo;
+ private final Path uploadPath;
+ public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); }
 
- public Long register(CustomerRegistrationRequest r, MultipartFile file) {
-  // Use server-side unique code generation to guarantee no duplicates
+ public Long register(CustomerRegistrationRequest r, List<MultipartFile> files) {
+  if (r.gstins() == null || files == null || r.gstins().size() != files.size()) throw new IllegalArgumentException("Number of GSTIN records must match uploaded files");
   String uniqueCode = generateUniqueCode(r.customerCode());
-  if(repo.existsByGstin(r.gstin())) throw new ResourceAlreadyExistsException("GSTIN already registered");
-  validateFile(file); String ext = Optional.ofNullable(file.getOriginalFilename()).filter(n->n.contains(".")).map(n->n.substring(n.lastIndexOf('.')).toLowerCase()).orElse("");
-  try { Files.createDirectories(uploadPath); String name=UUID.randomUUID()+ext; Path saved=uploadPath.resolve(name).normalize(); if(!saved.startsWith(uploadPath)) throw new IllegalArgumentException("Invalid file path"); Files.copy(file.getInputStream(),saved,StandardCopyOption.REPLACE_EXISTING);
-    Customer c=new Customer(); c.setCompanyName(r.companyName());c.setCustomerCode(uniqueCode);c.setAddress(r.address());c.setCity(r.city());c.setPincode(r.pincode());c.setGstin(r.gstin());c.setPanNumber(r.panNumber());c.setOperatingDivision(r.operatingDivision());c.setZone(r.zone());c.setEmail(r.email());c.setMobile(r.mobile());c.setGstinFileName(name);c.setGstinFilePath(saved.toString());c.setCodeType(r.codeType()); return repo.save(c).getId();
-  } catch(IOException e){throw new IllegalStateException("Could not save uploaded file");}
+  
+  for(com.cris.customerportal.dto.GstinRequest gr : r.gstins()) {
+      if(gstinRepo.existsByGstin(gr.gstin())) throw new ResourceAlreadyExistsException("GSTIN " + gr.gstin() + " already registered");
+  }
+
+  Customer c = new Customer(); c.setCompanyName(r.companyName());c.setCustomerCode(uniqueCode);c.setAddress(r.address());c.setCity(r.city());c.setPincode(r.pincode());c.setPanNumber(r.panNumber());c.setOperatingDivision(r.operatingDivision());c.setZone(r.zone());c.setEmail(r.email());c.setMobile(r.mobile());c.setCodeType(r.codeType());
+  
+  List<CustomerGstin> gstinEntities = new ArrayList<>();
+  try { Files.createDirectories(uploadPath); } catch(IOException e){throw new IllegalStateException("Could not create upload directory");}
+
+  for(int i=0; i<r.gstins().size(); i++) {
+      com.cris.customerportal.dto.GstinRequest gr = r.gstins().get(i);
+      MultipartFile file = files.get(i);
+      validateFile(file);
+      String ext = Optional.ofNullable(file.getOriginalFilename()).filter(n->n.contains(".")).map(n->n.substring(n.lastIndexOf('.')).toLowerCase()).orElse("");
+      String name = UUID.randomUUID() + ext;
+      Path saved = uploadPath.resolve(name).normalize();
+      if(!saved.startsWith(uploadPath)) throw new IllegalArgumentException("Invalid file path");
+      try { Files.copy(file.getInputStream(), saved, StandardCopyOption.REPLACE_EXISTING); } catch(IOException e){throw new IllegalStateException("Could not save uploaded file");}
+      
+      CustomerGstin cg = new CustomerGstin();
+      cg.setState(gr.state());
+      cg.setGstin(gr.gstin());
+      cg.setGstinFileName(name);
+      cg.setGstinFilePath(saved.toString());
+      cg.setCustomer(c);
+      gstinEntities.add(cg);
+  }
+  c.setGstins(gstinEntities);
+  return repo.save(c).getId();
  }
 
  public CustomerLookupResponse lookupByCode(String customerCode) {
   Customer c = repo.findByCustomerCode(customerCode)
     .orElseThrow(() -> new ResourceNotFoundException("Customer Code not found. Please check the code or register as a New User."));
+  List<com.cris.customerportal.dto.GstinResponse> gstinResponses = c.getGstins().stream()
+      .map(g -> new com.cris.customerportal.dto.GstinResponse(g.getState(), g.getGstin(), g.getGstinFileName()))
+      .collect(Collectors.toList());
   return new CustomerLookupResponse(
     c.getCompanyName(), c.getCustomerCode(), c.getAddress(), c.getCity(),
-    c.getPincode(), c.getGstin(), c.getPanNumber(), c.getOperatingDivision(),
-    c.getZone(), c.getEmail(), c.getMobile(), c.getCodeType(), c.getGstinFileName()
+    c.getPincode(), gstinResponses, c.getPanNumber(), c.getOperatingDivision(),
+    c.getZone(), c.getEmail(), c.getMobile(), c.getCodeType()
   );
  }
 

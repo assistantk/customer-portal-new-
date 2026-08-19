@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Optional;
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
   boolean existsByCustomerCode(String code);
-  boolean existsByGstin(String gstin);
   Optional<Customer> findByCustomerCode(String code);
   List<Customer> findByCustomerCodeStartingWith(String prefix);
 }

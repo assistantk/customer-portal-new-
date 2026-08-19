@@ -80,7 +80,7 @@ main {
     background: #fff;
     border: 2px solid #3be0f6;
     border-top: 6px solid #3be0f6;
-    border-radius: 12px;
+    border-radius: 64px;
     padding: 24px 36px 21px;
     box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     align-self: flex-start
@@ -532,4 +532,89 @@ footer {
 
 .spin {
     animation: spin 0.8s linear infinite;
+}
+
+/* ===== GSTIN Section ===== */
+.gstins-container {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px dotted #dce4eb;
+}
+
+.gstins-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.gstins-header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: #1e293b;
+}
+
+.add-gstin-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font: 600 12px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-gstin-btn:hover {
+    background: #dbeafe;
+}
+
+.gstin-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.gstin-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.gstin-card-head h4 {
+    margin: 0;
+    font-size: 13px;
+    color: #475569;
+}
+
+.remove-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #fef2f2;
+    color: #ef4444;
+    border: 1px solid #fecaca;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+}
+
+.remove-btn:hover {
+    background: #fee2e2;
+}
+
+.truncate {
+    display: inline-block;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
 }
