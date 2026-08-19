@@ -17,7 +17,7 @@ body {
 }
 
 header {
-    height: 62px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -72,17 +72,17 @@ main {
     flex: 1;
     display: flex;
     justify-content: center;
-    padding: 24px 20px
+    padding: 10px 20px 8px
 }
 
 .card {
-    width: min(1000px, 100%);
-    background: #fff;
-    border: 2px solid #3be0f6;
-    border-top: 6px solid #3be0f6;
-    border-radius: 64px;
-    padding: 24px 36px 21px;
-    box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    width: min(1340px, 93%);
+    background: #ffffff;
+    border: 1.5px solid #a5e4f1;
+    border-top: 4px solid #3be0f6;
+    border-radius: 14px;
+    padding: 16px 28px 14px;
+    box-shadow: 0 6px 18px -4px rgb(0 0 0 / 0.07), 0 4px 8px -4px rgb(0 0 0 / 0.05);
     align-self: flex-start
 }
 
@@ -94,17 +94,74 @@ main {
 }
 
 .card-head {
-    justify-content: space-between
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0px;
+  flex-wrap: wrap;
+  min-height: 64px;             /* at least as tall as the logo needs */
+  padding-bottom: 0px;          /* breathing room before the rule line */
+}
+
+.card-head .railways-banner {
+  position: absolute;
+  left: 50%;
+  top: 25%;
+  transform: translate(-50%, -50%);  /* center both horizontally AND vertically */
+}
+
+.card-head .railways-banner img {
+  height: 68px;
+  width: auto;
+  display: block;
+}
+
+
+.card-head .title-icon {
+  display: flex;
+  align-items: flex-start;      /* icon aligns with top of heading, not center of block */
+  gap: 12px;
+}
+
+.card-head .title-icon svg {
+  flex-shrink: 0;
+  margin-top: 2px;              /* optical alignment with heading text baseline */
+}
+
+.card-head .title-icon h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.card-head .title-icon p {
+  margin: 4px 0 0;
+  line-height: 1.3;
+}
+
+
+.card-head .mode-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.card-head .mode-tab {
+  display: flex;
+  align-items: center;          /* icon+text centered within each button only */
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .title-icon {
-    gap: 13px
+    gap: 10px
 }
 
 .title-icon>svg {
-    padding: 10px;
-    width: 48px;
-    height: 48px;
+    padding: 8px;
+    width: 38px;
+    height: 38px;
     background: #eff6ff;
     color: #3b82f6;
     border-radius: 8px;
@@ -112,14 +169,14 @@ main {
 }
 
 h1 {
-    font-size: 18px;
+    font-size: 16px;
     margin: 0
 }
 
 p {
-    margin: 3px 0 0;
+    margin: 2px 0 0;
     color: #697586;
-    font-size: 12px
+    font-size: 11px
 }
 
 .new {
@@ -137,17 +194,23 @@ p {
 
 .rule {
     border-bottom: 1px dotted #dce4eb;
-    margin: 11px 0 16px
+    margin: 8px 0 10px;
+    margin-top: 8px;
 }
 
+/* ===== Three-column grid ===== */
 .grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 19px 22px
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px 18px
 }
 
 .full {
     grid-column: 1/-1
+}
+
+.span-2 {
+    grid-column: span 2;
 }
 
 .field {
@@ -156,9 +219,10 @@ p {
 
 label {
     display: block;
-    font-weight: bold;
-    font-size: 13px;
-    margin-bottom: 6px
+    font-weight: 600;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: #1e293b;
 }
 
 label b {
@@ -166,12 +230,12 @@ label b {
 }
 
 .control {
-    height: 40px;
+    height: 36px;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     display: flex;
     align-items: center;
-    padding: 0 10px 0 6px;
+    padding: 0 8px 0 5px;
     color: #94a3b8;
     background: #fff;
 }
@@ -179,16 +243,17 @@ label b {
 .control>svg:first-child {
     background: #eff6ff;
     color: #3b82f6;
-    padding: 5px;
+    padding: 4px;
     border-radius: 4px;
     box-sizing: content-box;
-    margin-right: 8px;
+    margin-right: 6px;
     margin-left: 2px;
+    flex-shrink: 0;
 }
 
 .control input,
 .control select {
-    font: 13px 'Inter', Arial, sans-serif;
+    font: 12px 'Inter', Arial, sans-serif;
     width: 100%;
     border: 0;
     outline: 0;
@@ -224,19 +289,20 @@ label b {
     color: #c73333;
     font: 11px Arial;
     display: block;
-    margin-top: 3px
+    margin-top: 2px
 }
 
+/* ===== Dropzone (compact) ===== */
 .dropzone {
     border: 1px dashed #93c5fd;
     background: #f8fafc;
     width: 100%;
-    height: 96px;
+    height: 64px;
     border-radius: 6px;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     color: #475569;
     text-align: left;
     cursor: pointer
@@ -245,13 +311,15 @@ label b {
 .dropzone>svg {
     background: #eff6ff;
     color: #3b82f6;
-    padding: 10px;
+    padding: 7px;
     box-sizing: content-box;
-    border-radius: 8px;
+    border-radius: 6px;
+    width: 18px;
+    height: 18px;
 }
 
 .dropzone span {
-    font: 13px 'Inter', Arial, sans-serif
+    font: 12px 'Inter', Arial, sans-serif
 }
 
 .dropzone span a {
@@ -260,7 +328,7 @@ label b {
 }
 
 .dropzone small {
-    font: 11px 'Inter', Arial, sans-serif;
+    font: 10px 'Inter', Arial, sans-serif;
     color: #64748b
 }
 
@@ -268,13 +336,16 @@ label b {
     display: none
 }
 
+/* ===== Actions / Footer ===== */
 .actions {
     justify-content: space-between;
-    margin-top: 35px
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dotted #dce4eb;
 }
 
 .secure {
-    font: 12px Arial;
+    font: 11px Arial;
     color: #6b7785;
     display: flex;
     align-items: center;
@@ -282,14 +353,14 @@ label b {
 }
 
 .secure svg {
-    width: 15px;
+    width: 14px;
     color: #377be3
 }
 
 .actions button {
-    height: 35px;
+    height: 32px;
     border-radius: 6px;
-    padding: 0 16px;
+    padding: 0 14px;
     font: bold 12px Arial;
     cursor: pointer
 }
@@ -298,14 +369,14 @@ label b {
     background: #fff;
     border: 1px solid #e2e8f0;
     color: #334155;
-    margin-right: 9px
+    margin-right: 8px
 }
 
 .reset svg,
 .submit svg {
-    width: 15px;
+    width: 14px;
     vertical-align: middle;
-    margin-right: 5px
+    margin-right: 4px
 }
 
 .submit {
@@ -320,8 +391,8 @@ label b {
 }
 
 .notice {
-    margin: 10px 0;
-    padding: 9px 11px;
+    margin: 6px 0;
+    padding: 7px 10px;
     border-radius: 5px;
     background: #fff3cd;
     color: #7d5e00;
@@ -334,81 +405,31 @@ label b {
 }
 
 footer {
-    height: 34px;
+    height: 30px;
     background: #050505;
     color: #fff;
     text-align: center;
-    padding: 10px;
+    padding: 8px;
     font-size: 11px
-}
-
-@media(max-width:600px) {
-    header {
-        height: 54px;
-        padding: 0 12px
-    }
-
-    .brand span {
-        font-size: 11px
-    }
-
-    .seal {
-        width: 45px;
-        height: 45px;
-        margin-top: 0
-    }
-
-    .card {
-        padding: 18px
-    }
-
-    .grid {
-        grid-template-columns: 1fr;
-        gap: 15px
-    }
-
-    .full {
-        grid-column: auto
-    }
-
-    .actions {
-        gap: 14px;
-        align-items: flex-start;
-        flex-direction: column;
-        margin-top: 23px
-    }
-
-    .cris img {
-        width: 65px
-    }
-
-    main {
-        padding: 14px 10px
-    }
-
-    .mode-tabs {
-        flex-direction: column;
-        gap: 4px;
-    }
 }
 
 /* ===== Mode Tabs ===== */
 .mode-tabs {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     background: #f1f5f9;
     border-radius: 8px;
-    padding: 4px;
+    padding: 3px;
 }
 
 .mode-tab {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 7px 14px;
+    gap: 4px;
+    padding: 5px 12px;
     border: none;
-    border-radius: 6px;
-    font: 600 12px 'Inter', Arial, sans-serif;
+    border-radius: 5px;
+    font: 600 11px 'Inter', Arial, sans-serif;
     cursor: pointer;
     background: transparent;
     color: #64748b;
@@ -431,13 +452,13 @@ footer {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 16px;
-    padding: 10px 14px;
+    margin-bottom: 8px;
+    padding: 7px 12px;
     background: #fef2f2;
     color: #dc2626;
     border: 1px solid #fecaca;
     border-radius: 6px;
-    font: 13px 'Inter', Arial, sans-serif;
+    font: 12px 'Inter', Arial, sans-serif;
 }
 
 /* ===== Info Banner ===== */
@@ -445,20 +466,20 @@ footer {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
-    margin-bottom: 16px;
+    padding: 7px 12px;
+    margin-bottom: 8px;
     background: #eff6ff;
     color: #1e40af;
     border: 1px solid #bfdbfe;
     border-radius: 6px;
-    font: 13px 'Inter', Arial, sans-serif;
+    font: 12px 'Inter', Arial, sans-serif;
 }
 
 /* ===== Code Type Toggle (inside Customer Code field) ===== */
 .code-type-toggle {
     display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 6px;
 }
 
 .code-type-btn {
@@ -466,13 +487,13 @@ footer {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 7px 10px;
+    gap: 5px;
+    padding: 5px 8px;
     border: 1.5px solid #e2e8f0;
-    border-radius: 6px;
+    border-radius: 5px;
     background: #fff;
     color: #64748b;
-    font: 600 12px 'Inter', Arial, sans-serif;
+    font: 600 11px 'Inter', Arial, sans-serif;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -519,9 +540,9 @@ footer {
 
 .code-confirmed {
     color: #16a34a;
-    font: 600 11px 'Inter', Arial, sans-serif;
+    font: 600 10px 'Inter', Arial, sans-serif;
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 /* ===== Spinner Animation ===== */
@@ -536,8 +557,8 @@ footer {
 
 /* ===== GSTIN Section ===== */
 .gstins-container {
-    margin-top: 24px;
-    padding-top: 24px;
+    margin-top: 12px;
+    padding-top: 10px;
     border-top: 1px dotted #dce4eb;
 }
 
@@ -545,25 +566,25 @@ footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .gstins-header h3 {
     margin: 0;
-    font-size: 15px;
+    font-size: 14px;
     color: #1e293b;
 }
 
 .add-gstin-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: #eff6ff;
     color: #2563eb;
     border: 1px solid #bfdbfe;
-    padding: 6px 12px;
+    padding: 5px 10px;
     border-radius: 6px;
-    font: 600 12px 'Inter', Arial, sans-serif;
+    font: 600 11px 'Inter', Arial, sans-serif;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -572,37 +593,44 @@ footer {
     background: #dbeafe;
 }
 
+/* ===== GSTIN Cards — Three-column grid ===== */
+.gstin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
 .gstin-card {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
+    padding: 10px 12px;
 }
 
 .gstin-card-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .gstin-card-head h4 {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
     color: #475569;
+    font-weight: 700;
 }
 
 .remove-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     background: #fef2f2;
     color: #ef4444;
     border: 1px solid #fecaca;
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-radius: 4px;
-    font: 600 11px 'Inter', Arial, sans-serif;
+    font: 600 10px 'Inter', Arial, sans-serif;
     cursor: pointer;
 }
 
@@ -610,11 +638,147 @@ footer {
     background: #fee2e2;
 }
 
+/* Inside GSTIN cards, use single-column stacked layout */
+.gstin-card .grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.gstin-card .gstin-file-field {
+    grid-column: auto;
+}
+
 .truncate {
     display: inline-block;
-    max-width: 150px;
+    max-width: 140px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: bottom;
+}
+
+/* ===== Zone & Division side-by-side row ===== */
+.zone-division-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+/* ===== Railways banner compact ===== */
+.railways-banner {
+    margin-top: 0px;
+    margin-bottom: 0;
+}
+
+.railways-banner img {
+    height: 40px;
+}
+
+/* ===== Responsive: Tablet (2 columns) ===== */
+@media (max-width: 1024px) {
+    .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .span-2 {
+        grid-column: 1 / -1;
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+        width: min(960px, 96%);
+        padding: 16px 22px 14px;
+    }
+}
+
+/* ===== Responsive: Mobile (1 column) ===== */
+@media (max-width: 600px) {
+    header {
+        height: 50px;
+        padding: 0 12px
+    }
+
+    .brand span {
+        font-size: 11px
+    }
+
+    .seal {
+        width: 45px;
+        height: 45px;
+        margin-top: 0
+    }
+
+    
+
+    .card {
+        width: 100%;
+        padding: 14px 14px 12px;
+        border-radius: 10px;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 10px
+    }
+
+    .full,
+    .span-2 {
+        grid-column: auto
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .zone-division-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .actions {
+        gap: 10px;
+        align-items: flex-start;
+        flex-direction: column;
+        margin-top: 14px
+    }
+
+    .cris img {
+        width: 65px
+    }
+
+    main {
+        padding: 10px 8px
+    }
+
+    .mode-tabs {
+        flex-direction: column;
+        gap: 3px;
+    }
+}
+
+/* Zone search input inside dropdown */
+.zone-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.zone-search input {
+    border: none;
+    outline: none;
+    width: 100%;
+    font: 12px 'Inter', Arial, sans-serif;
+    color: #334155;
+}
+
+.zone-empty {
+    padding: 10px 12px;
+    color: #94a3b8;
+    font: 12px 'Inter', Arial, sans-serif;
+    text-align: center;
 }

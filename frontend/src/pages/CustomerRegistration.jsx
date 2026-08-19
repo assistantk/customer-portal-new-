@@ -12,24 +12,24 @@ const INDIAN_STATES = [
 ];
 
 const divisionsByZone = {
-  'Central Railway (CR)': ['Mumbai (CSTM)', 'Bhusawal (BSL)', 'Nagpur (NGP)', 'Pune (PUNE)', 'Solapur (SUR)'],
-  'Eastern Railway (ER)': ['Howrah (HWH)', 'Sealdah (SDAH)', 'Asansol (ASN)', 'Malda (MLDT)'],
-  'East Central Railway (ECR)': ['Danapur (DNR)', 'Dhanbad (DHN)', 'Pt. Deen Dayal Upadhyaya (DDU)', 'Samastipur (SPJ)', 'Sonpur (SEE)'],
-  'East Coast Railway (ECOR)': ['Khurda Road (KUR)', 'Sambalpur (SBP)', 'Rayagada (RGDA)'],
-  'Northern Railway (NR)': ['Delhi (DLI)', 'Ambala (UMB)', 'Firozpur (FZR)', 'Lucknow (LKO)', 'Moradabad (MB)'],
-  'North Central Railway (NCR)': ['Prayagraj (PRYJ)', 'Agra (AGC)', 'Jhansi (JHS)'],
-  'North Eastern Railway (NER)': ['Izzatnagar (IZN)', 'Lucknow (LJN)', 'Varanasi (BSB)'],
-  'Northeast Frontier Railway (NFR)': ['Alipurduar (APDJ)', 'Katihar (KIR)', 'Lumding (LMG)', 'Rangiya (RNY)', 'Tinsukia (TSK)'],
-  'North Western Railway (NWR)': ['Jaipur (JP)', 'Ajmer (AII)', 'Bikaner (BKN)', 'Jodhpur (JU)'],
-  'Southern Railway (SR)': ['Chennai (MAS)', 'Madurai (MDU)', 'Palakkad (PGT)', 'Salem (SA)', 'Tiruchchirapalli (TPJ)', 'Thiruvananthapuram (TVC)'],
-  'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Nanded (NED)'],
-  'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)', 'Vijayawada (BZA)', 'Guntur (GNT)', 'Guntakal (GTL)'],
-  'South Eastern Railway (SER)': ['Adra (ADRA)', 'Chakradharpur (CKP)', 'Kharagpur (KGP)', 'Ranchi (RNC)'],
-  'South East Central Railway (SECR)': ['Bilaspur (BSP)', 'Nagpur (NAG)', 'Raipur (R)'],
-  'South Western Railway (SWR)': ['Hubballi (UBL)', 'Bengaluru (SBC)', 'Mysuru (MYS)'],
-  'Western Railway (WR)': ['Mumbai Central (BCT)', 'Vadodara (BRC)', 'Ahmedabad (ADI)', 'Rajkot (RJT)', 'Bhavnagar (BVP)', 'Ratlam (RTM)'],
-  'West Central Railway (WCR)': ['Jabalpur (JBP)', 'Bhopal (BPL)', 'Kota (KOTA)'],
-  'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
+    'Central Railway (CR)': ['Mumbai (CSTM)', 'Bhusawal (BSL)', 'Nagpur (NGP)', 'Pune (PUNE)', 'Solapur (SUR)'],
+    'Eastern Railway (ER)': ['Howrah (HWH)', 'Sealdah (SDAH)', 'Asansol (ASN)', 'Malda (MLDT)'],
+    'East Central Railway (ECR)': ['Danapur (DNR)', 'Dhanbad (DHN)', 'Pt. Deen Dayal Upadhyaya (DDU)', 'Samastipur (SPJ)', 'Sonpur (SEE)'],
+    'East Coast Railway (ECOR)': ['Khurda Road (KUR)', 'Sambalpur (SBP)', 'Rayagada (RGDA)'],
+    'Northern Railway (NR)': ['Delhi (DLI)', 'Ambala (UMB)', 'Firozpur (FZR)', 'Lucknow (LKO)', 'Moradabad (MB)'],
+    'North Central Railway (NCR)': ['Prayagraj (PRYJ)', 'Agra (AGC)', 'Jhansi (JHS)'],
+    'North Eastern Railway (NER)': ['Izzatnagar (IZN)', 'Lucknow (LJN)', 'Varanasi (BSB)'],
+    'Northeast Frontier Railway (NFR)': ['Alipurduar (APDJ)', 'Katihar (KIR)', 'Lumding (LMG)', 'Rangiya (RNY)', 'Tinsukia (TSK)'],
+    'North Western Railway (NWR)': ['Jaipur (JP)', 'Ajmer (AII)', 'Bikaner (BKN)', 'Jodhpur (JU)'],
+    'Southern Railway (SR)': ['Chennai (MAS)', 'Madurai (MDU)', 'Palakkad (PGT)', 'Salem (SA)', 'Tiruchchirapalli (TPJ)', 'Thiruvananthapuram (TVC)'],
+    'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Nanded (NED)'],
+    'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)', 'Vijayawada (BZA)', 'Guntur (GNT)', 'Guntakal (GTL)'],
+    'South Eastern Railway (SER)': ['Adra (ADRA)', 'Chakradharpur (CKP)', 'Kharagpur (KGP)', 'Ranchi (RNC)'],
+    'South East Central Railway (SECR)': ['Bilaspur (BSP)', 'Nagpur (NAG)', 'Raipur (R)'],
+    'South Western Railway (SWR)': ['Hubballi (UBL)', 'Bengaluru (SBC)', 'Mysuru (MYS)'],
+    'Western Railway (WR)': ['Mumbai Central (BCT)', 'Vadodara (BRC)', 'Ahmedabad (ADI)', 'Rajkot (RJT)', 'Bhavnagar (BVP)', 'Ratlam (RTM)'],
+    'West Central Railway (WCR)': ['Jabalpur (JBP)', 'Bhopal (BPL)', 'Kota (KOTA)'],
+    'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
 };
 const gstinRe = /^[A-Za-z0-9]{15}$/, panRe = /^[A-Za-z0-9]{10}$/, mobileRe = /^[6-9][0-9]{9}$/;
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
@@ -159,7 +159,7 @@ export default function CustomerRegistration() {
         if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
         if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) e.pincode = 'Invalid pincode';
         if (form.panNumber && !panRe.test(form.panNumber)) e.panNumber = 'PAN No. must contain exactly 10 letters or numbers';
-        
+
         let stateSet = new Set();
         let gstinSet = new Set();
         gstins.forEach((g, i) => {
@@ -190,7 +190,7 @@ export default function CustomerRegistration() {
         if (!validate()) return;
         setLoading(true);
         try {
-            const payload = { ...form, codeType: mode === 'new' ? codeType : 'GLOBAL', gstins: gstins.map(g => ({state: g.state, gstin: g.gstin})) };
+            const payload = { ...form, codeType: mode === 'new' ? codeType : 'GLOBAL', gstins: gstins.map(g => ({ state: g.state, gstin: g.gstin })) };
             const files = gstins.map(g => g.file).filter(f => f != null);
             if (files.length !== gstins.length) {
                 throw new Error("Please re-upload all GSTIN files to submit an update");
@@ -225,7 +225,7 @@ export default function CustomerRegistration() {
             <div className="cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
         </header>
 
-        <div className="railways-banner"><img src={indianRailwaysLogo} alt="Indian Railways" /></div>
+        
 
         <main><form className="card" onSubmit={submit}>
             <div className="card-head">
@@ -233,6 +233,7 @@ export default function CustomerRegistration() {
                     <h1>Customer Registration</h1>
                     <p>{mode === 'old' ? 'Look up existing customer record' : 'Register new customer account'}</p>
                 </div></div>
+                <div className="railways-banner"><img src={indianRailwaysLogo} alt="Indian Railways" /></div>
                 <div className="mode-tabs">
                     <button type="button" className={'mode-tab' + (mode === 'old' ? ' active' : '')} onClick={() => switchMode('old')}>
                         <Users size={14} /> Old User
@@ -248,7 +249,9 @@ export default function CustomerRegistration() {
             {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You must re-upload files before updating.</div>}
             {mode === 'old' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
 
+            {/* === Main Form: 3-column grid === */}
             <div className="grid">
+                {/* Row 1: Customer Code | Company Name | PAN No. */}
                 {mode === 'old' ? (
                     <div className="field">
                         <label htmlFor="customerCode">Customer Code <b>*</b></label>
@@ -293,44 +296,53 @@ export default function CustomerRegistration() {
                     </div>
                 )}
 
-                <div className="full"><Field label="Address" name="address" icon={MapPin} placeholder="Enter complete business address" form={form} setForm={setForm} error={errors.address} /></div>
+                <Field label="PAN No." name="panNumber" icon={FileText} maxLength="10" placeholder="Enter 10-character PAN No." form={form} setForm={setForm} error={errors.panNumber} />
+
+                {/* Row 2: Address | City | Pincode */}
+                <Field label="Address" name="address" icon={MapPin} placeholder="Enter complete business address" form={form} setForm={setForm} error={errors.address} />
                 <Select label="City" name="city" icon={MapPin} options={cities} form={form} setForm={setForm} onValueChange={city => setForm(prev => ({ ...prev, city, pincode: '' }))} error={errors.city} />
                 <Select label="Pincode" name="pincode" icon={Mail} options={pins} form={form} setForm={setForm} error={errors.pincode} disabled={!form.city} />
-                <Field label="PAN No." name="panNumber" icon={FileText} maxLength="10" placeholder="Enter 10-character PAN No." form={form} setForm={setForm} error={errors.panNumber} />
+
+                {/* Row 3: Zone | Division | Email */}
                 <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} />
                 <Select label="Division" name="operatingDivision" icon={Globe} options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} />
                 <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} />
+
+                {/* Row 4: Mobile */}
                 <Field label="Mobile" name="mobile" icon={Phone} inputMode="numeric" maxLength="10" placeholder="Enter 10-digit number" form={form} setForm={setForm} error={errors.mobile} />
             </div>
 
+            {/* === State-wise GSTINs === */}
             <div className="gstins-container">
                 <div className="gstins-header">
                     <h3>State-wise GSTINs</h3>
                     <button type="button" className="add-gstin-btn" onClick={addGstin}><Plus size={14} /> Add GSTIN</button>
                 </div>
-                {gstins.map((g, index) => (
-                    <div key={index} className="gstin-card">
-                        <div className="gstin-card-head">
-                            <h4>GSTIN {index + 1}</h4>
-                            {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /> Remove</button>}
-                        </div>
-                        <div className="grid">
-                            <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, {state: val})} error={errors[`gstin_${index}_state`]} />
-                            <Field label="GSTIN" name="gstin" icon={FileText} maxLength="15" placeholder="Enter 15-character GSTIN" form={g} setForm={newG => handleGstinChange(index, newG)} error={errors[`gstin_${index}_gstin`]} />
-                            <div className="field gstin-file-field">
-                                <label>Upload GSTIN File <b>*</b></label>
-                                <button type="button" className={'dropzone ' + (errors[`gstin_${index}_file`] ? 'drop-error' : '')} onClick={() => fileRefs.current[index]?.click()}>
-                                    <UploadCloud />
-                                    <span>Drag and drop, or <a>browse</a><br />
-                                        <small className="truncate">{g.file ? g.file.name : (g.existingFileName || 'PDF, JPG, PNG (Max 5MB)')}</small>
-                                    </span>
-                                </button>
-                                <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
-                                {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
+                <div className="gstin-grid">
+                    {gstins.map((g, index) => (
+                        <div key={index} className="gstin-card">
+                            <div className="gstin-card-head">
+                                <h4>GSTIN {index + 1}</h4>
+                                {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
+                            </div>
+                            <div className="grid">
+                                <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
+                                <Field label="GSTIN" name="gstin" icon={FileText} maxLength="15" placeholder="Enter 15-character GSTIN" form={g} setForm={newG => handleGstinChange(index, newG)} error={errors[`gstin_${index}_gstin`]} />
+                                <div className="field gstin-file-field">
+                                    <label>Upload GSTIN File <b>*</b></label>
+                                    <button type="button" className={'dropzone ' + (errors[`gstin_${index}_file`] ? 'drop-error' : '')} onClick={() => fileRefs.current[index]?.click()}>
+                                        <UploadCloud />
+                                        <span>Drag and drop, or <a>browse</a><br />
+                                            <small className="truncate">{g.file ? g.file.name : (g.existingFileName || 'PDF, JPG, PNG (Max 5MB)')}</small>
+                                        </span>
+                                    </button>
+                                    <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
+                                    {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             <div className="actions"><span className="secure"><ShieldCheck /> 256-bit encryption</span><div><button type="button" className="reset" onClick={reset}><RotateCcw /> Reset</button><button className="submit" disabled={loading}><Send />{loading ? 'Submitting...' : 'Submit Request'}</button></div></div>
