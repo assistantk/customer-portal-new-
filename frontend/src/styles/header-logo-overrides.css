@@ -34,3 +34,17 @@ header { position: relative; }
   .left-cris { display: none; }
   .header-railways { width: 46px; height: 46px; }
 }
+
+.railways-banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-top: 24px;   /* adjust this value to taste */
+}
+
+.railways-banner img {
+    height: 90px;   /* match your header logo size */
+    width: auto;
+    object-fit: contain;
+}
