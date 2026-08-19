@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users } from 'lucide-react';
+import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search } from 'lucide-react';
 import { getMasterData, registerCustomer, lookupCustomer, generateUniqueCode } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -7,7 +7,26 @@ import crisLogo from '../assets/cris-logo.png';
 const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', gstin: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] }, divisionZones: { 'Northern Railway': ['Delhi', 'Ambala', 'Firozpur', 'Lucknow', 'Moradabad'], 'Eastern Railway': ['Howrah', 'Sealdah', 'Asansol', 'Malda'], 'Western Railway': ['Mumbai Central', 'Vadodara', 'Ratlam', 'Ahmedabad', 'Rajkot', 'Bhavnagar'], 'Southern Railway': ['Chennai', 'Madurai', 'Palakkad', 'Salem', 'Thiruvananthapuram'], 'Central Railway': ['Mumbai', 'Bhusawal', 'Nagpur', 'Pune', 'Solapur'], 'North Central Railway': ['Prayagraj', 'Jhansi', 'Agra'], 'South Central Railway': ['Secunderabad', 'Hyderabad', 'Vijayawada', 'Guntakal', 'Nanded'], 'North Eastern Railway': ['Varanasi', 'Lucknow', 'Izzatnagar'], 'North Western Railway': ['Jaipur', 'Ajmer', 'Bikaner', 'Jodhpur'] } };
 const allZones = ['Central Railway (Mumbai CSMT)', 'Eastern Railway (Kolkata)', 'East Central (Hajipur)', 'East Coast (Bhubaneswar)', 'Northern (Delhi)', 'North Central (Allahabad/Prayagraj)', 'North Eastern (Gorakhpur)', 'Northeast Frontier (Guwahati)', 'North Western (Jaipur)', 'Southern (Chennai)', 'South Central (Secunderabad)', 'South Coast (Visakhapatnam)', 'South Eastern (Kolkata)', 'South East Central (Bilaspur)', 'South Western (Hubballi)', 'Western (Mumbai Churchgate)', 'West Central (Jabalpur)', 'Kolkata Metro (newest Zone)'];
-const divisionsByZone = { 'Central Railway (Mumbai CSMT)': ['Mumbai', 'Bhusawal', 'Nagpur', 'Pune', 'Solapur'], 'Eastern Railway (Kolkata)': ['Howrah', 'Sealdah', 'Asansol', 'Malda'], 'East Central (Hajipur)': ['Danapur', 'Dhanbad', 'Pt. Deen Dayal Upadhyaya', 'Samastipur', 'Sonpur'], 'East Coast (Bhubaneswar)': ['Khurda Road', 'Sambalpur', 'Waltair'], 'Northern (Delhi)': ['Delhi', 'Ambala', 'Firozpur', 'Lucknow', 'Moradabad'], 'North Central (Allahabad/Prayagraj)': ['Prayagraj', 'Jhansi', 'Agra'], 'North Eastern (Gorakhpur)': ['Varanasi', 'Lucknow', 'Izzatnagar'], 'Northeast Frontier (Guwahati)': ['Alipurduar', 'Katihar', 'Lumding', 'Rangiya', 'Tinsukia'], 'North Western (Jaipur)': ['Jaipur', 'Ajmer', 'Bikaner', 'Jodhpur'], 'Southern (Chennai)': ['Chennai', 'Madurai', 'Palakkad', 'Salem', 'Thiruvananthapuram'], 'South Central (Secunderabad)': ['Secunderabad', 'Hyderabad', 'Vijayawada', 'Guntakal', 'Nanded'], 'South Coast (Visakhapatnam)': ['Vijayawada', 'Waltair', 'Guntur'], 'South Eastern (Kolkata)': ['Adra', 'Chakradharpur', 'Kharagpur', 'Ranchi'], 'South East Central (Bilaspur)': ['Bilaspur', 'Nagpur', 'Raipur'], 'South Western (Hubballi)': ['Bengaluru', 'Hubballi', 'Mysuru'], 'Western (Mumbai Churchgate)': ['Mumbai Central', 'Vadodara', 'Ratlam', 'Ahmedabad', 'Rajkot', 'Bhavnagar'], 'West Central (Jabalpur)': ['Jabalpur', 'Bhopal', 'Kota'], 'Kolkata Metro (newest Zone)': ['Kolkata Metro'] };
+const divisionsByZone = { 
+    'Central Railway (Mumbai CSMT)': ['Mumbai', 'Bhusawal', 'Nagpur', 'Pune', 'Solapur'], 
+    'Eastern Railway (Kolkata)': ['Howrah', 'Sealdah', 'Asansol', 'Malda'], 
+    'East Central (Hajipur)': ['Danapur', 'Dhanbad', 'Pt. Deen Dayal Upadhyaya', 'Samastipur', 'Sonpur'], 
+    'East Coast (Bhubaneswar)': ['Khurda Road', 'Sambalpur', 'Waltair'], 
+    'Northern (Delhi)': ['Delhi', 'Ambala', 'Firozpur', 'Lucknow', 'Moradabad'], 
+    'North Central (Allahabad/Prayagraj)': ['Prayagraj', 'Jhansi', 'Agra'], 
+    'North Eastern (Gorakhpur)': ['Varanasi', 'Lucknow', 'Izzatnagar'], 
+    'Northeast Frontier (Guwahati)': ['Alipurduar', 'Katihar', 'Lumding', 'Rangiya', 'Tinsukia'], 
+    'North Western (Jaipur)': ['Jaipur', 'Ajmer', 'Bikaner', 'Jodhpur'], 
+    'Southern (Chennai)': ['Chennai', 'Madurai', 'Palakkad', 'Salem', 'Thiruvananthapuram'], 
+    'South Central (Secunderabad)': ['Secunderabad', 'Hyderabad', 'Vijayawada', 'Guntakal', 'Nanded'], 
+    'South Coast (Visakhapatnam)': ['Vijayawada', 'Waltair', 'Guntur'], 
+    'South Eastern (Kolkata)': ['Adra', 'Chakradharpur', 'Kharagpur', 'Ranchi'], 
+    'South East Central (Bilaspur)': ['Bilaspur', 'Nagpur', 'Raipur'], 
+    'South Western (Hubballi)': ['Bengaluru', 'Hubballi', 'Mysuru'], 
+    'Western (Mumbai Churchgate)': ['Mumbai Central', 'Vadodara', 'Ratlam', 'Ahmedabad', 'Rajkot', 'Bhavnagar'], 
+    'West Central (Jabalpur)': ['Jabalpur', 'Bhopal', 'Kota'], 
+    'Kolkata Metro (newest Zone)': ['Kolkata Metro'] 
+};
 const gstinRe = /^[A-Za-z0-9]{15}$/, panRe = /^[A-Za-z0-9]{10}$/, mobileRe = /^[6-9][0-9]{9}$/;
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
 
@@ -28,8 +47,11 @@ function Select({ label, name, icon: Icon, options, form, setForm, error, disabl
 }
 function ZoneSelect({ options, form, setForm, error }) {
     const [open, setOpen] = useState(false);
-    const choose = zone => { setForm(prev => ({ ...prev, zone, operatingDivision: '' })); setOpen(false); };
-    return <div className="field zone-field"><label id="zone-label">Zone <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="zone-label" aria-expanded={open} onClick={() => setOpen(!open)}><Globe size={15} /><span>{form.zone || 'Select zone'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Zone options"><button type="button" className="zone-option" onClick={() => choose('')}>Select zone</button>{options.map(zone => <button type="button" className="zone-option" role="option" aria-selected={form.zone === zone} key={zone} onClick={() => choose(zone)}>{zone}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+    const [searchTerm, setSearchTerm] = useState('');
+    const choose = zone => { setForm(prev => ({ ...prev, zone, operatingDivision: '' })); setSearchTerm(''); setOpen(false); };
+    const toggleOpen = () => { setOpen(current => !current); if (open) setSearchTerm(''); };
+    const filteredOptions = options.filter(zone => zone.toLowerCase().includes(searchTerm.toLowerCase()));
+    return <div className="field zone-field"><label id="zone-label">Zone <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="zone-label" aria-expanded={open} onClick={toggleOpen}><Globe size={15} /><span>{form.zone || 'Select zone'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Zone options"><div className="zone-search"><Search size={14} /><input type="search" aria-label="Search zones" placeholder="Search zone" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div><button type="button" className="zone-option" onClick={() => choose('')}>Select zone</button>{filteredOptions.length ? filteredOptions.map(zone => <button type="button" className="zone-option" role="option" aria-selected={form.zone === zone} key={zone} onClick={() => choose(zone)}>{zone}</button>) : <div className="zone-empty">No zones found</div>}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
 export default function CustomerRegistration() {
