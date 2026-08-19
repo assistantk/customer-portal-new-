@@ -13,4 +13,5 @@ public record CustomerRegistrationRequest(
  @NotBlank(message="Operating division is required") String operatingDivision,
  @NotBlank(message="Zone is required") String zone,
  @Email(message="Invalid email") @NotBlank(message="Email is required") String email,
- @Pattern(regexp="^[6-9][0-9]{9}$", message="Invalid mobile number") String mobile) {}
+ @Pattern(regexp="^[6-9][0-9]{9}$", message="Invalid mobile number") String mobile,
+ @NotBlank(message="Code type is required") @Pattern(regexp="^(GLOBAL|HANDLING_AGENT)$", message="Code type must be GLOBAL or HANDLING_AGENT") String codeType) {}
