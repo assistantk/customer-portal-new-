@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2 } from 'lucide-react';
+import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
 import { getMasterData, lookupCustomer, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -301,7 +301,9 @@ export default function CustomerRegistration() {
         setGstins(newGstins);
     };
     const handleGstinFileChange = (index, e) => {
-        const selected = e.target.files[0], error = checkFile(selected);
+        const selected = e.target.files[0];
+        if (!selected) return;
+        const error = checkFile(selected);
         handleGstinChange(index, { file: error ? null : selected });
         setErrors({ ...errors, [`gstin_${index}_file`]: error });
     };
@@ -438,16 +440,19 @@ export default function CustomerRegistration() {
                             </div>
                             <div className="grid">
                                 <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
-                                <Field label="GSTIN" name="gstin" icon={FileText} maxLength="15" placeholder="Enter 15-character GSTIN" form={g} setForm={newG => handleGstinChange(index, newG)} error={errors[`gstin_${index}_gstin`]} />
-                                <div className="field gstin-file-field">
-                                    <label>Upload GSTIN File <b>*</b></label>
-                                    <button type="button" className={'dropzone ' + (errors[`gstin_${index}_file`] ? 'drop-error' : '')} onClick={() => fileRefs.current[index]?.click()}>
-                                        <UploadCloud />
-                                        <span>Drag and drop, or <a>browse</a><br />
-                                            <small className="truncate">{g.file ? g.file.name : (g.existingFileName || 'PDF (Max 5MB)')}</small>
-                                        </span>
-                                    </button>
+                                <div className="field gstin-number-field">
+                                    <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
+                                    <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
+                                        <FileText size={15} />
+                                        <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder="Enter GSTIN Number" onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
+                                        <button type="button" className={'gstin-upload-btn' + (g.file || g.existingFileName ? ' has-file' : '')} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN PDF')} aria-label={`Upload GSTIN PDF for GSTIN ${index + 1}`}>
+                                            <Paperclip size={13} />
+                                            <span className="gstin-upload-text">Upload GSTIN</span>
+                                            {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
+                                        </button>
+                                    </div>
                                     <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf" onChange={e => handleGstinFileChange(index, e)} />
+                                    {errors[`gstin_${index}_gstin`] && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
                                     {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                 </div>
                             </div>

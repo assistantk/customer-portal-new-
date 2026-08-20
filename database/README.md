@@ -32,6 +32,7 @@ Run the following `database/*.sql` scripts in order as a DBA or schema owner:
 | 2 | `02_constraints.sql` | PKs, FKs, Unique + Check constraints (PAN, GSTIN, mobile, pincode, Active flags) |
 | 3 | `03_indexes.sql` | Performance indexes on search columns + FK columns |
 | 4 | `04_sample_data.sql` | **TEST ONLY** — 2 customers, multi-state GSTINs, duplicate-code scenario |
+| 5 | `05_add_gstin_file_path.sql` | Adds Supabase Storage object path metadata for existing databases |
 
 Example execution using Oracle SQL\*Plus or SQL Developer:
 
@@ -39,6 +40,7 @@ Example execution using Oracle SQL\*Plus or SQL Developer:
 @01_create_tables.sql
 @02_constraints.sql
 @03_indexes.sql
+@05_add_gstin_file_path.sql
 -- for TEST / DEV only:
 @04_sample_data.sql
 COMMIT;
@@ -198,7 +200,7 @@ Base URL: `http://localhost:4000/api`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET`  | `/customers/:customerCode` | Fetch customer master by Customer Code. 404 if missing. |
-| `POST` | `/customers` | Create new customer + reserve Global/Handling code + insert GSTINs (body-only, no file blobs) |
+| `POST` | `/customers` | Create new customer + reserve Global/Handling code + insert GSTIN metadata |
 | `PUT`  | `/customers/:customerCode` | Update existing customer master row (editable fields + PAN) |
 
 ### GSTINs
@@ -207,7 +209,7 @@ Base URL: `http://localhost:4000/api`
 |--------|------|-------------|
 | `GET`    | `/customers/:customerCode/gstins` | List all GSTINs for a customer (metadata only, no file content) |
 | `POST`   | `/customers/:customerCode/gstins` | Add GSTIN row — `multipart/form-data` with optional `gstinFile` (PDF ≤ 5MB) |
-| `PUT`    | `/customers/:customerCode/gstins/:gstinId` | Update GSTIN row + optionally replace its file blob |
+| `PUT`    | `/customers/:customerCode/gstins/:gstinId` | Update GSTIN row + optionally replace its Supabase PDF |
 | `DELETE` | `/customers/:customerCode/gstins/:gstinId` | Remove GSTIN row from DB |
 | `GET`    | `/customers/:customerCode/gstins/:gstinId/file` | Stream GSTIN file (inline download) |
 
@@ -302,7 +304,7 @@ proxy: {
 | Exactly one of Global / Handling code | `CK_MEMCUSTOMER_CODE_PRESENT` | ✓ `validateCustomer` | radio toggle + helper |
 | Code length ≤ 4 | `VARCHAR2(4)` PK column + backend check | `CODE_MAX_LENGTH` env | `maxLength=4` input + FOIS disclaimer |
 | GSTIN file type PDF | (back-end multer) | `ALLOWED_GSTIN_FILE_TYPES` | input `accept=` |
-| GSTIN file ≤ 5 MB | LOB storage, multer `limits.fileSize` | `MAX_GSTIN_FILE_SIZE` | per-file size toast |
+| GSTIN file ≤ 5 MB | Supabase Storage path metadata, multer `limits.fileSize` | `MAX_GSTIN_FILE_SIZE` | per-file size toast |
 | No SQL injection / raw SQL exposure | — | parameterized queries via `oracledb` binds | all calls through `/api` proxy, no raw SQL |
 
 ---
@@ -315,6 +317,7 @@ database/
 ├── 02_constraints.sql        PK / FK / Unique / Check (PAN, GSTIN, mobile, etc.)
 ├── 03_indexes.sql            Search + FK performance indexes
 ├── 04_sample_data.sql        Test seed data (2 customers · 5 GSTINs · NYIL→NYI1→NYI2)
+├── 05_add_gstin_file_path.sql Existing DB migration for GSTIN PDF paths
 └── README.md                 This file
 
 backend/
@@ -335,7 +338,7 @@ backend/
     │   └── codeRoutes.ts      POST /generate-global /generate-handling
     └── controllers/
         ├── customerController.ts
-        ├── gstinController.ts    (BLOB streaming read + RETURNING INTO lob write)
+        ├── gstinController.ts    (Supabase GSTIN PDF storage + metadata update)
         └── codeController.ts
 
 src/ (Vite frontend)
@@ -354,8 +357,8 @@ src/ (Vite frontend)
 Before cutting over to FOIS production:
 
 - [ ] Confirm `CODE_MAX_LENGTH` stays 4 until FOIS team changes both PK columns.
-- [ ] Verify new tablespace / quotas for `MEMCUSTOMER` BLOBs (GSTIN files).
-- [ ] Run only `01_create_tables.sql` → `02_constraints.sql` → `03_indexes.sql` (skip sample data).
+- [ ] Configure Supabase Storage env vars for GSTIN PDF uploads.
+- [ ] Run only `01_create_tables.sql` → `02_constraints.sql` → `03_indexes.sql` → `05_add_gstin_file_path.sql` (skip sample data).
 - [ ] Set backend `NODE_ENV=production` (masks Oracle error details / stack traces).
 - [ ] Confirm CORS origins list matches reverse-proxy / F5 URLs used for FOIS.
 - [ ] Point `DB_HOST / DB_PORT / DB_SERVICE / DB_USERNAME / DB_PASSWORD` at FOIS database (only `.env` changes).

@@ -21,6 +21,10 @@ export const env = {
   CODE_MAX_LENGTH: Number(process.env.CODE_MAX_LENGTH ?? 4),
   CODE_MAX_RETRIES: Number(process.env.CODE_MAX_RETRIES ?? 50),
 
+  SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  SUPABASE_GSTIN_BUCKET: process.env.SUPABASE_GSTIN_BUCKET ?? 'gstin-documents',
+
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: process.env.NODE_ENV !== 'production',
 

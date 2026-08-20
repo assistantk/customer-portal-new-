@@ -292,46 +292,6 @@ label b {
     margin-top: 2px
 }
 
-/* ===== Dropzone (compact) ===== */
-.dropzone {
-    border: 1px dashed #93c5fd;
-    background: #f8fafc;
-    width: 100%;
-    height: 64px;
-    border-radius: 6px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-    color: #475569;
-    text-align: left;
-    cursor: pointer
-}
-
-.dropzone>svg {
-    background: #eff6ff;
-    color: #3b82f6;
-    padding: 7px;
-    box-sizing: content-box;
-    border-radius: 6px;
-    width: 18px;
-    height: 18px;
-}
-
-.dropzone span {
-    font: 12px 'Inter', Arial, sans-serif
-}
-
-.dropzone span a {
-    color: #2563eb;
-    text-decoration: underline;
-}
-
-.dropzone small {
-    font: 10px 'Inter', Arial, sans-serif;
-    color: #64748b
-}
-
 .hidden {
     display: none
 }
@@ -691,8 +651,67 @@ footer {
     gap: 8px;
 }
 
-.gstin-card .gstin-file-field {
-    grid-column: auto;
+.gstin-control {
+    position: relative;
+}
+
+.gstin-control input {
+    min-width: 0;
+}
+
+.gstin-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    max-width: 150px;
+    margin-left: 6px;
+    padding: 3px 7px;
+    border: 1px dashed #93c5fd;
+    border-radius: 4px;
+    background: #f0f7ff;
+    color: #2563eb;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.gstin-upload-btn:hover {
+    background: #dbeafe;
+    border-color: #3b82f6;
+}
+
+.gstin-upload-btn.has-file {
+    border-style: solid;
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.gstin-upload-btn > svg {
+    flex-shrink: 0;
+}
+
+.gstin-upload-text {
+    flex-shrink: 0;
+}
+
+.gstin-upload-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    opacity: 0.9;
+}
+
+.gstin-upload-file svg {
+    flex-shrink: 0;
 }
 
 .truncate {
@@ -803,6 +822,17 @@ footer {
     .mode-tabs {
         flex-direction: column;
         gap: 3px;
+    }
+
+    .gstin-upload-btn {
+        max-width: 132px;
+        padding-inline: 6px;
+    }
+
+    .gstin-upload-text {
+        max-width: 58px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 }
 
