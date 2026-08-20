@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2 } from 'lucide-react';
-import { getMasterData, registerCustomer, lookupCustomer, generateUniqueCode } from '../services/customerService';
+import { getMasterData, lookupCustomer, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
-const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '' };
-const blankGstin = { state: '', gstin: '', file: null, existingFileName: '' };
+const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '' };
+const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
 const INDIAN_STATES = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
@@ -72,6 +72,8 @@ export default function CustomerRegistration() {
     const [lookupError, setLookupError] = useState('');
     const [codeChecking, setCodeChecking] = useState(false);
     const [codeConfirmed, setCodeConfirmed] = useState(false);
+    // Track GSTINs that were removed during an Old User edit session
+    const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
     const codeTimerRef = useRef(null);
     const lookupTimerRef = useRef(null);
@@ -82,11 +84,13 @@ export default function CustomerRegistration() {
         setForm(blank); setGstins([{ ...blankGstin }]); setErrors({}); setNotice('');
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
+        setRemovedGstinIds([]);
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
     };
 
     const switchMode = (newMode) => { reset(); setMode(newMode); };
 
+    /* ===== Old User: lookup by customer code ===== */
     const handleOldCodeChange = (code) => {
         setForm(prev => ({ ...prev, customerCode: code }));
         setLookupDone(false); setLookupError('');
@@ -103,16 +107,26 @@ export default function CustomerRegistration() {
                         city: customer.city || '',
                         pincode: customer.pincode || '',
                         panNumber: customer.panNumber || '',
-                        operatingDivision: customer.operatingDivision || '',
-                        zone: customer.zone || '',
+                        operatingDivision: '',
+                        zone: '',
                         email: customer.email || '',
                         mobile: customer.mobile || '',
+                        globalCustomerCode: customer.globalCustomerCode || '',
+                        handlingAgentCode: customer.handlingAgentCode || '',
                     });
                     if (customer.gstins && customer.gstins.length > 0) {
-                        setGstins(customer.gstins.map(g => ({ state: g.state, gstin: g.gstin, file: null, existingFileName: g.gstinFileName })));
+                        setGstins(customer.gstins.map(g => ({
+                            gstinId: g.gstinId || null,
+                            state: g.state,
+                            stateCode: g.stateCode || '',
+                            gstin: g.gstin,
+                            file: null,
+                            existingFileName: g.existingFileName || g.gstinFileName || '',
+                        })));
                     } else {
                         setGstins([{ ...blankGstin }]);
                     }
+                    setRemovedGstinIds([]);
                     setLookupDone(true); setLookupError('');
                 } catch {
                     setLookupDone(false); setLookupError('Customer Code not found. Please check the code or register as a New User.');
@@ -125,6 +139,7 @@ export default function CustomerRegistration() {
         }
     };
 
+    /* ===== New User: generate code from company name ===== */
     const handleNewCompanyNameChange = useCallback((newName) => {
         setForm(prev => ({ ...prev, companyName: newName }));
         const code = generateCodeFromName(newName);
@@ -135,7 +150,7 @@ export default function CustomerRegistration() {
             setCodeChecking(true);
             codeTimerRef.current = setTimeout(async () => {
                 try {
-                    const unique = await generateUniqueCode(code);
+                    const unique = await generateUniqueCode(newName, codeType);
                     setForm(prev => ({ ...prev, customerCode: unique }));
                     setCodeConfirmed(true);
                 } catch {
@@ -148,13 +163,23 @@ export default function CustomerRegistration() {
             setForm(prev => ({ ...prev, customerCode: '' }));
             setCodeChecking(false);
         }
-    }, []);
+    }, [codeType]);
+
+    /* Re-generate code when codeType changes and company name is already entered */
+    useEffect(() => {
+        if (mode === 'new' && form.companyName.trim()) {
+            handleNewCompanyNameChange(form.companyName);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [codeType]);
 
     const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/png'].includes(f.type)) return 'Only PDF, JPG and PNG files are allowed'; return '' };
 
     const validate = () => {
         let e = {};
-        Object.entries(form).forEach(([k, v]) => { if (!v) e[k] = 'This field is required' });
+        // Required field checks — exclude globalCustomerCode/handlingAgentCode from required
+        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile'];
+        requiredFields.forEach(k => { if (!form[k]) e[k] = 'This field is required' });
         if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
         if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
         if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) e.pincode = 'Invalid pincode';
@@ -185,24 +210,80 @@ export default function CustomerRegistration() {
         return !Object.keys(e).length;
     };
 
+    /* ===== Form Submission ===== */
     const submit = async e => {
         e.preventDefault(); setNotice('');
         if (!validate()) return;
         setLoading(true);
         try {
-            const payload = { ...form, codeType: mode === 'new' ? codeType : 'GLOBAL', gstins: gstins.map(g => ({ state: g.state, gstin: g.gstin })) };
-            const files = gstins.map(g => g.file).filter(f => f != null);
-            if (files.length !== gstins.length) {
-                throw new Error("Please re-upload all GSTIN files to submit an update");
+            if (mode === 'new') {
+                /* --- New Entry: create customer + GSTINs --- */
+                const result = await registerCustomer(
+                    { ...form, codeType },
+                    gstins
+                );
+                setNotice(result.message || 'Customer registration submitted successfully');
+                reset();
+            } else {
+                /* --- Old User: update customer + manage GSTINs --- */
+                // First, delete any GSTINs that were removed
+                for (const gstinId of removedGstinIds) {
+                    try {
+                        await deleteGstin(form.customerCode, gstinId);
+                    } catch {
+                        // Silently skip if already deleted
+                    }
+                }
+
+                // Then update customer + upsert GSTINs
+                const result = await updateCustomer(
+                    form.customerCode,
+                    form,
+                    gstins
+                );
+                setNotice(result.message || 'Customer updated successfully');
+                setRemovedGstinIds([]);
+                // Re-lookup to refresh data from DB
+                try {
+                    const refreshed = await lookupCustomer(form.customerCode);
+                    setForm(prev => ({
+                        ...prev,
+                        companyName: refreshed.companyName || prev.companyName,
+                        address: refreshed.address || prev.address,
+                        city: refreshed.city || prev.city,
+                        pincode: refreshed.pincode || prev.pincode,
+                        panNumber: refreshed.panNumber || prev.panNumber,
+                        email: refreshed.email || prev.email,
+                        mobile: refreshed.mobile || prev.mobile,
+                        globalCustomerCode: refreshed.globalCustomerCode || '',
+                        handlingAgentCode: refreshed.handlingAgentCode || '',
+                    }));
+                    if (refreshed.gstins && refreshed.gstins.length > 0) {
+                        setGstins(refreshed.gstins.map(g => ({
+                            gstinId: g.gstinId || null,
+                            state: g.state,
+                            stateCode: g.stateCode || '',
+                            gstin: g.gstin,
+                            file: null,
+                            existingFileName: g.existingFileName || g.gstinFileName || '',
+                        })));
+                    }
+                } catch {
+                    // refresh failed, keep current state
+                }
             }
-            const result = await registerCustomer(payload, files);
-            setNotice(result.message);
-            reset();
         } catch (error) { setNotice(error.message) } finally { setLoading(false) }
     };
 
     const addGstin = () => setGstins([...gstins, { ...blankGstin }]);
-    const removeGstin = (index) => setGstins(gstins.filter((_, i) => i !== index));
+    const removeGstin = (index) => {
+        const removed = gstins[index];
+        // Track removed GSTINs that exist in the database (have an ID)
+        if (removed.gstinId) {
+            setRemovedGstinIds(prev => [...prev, removed.gstinId]);
+        }
+        setGstins(gstins.filter((_, i) => i !== index));
+    };
     const handleGstinChange = (index, updates) => {
         const newGstins = [...gstins];
         newGstins[index] = { ...newGstins[index], ...updates };
@@ -245,8 +326,8 @@ export default function CustomerRegistration() {
             </div>
             <div className="rule" />
 
-            {notice && <div className={notice.includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
-            {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You must re-upload files before updating.</div>}
+            {notice && <div className={notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
+            {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
             {mode === 'old' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
 
             {/* === Main Form: 3-column grid === */}
