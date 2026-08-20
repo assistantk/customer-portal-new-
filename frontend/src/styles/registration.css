@@ -336,6 +336,53 @@ label b {
     display: none
 }
 
+/* ===== PAN Card Upload (inline inside input) ===== */
+.pan-control {
+    position: relative;
+}
+
+.pan-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 6px;
+    padding: 3px 10px;
+    border: 1px dashed #93c5fd;
+    border-radius: 4px;
+    background: #f0f7ff;
+    color: #2563eb;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.pan-upload-btn:hover {
+    background: #dbeafe;
+    border-color: #3b82f6;
+}
+
+.pan-upload-btn.has-file {
+    border-style: solid;
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.pan-upload-btn > svg {
+    flex-shrink: 0;
+}
+
+.pan-upload-label {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
+
 /* ===== Actions / Footer ===== */
 .actions {
     justify-content: space-between;
@@ -492,22 +539,22 @@ footer {
     border: 1.5px solid #e2e8f0;
     border-radius: 5px;
     background: #fff;
-    color: #64748b;
+    color: #2563eb;
     font: 600 11px 'Inter', Arial, sans-serif;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .code-type-btn:hover {
-    border-color: #93c5fd;
+    border-color: #2563eb;
     color: #2563eb;
     background: #f8faff;
 }
 
 .code-type-btn.active {
     border-color: #2563eb;
-    background: #eff6ff;
-    color: #2563eb;
+    background: #2563eb;
+    color: #fff;
 }
 
 /* ===== Inline Field Status (spinner / checkmark inside input) ===== */

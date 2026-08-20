@@ -5,6 +5,7 @@ import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
 const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '' };
+const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (f.type !== 'application/pdf') return 'Only PDF files are allowed'; return '' };
 const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
 const INDIAN_STATES = [
@@ -63,6 +64,8 @@ export default function CustomerRegistration() {
     const [codeType, setCodeType] = useState('GLOBAL');
     const [form, setForm] = useState(blank);
     const [gstins, setGstins] = useState([{ ...blankGstin }]);
+    const [panFile, setPanFile] = useState(null);
+    const [existingPanFileName, setExistingPanFileName] = useState('');
     const [data, setData] = useState(initialMasterData);
     const [errors, setErrors] = useState({});
     const [notice, setNotice] = useState('');
@@ -75,6 +78,7 @@ export default function CustomerRegistration() {
     // Track GSTINs that were removed during an Old User edit session
     const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
+    const panFileRef = useRef(null);
     const codeTimerRef = useRef(null);
     const lookupTimerRef = useRef(null);
 
@@ -85,7 +89,9 @@ export default function CustomerRegistration() {
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
         setRemovedGstinIds([]);
+        setPanFile(null); setExistingPanFileName('');
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
+        if (panFileRef.current) panFileRef.current.value = '';
     };
 
     const switchMode = (newMode) => { reset(); setMode(newMode); };
@@ -114,6 +120,9 @@ export default function CustomerRegistration() {
                         globalCustomerCode: customer.globalCustomerCode || '',
                         handlingAgentCode: customer.handlingAgentCode || '',
                     });
+                    setPanFile(null);
+                    setExistingPanFileName(customer.panFileName || '');
+                    if (panFileRef.current) panFileRef.current.value = '';
                     if (customer.gstins && customer.gstins.length > 0) {
                         setGstins(customer.gstins.map(g => ({
                             gstinId: g.gstinId || null,
@@ -184,6 +193,8 @@ export default function CustomerRegistration() {
         if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
         if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) e.pincode = 'Invalid pincode';
         if (form.panNumber && !panRe.test(form.panNumber)) e.panNumber = 'PAN No. must contain exactly 10 letters or numbers';
+        if (!panFile && !existingPanFileName) e.panFile = 'PAN card PDF is required';
+        else if (panFile) { const pe = checkPanFile(panFile); if (pe) e.panFile = pe; }
 
         let stateSet = new Set();
         let gstinSet = new Set();
@@ -219,7 +230,7 @@ export default function CustomerRegistration() {
             if (mode === 'new') {
                 /* --- New Entry: create customer + GSTINs --- */
                 const result = await registerCustomer(
-                    { ...form, codeType },
+                    { ...form, codeType, panFile },
                     gstins
                 );
                 setNotice(result.message || 'Customer registration submitted successfully');
@@ -238,7 +249,7 @@ export default function CustomerRegistration() {
                 // Then update customer + upsert GSTINs
                 const result = await updateCustomer(
                     form.customerCode,
-                    form,
+                    { ...form, panFile },
                     gstins
                 );
                 setNotice(result.message || 'Customer updated successfully');
@@ -293,6 +304,12 @@ export default function CustomerRegistration() {
         const selected = e.target.files[0], error = checkFile(selected);
         handleGstinChange(index, { file: error ? null : selected });
         setErrors({ ...errors, [`gstin_${index}_file`]: error });
+    };
+    const handlePanFileChange = (e) => {
+        const selected = e.target.files[0];
+        const error = checkPanFile(selected);
+        setPanFile(error ? null : selected);
+        setErrors(prev => ({ ...prev, panFile: error }));
     };
 
     const cities = Object.keys(data?.cities || {}), pins = form.city ? (data?.cities?.[form.city] || []) : [], zones = Object.keys(divisionsByZone), divisions = form.zone ? (divisionsByZone[form.zone] || []) : [];
@@ -377,7 +394,20 @@ export default function CustomerRegistration() {
                     </div>
                 )}
 
-                <Field label="PAN No." name="panNumber" icon={FileText} maxLength="10" placeholder="Enter 10-character PAN No." form={form} setForm={setForm} error={errors.panNumber} />
+                <div className="field pan-field">
+                    <label htmlFor="panNumber">PAN No. <b>*</b></label>
+                    <div className={'control pan-control ' + (errors.panNumber || errors.panFile ? 'invalid' : '')}>
+                        <FileText size={15} />
+                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => setForm({ ...form, panNumber: e.target.value })} />
+                        <button type="button" className={'pan-upload-btn' + (panFile || existingPanFileName ? ' has-file' : '')} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card PDF')}>
+                            <UploadCloud size={14} />
+                            <span className="pan-upload-label">{panFile ? panFile.name : (existingPanFileName || 'Upload PDF')}</span>
+                        </button>
+                    </div>
+                    <input ref={panFileRef} className="hidden" type="file" accept=".pdf" onChange={handlePanFileChange} />
+                    {errors.panNumber && <small className="error">{errors.panNumber}</small>}
+                    {errors.panFile && <small className="error">{errors.panFile}</small>}
+                </div>
 
                 {/* Row 2: Address | City | Pincode */}
                 <Field label="Address" name="address" icon={MapPin} placeholder="Enter complete business address" form={form} setForm={setForm} error={errors.address} />

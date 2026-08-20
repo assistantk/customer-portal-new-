@@ -112,6 +112,8 @@ export async function registerCustomer(payload, gstinEntries) {
     pincode: payload.pincode,
     pcoCode: payload.pcoCode || undefined,
     pan: payload.panNumber,
+    panFileName: payload.panFile ? payload.panFile.name : '',
+    panFileType: payload.panFile ? payload.panFile.type : '',
     email: payload.email,
     mobile: payload.mobile,
     globalCustomerCode:
@@ -170,6 +172,16 @@ export async function registerCustomer(payload, gstinEntries) {
     }
   }
 
+  // Step 3: Upload PAN card file if provided
+  if (savedCode && payload.panFile) {
+    const panFd = new FormData();
+    panFd.append('panFile', payload.panFile);
+    await request(
+      `${API}/customers/${encodeURIComponent(savedCode)}/pan-file`,
+      { method: 'PUT', body: panFd }
+    );
+  }
+
   return {
     success: true,
     message: 'Customer registration submitted successfully',
@@ -200,6 +212,16 @@ export async function updateCustomer(code, payload, gstinEntries) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updateBody),
   });
+
+  // Upload PAN card file if a new one was provided
+  if (payload.panFile) {
+    const panFd = new FormData();
+    panFd.append('panFile', payload.panFile);
+    await request(
+      `${API}/customers/${encodeURIComponent(trimmedCode)}/pan-file`,
+      { method: 'PUT', body: panFd }
+    );
+  }
 
   // Step 2: Handle GSTINs — add new ones, update existing ones with files
   for (const g of gstinEntries) {
