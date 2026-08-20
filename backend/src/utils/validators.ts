@@ -33,8 +33,6 @@ export const isValidCustomerCode = (code: string): boolean => {
 
 export const ALLOWED_GSTIN_FILE_TYPES = [
   'application/pdf',
-  'image/jpeg',
-  'image/png',
 ];
 
 export const MAX_GSTIN_FILE_SIZE = 5 * 1024 * 1024; // 5 MB

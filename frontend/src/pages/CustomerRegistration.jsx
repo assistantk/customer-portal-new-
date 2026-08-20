@@ -182,7 +182,7 @@ export default function CustomerRegistration() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [codeType]);
 
-    const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/png'].includes(f.type)) return 'Only PDF, JPG and PNG files are allowed'; return '' };
+    const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (f.type !== 'application/pdf') return 'Only PDF files are allowed'; return '' };
 
     const validate = () => {
         let e = {};
@@ -444,10 +444,10 @@ export default function CustomerRegistration() {
                                     <button type="button" className={'dropzone ' + (errors[`gstin_${index}_file`] ? 'drop-error' : '')} onClick={() => fileRefs.current[index]?.click()}>
                                         <UploadCloud />
                                         <span>Drag and drop, or <a>browse</a><br />
-                                            <small className="truncate">{g.file ? g.file.name : (g.existingFileName || 'PDF, JPG, PNG (Max 5MB)')}</small>
+                                            <small className="truncate">{g.file ? g.file.name : (g.existingFileName || 'PDF (Max 5MB)')}</small>
                                         </span>
                                     </button>
-                                    <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
+                                    <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf" onChange={e => handleGstinFileChange(index, e)} />
                                     {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                 </div>
                             </div>
