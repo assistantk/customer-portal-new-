@@ -59,6 +59,7 @@ export interface GstinPayload {
   gstinNumber: string;
   fileName?: string;
   fileType?: string;
+  filePath?: string;
   fileBuffer?: Buffer;
   activeFlag?: string;
 }
@@ -148,6 +149,14 @@ export const validateGstin = (
 
   if (payload.fileType && !ALLOWED_GSTIN_FILE_TYPES.includes(payload.fileType)) {
     errors.push({ field: 'fileType', message: `GSTIN file must be one of: ${ALLOWED_GSTIN_FILE_TYPES.join(', ')}` });
+  }
+
+  if (forCreate && !payload.fileName?.trim() && !payload.fileBuffer) {
+    errors.push({ field: 'fileName', message: 'GSTIN PDF file is required' });
+  }
+
+  if (payload.filePath && payload.filePath.length > 500) {
+    errors.push({ field: 'filePath', message: 'GSTIN file path must be ≤ 500 characters' });
   }
 
   if (payload.fileBuffer && payload.fileBuffer.length > MAX_GSTIN_FILE_SIZE) {

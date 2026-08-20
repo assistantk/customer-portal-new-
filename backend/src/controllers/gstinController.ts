@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery, getConnection } from '../config/database.js';
 import { validateGstin } from '../utils/validators.js';
+import { downloadGstinPdf, uploadGstinPdf } from '../utils/supabaseStorage.js';
 
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
 const paramStr = (val: string | string[] | undefined): string =>
@@ -15,7 +16,8 @@ const mapRowToGstin = (row: any): any => ({
   gstinNumber: row.MAVGSTINNUMBER,
   fileName: row.MAVGSTINFILENAME,
   fileType: row.MAVGSTINFILETYPE,
-  hasFile: !!row.MAVGSTINFILE,
+  filePath: row.MAVGSTINFILEPATH,
+  hasFile: !!row.MAVGSTINFILEPATH || !!row.MAVGSTINFILE,
   activeFlag: row.MACACTIVEFLAG,
   createdDate: row.MADCREATEDDATE ? new Date(row.MADCREATEDDATE).toISOString() : null,
   updatedDate: row.MADUPDATEDDATE ? new Date(row.MADUPDATEDDATE).toISOString() : null,
@@ -29,8 +31,8 @@ export const getCustomerGstins = asyncHandler(async (req: Request, res: Response
 
   const sql = `
     SELECT GSTINID, MAVCUSTOMERCODE, MAVSTATE, MAVSTATECODE, MAVGSTINNUMBER,
-           MAVGSTINFILENAME, MAVGSTINFILETYPE,
-           CASE WHEN MAVGSTINFILE IS NOT NULL THEN 1 ELSE 0 END AS HASFILE,
+           MAVGSTINFILENAME, MAVGSTINFILETYPE, MAVGSTINFILEPATH,
+           CASE WHEN MAVGSTINFILEPATH IS NOT NULL OR MAVGSTINFILE IS NOT NULL THEN 1 ELSE 0 END AS HASFILE,
            MACACTIVEFLAG, MADCREATEDDATE, MADUPDATEDDATE
     FROM MEMCUSTOMERGSTIN
     WHERE MAVCUSTOMERCODE = :code
@@ -47,6 +49,7 @@ export const getCustomerGstins = asyncHandler(async (req: Request, res: Response
     gstinNumber: r.MAVGSTINNUMBER,
     fileName: r.MAVGSTINFILENAME,
     fileType: r.MAVGSTINFILETYPE,
+    filePath: r.MAVGSTINFILEPATH,
     hasFile: r.HASFILE === 1,
     activeFlag: r.MACACTIVEFLAG,
     createdDate: r.MADCREATEDDATE ? new Date(r.MADCREATEDDATE).toISOString() : null,
@@ -83,23 +86,69 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const result = await withTransaction(async (conn) => {
+    const normalizedCustomerCode = customerCode.trim().toUpperCase();
+    const normalizedGstinNumber = payload.gstinNumber.trim().toUpperCase();
     const custSql = `SELECT MAVCUSTOMERCODE FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = :code`;
-    const custRes = await conn.execute<any>(custSql, [customerCode.trim().toUpperCase()]);
+    const custRes = await conn.execute<any>(custSql, [normalizedCustomerCode]);
     if (!custRes.rows?.length) {
       throw new AppError('Customer Code not found.', 404, { customerCode });
     }
 
+    const duplicateRes = await conn.execute<any>(
+      `SELECT GSTINID FROM MEMCUSTOMERGSTIN WHERE MAVCUSTOMERCODE = :code AND MAVGSTINNUMBER = :gstinNumber`,
+      { code: normalizedCustomerCode, gstinNumber: normalizedGstinNumber }
+    );
+    if (duplicateRes.rows?.length) {
+      throw new AppError('GSTIN already exists for this customer', 409);
+    }
+
     const idRes = await conn.execute<any>(`SELECT SEQ_MEMCUSTOMERGSTIN_GSTINID.NEXTVAL FROM DUAL`);
     const gstinId = (idRes.rows?.[0] as any)?.NEXTVAL ?? (idRes.rows as any)?.[0]?.[0];
+    const storedDocument = payload.fileBuffer
+      ? await uploadGstinPdf({
+          customerCode: normalizedCustomerCode,
+          gstinNumber: normalizedGstinNumber,
+          fileName: payload.fileName ?? `${normalizedGstinNumber}.pdf`,
+          fileBuffer: payload.fileBuffer,
+        })
+      : null;
+
+    if (storedDocument) {
+      const insertSql = `
+        INSERT INTO MEMCUSTOMERGSTIN (
+          GSTINID, MAVCUSTOMERCODE, MAVSTATE, MAVSTATECODE, MAVGSTINNUMBER,
+          MAVGSTINFILE, MAVGSTINFILENAME, MAVGSTINFILETYPE, MAVGSTINFILEPATH,
+          MACACTIVEFLAG, MADCREATEDDATE, MADUPDATEDDATE
+        ) VALUES (
+          :gstinId, :customerCode, :state, :stateCode, :gstinNumber,
+          NULL, :fileName, :fileType, :filePath,
+          :activeFlag, SYSDATE, SYSDATE
+        )
+      `;
+
+      await conn.execute(insertSql, {
+        gstinId,
+        customerCode: normalizedCustomerCode,
+        state: payload.state.trim().slice(0, 50),
+        stateCode: payload.stateCode?.trim().slice(0, 2) ?? null,
+        gstinNumber: normalizedGstinNumber.slice(0, 15),
+        fileName: payload.fileName?.slice(0, 255) ?? null,
+        fileType: storedDocument.contentType,
+        filePath: storedDocument.path.slice(0, 500),
+        activeFlag: (payload.activeFlag ?? 'Y').toUpperCase(),
+      });
+
+      return { gstinId };
+    }
 
     const insertSql = `
       INSERT INTO MEMCUSTOMERGSTIN (
         GSTINID, MAVCUSTOMERCODE, MAVSTATE, MAVSTATECODE, MAVGSTINNUMBER,
-        MAVGSTINFILE, MAVGSTINFILENAME, MAVGSTINFILETYPE,
+        MAVGSTINFILE, MAVGSTINFILENAME, MAVGSTINFILETYPE, MAVGSTINFILEPATH,
         MACACTIVEFLAG, MADCREATEDDATE, MADUPDATEDDATE
       ) VALUES (
         :gstinId, :customerCode, :state, :stateCode, :gstinNumber,
-        EMPTY_BLOB(), :fileName, :fileType,
+        EMPTY_BLOB(), :fileName, :fileType, NULL,
         :activeFlag, SYSDATE, SYSDATE
       )
       RETURNING MAVGSTINFILE INTO :lobOut
@@ -108,10 +157,10 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
     const lobBind: any = { type: 2007, dir: 3003 };
     const binds: any = {
       gstinId,
-      customerCode: customerCode.trim().toUpperCase(),
+      customerCode: normalizedCustomerCode,
       state: payload.state.trim().slice(0, 50),
       stateCode: payload.stateCode?.trim().slice(0, 2) ?? null,
-      gstinNumber: payload.gstinNumber.trim().toUpperCase().slice(0, 15),
+      gstinNumber: normalizedGstinNumber.slice(0, 15),
       fileName: payload.fileName?.slice(0, 255) ?? null,
       fileType: payload.fileType?.slice(0, 50) ?? null,
       activeFlag: (payload.activeFlag ?? 'Y').toUpperCase(),
@@ -160,6 +209,7 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
       throw new AppError('GSTIN not found for this customer', 404);
     }
 
+    const normalizedCustomerCode = customerCode.trim().toUpperCase();
     const payload = {
       state: req.body.state ?? existing.MAVSTATE,
       stateCode: req.body.stateCode !== undefined ? req.body.stateCode : existing.MAVSTATECODE,
@@ -175,7 +225,50 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
       throw new AppError('Validation failed', 400, { errors });
     }
 
+    const normalizedGstinNumber = payload.gstinNumber.trim().toUpperCase();
+    const duplicateRes = await conn.execute<any>(
+      `SELECT GSTINID FROM MEMCUSTOMERGSTIN
+       WHERE MAVCUSTOMERCODE = :code AND MAVGSTINNUMBER = :gstinNumber AND GSTINID <> :id`,
+      { code: normalizedCustomerCode, gstinNumber: normalizedGstinNumber, id }
+    );
+    if (duplicateRes.rows?.length) {
+      throw new AppError('GSTIN already exists for this customer', 409);
+    }
+
     if (payload.fileBuffer && payload.fileBuffer.length > 0) {
+      const storedDocument = await uploadGstinPdf({
+        customerCode: normalizedCustomerCode,
+        gstinNumber: normalizedGstinNumber,
+        fileName: payload.fileName ?? `${normalizedGstinNumber}.pdf`,
+        fileBuffer: payload.fileBuffer,
+      });
+
+      if (storedDocument) {
+        const updateWithPathSql = `
+          UPDATE MEMCUSTOMERGSTIN SET
+            MAVSTATE = :state,
+            MAVSTATECODE = :stateCode,
+            MAVGSTINNUMBER = :gstinNumber,
+            MAVGSTINFILE = NULL,
+            MAVGSTINFILENAME = :fileName,
+            MAVGSTINFILETYPE = :fileType,
+            MAVGSTINFILEPATH = :filePath,
+            MACACTIVEFLAG = :activeFlag,
+            MADUPDATEDDATE = SYSDATE
+          WHERE GSTINID = :id AND MAVCUSTOMERCODE = :customerCode
+        `;
+        await conn.execute(updateWithPathSql, {
+          state: payload.state.trim().slice(0, 50),
+          stateCode: payload.stateCode?.slice(0, 2) ?? null,
+          gstinNumber: normalizedGstinNumber.slice(0, 15),
+          fileName: payload.fileName?.slice(0, 255) ?? null,
+          fileType: storedDocument.contentType,
+          filePath: storedDocument.path.slice(0, 500),
+          activeFlag: (payload.activeFlag ?? 'Y').toUpperCase(),
+          id,
+          customerCode: normalizedCustomerCode,
+        });
+      } else {
       const updateWithLobSql = `
         UPDATE MEMCUSTOMERGSTIN SET
           MAVSTATE = :state,
@@ -184,20 +277,22 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
           MAVGSTINFILE = EMPTY_BLOB(),
           MAVGSTINFILENAME = :fileName,
           MAVGSTINFILETYPE = :fileType,
+          MAVGSTINFILEPATH = NULL,
           MACACTIVEFLAG = :activeFlag,
           MADUPDATEDDATE = SYSDATE
-        WHERE GSTINID = :id
+        WHERE GSTINID = :id AND MAVCUSTOMERCODE = :customerCode
         RETURNING MAVGSTINFILE INTO :lobOut
       `;
       const lobBind: any = { type: 2007, dir: 3003 };
       const binds = {
         state: payload.state.trim().slice(0, 50),
         stateCode: payload.stateCode?.slice(0, 2) ?? null,
-        gstinNumber: payload.gstinNumber.trim().toUpperCase().slice(0, 15),
+        gstinNumber: normalizedGstinNumber.slice(0, 15),
         fileName: payload.fileName?.slice(0, 255) ?? null,
         fileType: payload.fileType?.slice(0, 50) ?? null,
         activeFlag: (payload.activeFlag ?? 'Y').toUpperCase(),
         id,
+        customerCode: normalizedCustomerCode,
         lobOut: lobBind,
       };
       const r = await conn.execute(updateWithLobSql, binds);
@@ -205,6 +300,7 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
       if (lob && typeof lob.write === 'function') {
         await lob.write(1, payload.fileBuffer);
         await lob.close();
+      }
       }
     } else {
       const updateSql = `
@@ -216,16 +312,17 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
           MAVGSTINFILETYPE = :fileType,
           MACACTIVEFLAG = :activeFlag,
           MADUPDATEDDATE = SYSDATE
-        WHERE GSTINID = :id
+        WHERE GSTINID = :id AND MAVCUSTOMERCODE = :customerCode
       `;
       await conn.execute(updateSql, {
         state: payload.state.trim().slice(0, 50),
         stateCode: payload.stateCode?.slice(0, 2) ?? null,
-        gstinNumber: payload.gstinNumber.trim().toUpperCase().slice(0, 15),
+        gstinNumber: normalizedGstinNumber.slice(0, 15),
         fileName: payload.fileName?.slice(0, 255) ?? null,
         fileType: payload.fileType?.slice(0, 50) ?? null,
         activeFlag: (payload.activeFlag ?? 'Y').toUpperCase(),
         id,
+        customerCode: normalizedCustomerCode,
       });
     }
 
@@ -278,19 +375,23 @@ export const getGstinFile = asyncHandler(async (req: Request, res: Response) => 
   const conn = await getConnection();
   try {
     const sql = `
-      SELECT MAVGSTINFILE, MAVGSTINFILENAME, MAVGSTINFILETYPE
+      SELECT MAVGSTINFILE, MAVGSTINFILENAME, MAVGSTINFILETYPE, MAVGSTINFILEPATH
       FROM MEMCUSTOMERGSTIN
       WHERE GSTINID = :id AND MAVCUSTOMERCODE = :code
     `;
     const r = await conn.execute<any>(sql, { id, code: customerCode.trim().toUpperCase() });
     const row = r.rows?.[0];
-    if (!row || !row.MAVGSTINFILE) {
+    if (!row || (!row.MAVGSTINFILEPATH && !row.MAVGSTINFILE)) {
       throw new AppError('GSTIN file not found', 404);
     }
 
-    const lob = row.MAVGSTINFILE;
     const chunks: Buffer[] = [];
-    if (lob && typeof lob.read === 'function') {
+    if (row.MAVGSTINFILEPATH) {
+      const storedFile = await downloadGstinPdf(row.MAVGSTINFILEPATH);
+      if (storedFile) chunks.push(storedFile);
+    } else {
+      const lob = row.MAVGSTINFILE;
+      if (lob && typeof lob.read === 'function') {
       let offset = 1;
       const chunkSize = 32768;
       let chunk: Buffer;
@@ -300,6 +401,7 @@ export const getGstinFile = asyncHandler(async (req: Request, res: Response) => 
         offset += chunk?.length ?? 0;
       } while (chunk && chunk.length === chunkSize);
       await lob.close();
+      }
     }
 
     const buffer = Buffer.concat(chunks);

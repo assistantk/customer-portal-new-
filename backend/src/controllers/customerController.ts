@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import oracledb from 'oracledb';
 import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery, getConnection } from '../config/database.js';
-import { validateCustomer, CustomerPayload } from '../utils/validators.js';
+import { validateCustomer, validateGstin, CustomerPayload } from '../utils/validators.js';
 import { reserveUniqueCode } from '../utils/codeGenerator.js';
 
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
@@ -60,6 +60,26 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
   const payload: CustomerPayload & { codeType?: 'global' | 'handling'; gstins?: any[] } = rawBody;
 
   const validationErrors = validateCustomer(payload, true);
+  const gstinValidationErrors = [];
+  const gstinSet = new Set<string>();
+  for (const gstin of Array.isArray(payload.gstins) ? payload.gstins : []) {
+    const normalizedGstin = String(gstin.gstinNumber ?? '').trim().toUpperCase();
+    if (normalizedGstin) {
+      if (gstinSet.has(normalizedGstin)) {
+        gstinValidationErrors.push({ field: 'gstinNumber', message: `Duplicate GSTIN ${normalizedGstin} in request` });
+      }
+      gstinSet.add(normalizedGstin);
+    }
+    gstinValidationErrors.push(...validateGstin({
+      state: gstin.state,
+      stateCode: gstin.stateCode,
+      gstinNumber: normalizedGstin,
+      fileName: gstin.fileName,
+      fileType: gstin.fileType,
+      activeFlag: 'Y',
+    }, true));
+  }
+  validationErrors.push(...gstinValidationErrors);
   if (validationErrors.length > 0) {
     throw new AppError('Validation failed', 400, { errors: validationErrors });
   }
@@ -129,11 +149,11 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       const gSql = `
         INSERT INTO MEMCUSTOMERGSTIN (
           GSTINID, MAVCUSTOMERCODE, MAVSTATE, MAVSTATECODE, MAVGSTINNUMBER,
-          MAVGSTINFILENAME, MAVGSTINFILETYPE,
+          MAVGSTINFILENAME, MAVGSTINFILETYPE, MAVGSTINFILEPATH,
           MACACTIVEFLAG, MADCREATEDDATE, MADUPDATEDDATE
         ) VALUES (
           :gstinId, :customerCode, :state, :stateCode, :gstinNumber,
-          :fileName, :fileType,
+          :fileName, :fileType, :filePath,
           'Y', SYSDATE, SYSDATE
         )
       `;
@@ -145,6 +165,7 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
         gstinNumber: gstin.gstinNumber.trim().toUpperCase().slice(0, 15),
         fileName: gstin.fileName?.trim().slice(0, 255) ?? null,
         fileType: gstin.fileType?.trim().slice(0, 50) ?? null,
+        filePath: gstin.filePath?.trim().slice(0, 500) ?? null,
       });
     }
 
