@@ -206,7 +206,7 @@ Base URL: `http://localhost:4000/api`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET`    | `/customers/:customerCode/gstins` | List all GSTINs for a customer (metadata only, no file content) |
-| `POST`   | `/customers/:customerCode/gstins` | Add GSTIN row — `multipart/form-data` with optional `gstinFile` (PDF/JPG/PNG ≤ 5MB) |
+| `POST`   | `/customers/:customerCode/gstins` | Add GSTIN row — `multipart/form-data` with optional `gstinFile` (PDF ≤ 5MB) |
 | `PUT`    | `/customers/:customerCode/gstins/:gstinId` | Update GSTIN row + optionally replace its file blob |
 | `DELETE` | `/customers/:customerCode/gstins/:gstinId` | Remove GSTIN row from DB |
 | `GET`    | `/customers/:customerCode/gstins/:gstinId/file` | Stream GSTIN file (inline download) |
@@ -301,7 +301,7 @@ proxy: {
 | Active flag Y/N | `CK_MEMCUSTOMER_ACTIVEFLAG` + GSTIN equivalent | ✓ validators | (default Y, not exposed) |
 | Exactly one of Global / Handling code | `CK_MEMCUSTOMER_CODE_PRESENT` | ✓ `validateCustomer` | radio toggle + helper |
 | Code length ≤ 4 | `VARCHAR2(4)` PK column + backend check | `CODE_MAX_LENGTH` env | `maxLength=4` input + FOIS disclaimer |
-| GSTIN file type PDF/JPG/PNG | (back-end multer) | `ALLOWED_GSTIN_FILE_TYPES` | input `accept=` |
+| GSTIN file type PDF | (back-end multer) | `ALLOWED_GSTIN_FILE_TYPES` | input `accept=` |
 | GSTIN file ≤ 5 MB | LOB storage, multer `limits.fileSize` | `MAX_GSTIN_FILE_SIZE` | per-file size toast |
 | No SQL injection / raw SQL exposure | — | parameterized queries via `oracledb` binds | all calls through `/api` proxy, no raw SQL |
 
