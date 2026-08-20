@@ -1,0 +1,31 @@
+{
+  "name": "customer-registration-backend",
+  "version": "1.0.0",
+  "description": "Customer Registration Backend API - Oracle DB integration (FOIS migration-friendly)",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "echo \"Run SQL scripts in ../database/ folder in order: 01, 02, 03, 04\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "multer": "^1.4.5-lts.1",
+    "oracledb": "^6.6.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.9.0",
+    "@types/oracledb": "^6.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
