@@ -328,7 +328,7 @@ export default function CustomerRegistration() {
     return <div className="app">
         <header>
             <div className="brand">
-                <div className="seal left-cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
+                <div className="cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
                 <span>CUSTOMER REGISTRATION PORTAL</span>
             </div>
             <div className="cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
