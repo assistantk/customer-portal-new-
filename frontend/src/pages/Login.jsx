@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { User, Lock, ShieldCheck, RotateCcw, LogIn, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Lock, ShieldCheck, RotateCcw, CircleUser, LogIn, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
@@ -221,13 +221,13 @@ export default function Login({ onLoginSuccess }) {
                 <span>Secure encrypted login</span>
               </div>
               <div className="login-btns">
-                <button type="button" className="login-reset" onClick={handleReset} disabled={loading}>
-                  <RotateCcw size={14} />
-                  Reset
-                </button>
                 <button type="submit" className="login-submit" disabled={loading}>
                   {loading ? <Loader2 size={14} className="spin" /> : <LogIn size={14} />}
                   {loading ? 'Signing in…' : 'Login'}
+                </button>
+                <button type="button" className="login-reset" onClick={handleReset} disabled={loading}>
+                  <CircleUser size={14} />
+                  Sign Up
                 </button>
               </div>
             </div>
