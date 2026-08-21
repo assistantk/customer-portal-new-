@@ -133,13 +133,7 @@ export default function Login({ onLoginSuccess }) {
         <div className="login-card">
           {/* Card head — matches registration card-head */}
           <div className="login-card-head">
-            <div className="login-title-icon">
-              <LogIn size={22} />
-              <div>
-                <h1>Login</h1>
-                <p>Sign in to access the Customer Portal</p>
-              </div>
-            </div>
+            
             <div className="login-railways-banner">
               <img src={indianRailwaysLogo} alt="Indian Railways" />
             </div>

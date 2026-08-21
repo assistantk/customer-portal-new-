@@ -120,10 +120,11 @@
 /* ── Card head — matches registration card-head ── */
 .login-card-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
   min-height: 64px;
+  align-items: center;
+  justify-content: center;   /* centers the banner horizontally within the card */
+  padding: 8px 0;
 }
 
 .login-title-icon {
@@ -157,12 +158,15 @@
 .login-railways-banner {
   display: flex;
   align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
+
 .login-railways-banner img {
   height: 60px;
   width: auto;
   object-fit: contain;
+  display: block;
 }
 
 /* ── Rule — matches registration .rule ── */
