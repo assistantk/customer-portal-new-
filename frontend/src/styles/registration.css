@@ -69,21 +69,26 @@ header {
 }
 
 main {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    padding: 10px 20px 8px
+  display: flex;
+  justify-content: center;   /* horizontal centering */
+  align-items: flex-start;   /* keeps it top-aligned vertically, not stretched */
+  min-height: 100vh;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
 .card {
-    width: min(1340px, 93%);
+    /* width: min(1340px, 93%); */
     background: #ffffff;
-    border: 1.5px solid #3b82f6;
+    border: 3px solid #3b82f6;
     border-top: 4px solid #3b82f6;
     border-radius: 50px;
     padding: 16px 28px 14px;
     box-shadow: 0 6px 18px -4px rgb(0 0 0 / 0.07), 0 4px 8px -4px rgb(0 0 0 / 0.05);
-    align-self: flex-start
+    align-self: flex-start;
+    width: 100%;
+    max-width: 1200px;         /* cap the form's width so it doesn't stretch full-screen */
+    margin: 0 auto; 
 }
 
 .card-head,
@@ -105,6 +110,7 @@ main {
 }
 
 .card-head .railways-banner {
+  justify-self: center;
   position: absolute;
   left: 50%;
   top: 25%;
@@ -122,6 +128,7 @@ main {
   display: flex;
   align-items: flex-start;      /* icon aligns with top of heading, not center of block */
   gap: 12px;
+  justify-self: start;
 }
 
 .card-head .title-icon svg {
@@ -145,6 +152,7 @@ main {
   align-items: flex-start;
   gap: 8px;
   flex-shrink: 0;
+  justify-self: end;
 }
 
 .card-head .mode-tab {
@@ -777,7 +785,10 @@ footer {
         margin-top: 0
     }
 
-    
+    .card-head .railways-banner {
+        grid-area: logo;
+        justify-self: end;
+    }
 
     .card {
         width: 100%;
