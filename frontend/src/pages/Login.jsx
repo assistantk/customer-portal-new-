@@ -116,17 +116,16 @@ export default function Login({ onLoginSuccess }) {
       {/* Header — same style as registration */}
       <header className="login-header">
         <div className="login-brand">
-          <div className="login-left-cris">
+          <div className="login-cris">
             <img src={crisLogo} alt="CRIS" />
           </div>
-          <span>Customer Portal</span>
-        </div>
-        <div className="login-header-railways">
-          <img src={indianRailwaysLogo} alt="Indian Railways" />
-        </div>
-        <div className="login-cris">
+         </div>
+
+         <span className="login-title">Login Page</span>
+
+         <div className="login-cris">
           <img src={crisLogo} alt="CRIS" />
-        </div>
+         </div>
       </header>
 
       {/* Main */}

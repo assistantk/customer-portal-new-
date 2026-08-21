@@ -52,6 +52,18 @@
   object-fit: contain;
 }
 
+/* NEW: centers "Login Page" independent of both logo widths */
+.login-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+  font-size: 16px;
+  white-space: nowrap;
+  color: #fff;
+}
+
 .login-header-railways {
   position: absolute;
   left: 50%;
@@ -71,6 +83,7 @@
 }
 
 .login-cris {
+  justify-self: end;
   background: white;
   border-radius: 5px;
   padding: 5px 10px;
