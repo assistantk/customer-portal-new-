@@ -47,9 +47,18 @@ function generateCodeFromName(name) {
 function Field({ label, name, icon: Icon, form, setForm, error, readOnly, ...rest }) {
     return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control ' + (error ? 'invalid' : '')}><Icon size={15} /><input id={name} name={name} value={form[name]} readOnly={readOnly} onChange={e => setForm({ ...form, [name]: e.target.value })} {...rest} /></div>{error && <small className="error">{error}</small>}</div>;
 }
-function Select({ label, name, icon: Icon, options, form, setForm, error, disabled, onValueChange }) {
-    return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control select ' + (error ? 'invalid' : '')}><Icon size={15} /><select id={name} value={form[name]} disabled={disabled} onChange={e => onValueChange ? onValueChange(e.target.value) : setForm({ ...form, [name]: e.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(v => <option key={v} value={v}>{v}</option>)}</select><ChevronDown size={14} /></div>{error && <small className="error">{error}</small>}</div>;
+function Select({ label, name, icon: Icon, options, form, setForm, error, disabled, onValueChange, formatOption = value => value }) {
+    return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control select ' + (error ? 'invalid' : '')}><Icon size={15} /><select id={name} value={form[name]} disabled={disabled} onChange={e => onValueChange ? onValueChange(e.target.value) : setForm({ ...form, [name]: e.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(v => <option key={v} value={v}>{formatOption(v)}</option>)}</select><ChevronDown size={14} /></div>{error && <small className="error">{error}</small>}</div>;
 }
+function DivisionSelect({ options, form, setForm, error, disabled }) {
+    const [open, setOpen] = useState(false);
+    const choose = division => { setForm(prev => ({ ...prev, operatingDivision: division })); setOpen(false); };
+    const divisionCode = form.operatingDivision.match(/\(([^)]+)\)$/)?.[1] || '';
+    const selectedDivision = divisionCode ? `SR.DCM/${divisionCode}` : 'Select division';
+    const divisionLabel = divisionCode ? `Division (SR.DCM/${divisionCode})` : 'Division (SR.DCM/)';
+    return <div className="field zone-field"><label id="division-label">{divisionLabel} <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+}
+
 function ZoneSelect({ options, form, setForm, error }) {
     const [open, setOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -418,7 +427,7 @@ export default function CustomerRegistration() {
 
                 {/* Row 3: Zone | Division | Email */}
                 <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} />
-                <Select label="Division" name="operatingDivision" icon={Globe} options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} />
+                <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} />
                 <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} />
 
                 {/* Row 4: Mobile */}
@@ -439,7 +448,7 @@ export default function CustomerRegistration() {
                                 {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
                             </div>
                             <div className="grid">
-                                <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
+                                <Field label="Company Name" name="companyName" icon={Building2} placeholder="Enter company name" form={form} setForm={setForm} error={errors.companyName} />
                                 <div className="field gstin-number-field">
                                     <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
                                     <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
