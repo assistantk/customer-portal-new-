@@ -19,39 +19,50 @@ export const notFoundHandler = (req: Request, _res: Response, next: NextFunction
   next(new AppError(`Route ${req.method} ${req.originalUrl} not found`, 404));
 };
 
-const mapOracleError = (err: any): AppError | null => {
+const mapMySQLError = (err: any): AppError | null => {
   const msg = String(err?.message ?? '');
-  const code = err?.errorNum ?? err?.code ?? null;
+  const code = err?.code ?? err?.errno ?? null;
 
-  if (code === 1 || msg.includes('ORA-00001') || msg.includes('unique constraint')) {
-    const fieldMatch = msg.match(/\(([A-Z0-9_.]+)\)/)?.[1] ?? 'record';
-    const lower = fieldMatch.toLowerCase();
+  // ER_DUP_ENTRY (1062) — duplicate unique key
+  if (code === 'ER_DUP_ENTRY' || err?.errno === 1062 || msg.includes('Duplicate entry')) {
+    const lower = msg.toLowerCase();
     let field = 'record';
     if (lower.includes('pan')) field = 'pan';
     else if (lower.includes('email')) field = 'email';
     else if (lower.includes('gstin')) field = 'gstinNumber';
-    else if (lower.includes('globalcust') || lower.includes('glblcust')) field = 'globalCustomerCode';
-    else if (lower.includes('hndgagnt')) field = 'handlingAgentCode';
+    else if (lower.includes('global_code')) field = 'globalCustomerCode';
+    else if (lower.includes('handling_agent_code')) field = 'handlingAgentCode';
+    else if (lower.includes('customer_code')) field = 'customerCode';
     return new AppError('Duplicate value detected', 409, {
       field,
       dbError: env.isProduction ? undefined : msg,
     });
   }
 
-  if (code === 2290 || msg.includes('ORA-02290') || msg.includes('check constraint')) {
-    return new AppError('Field value violates database validation rules', 400, {
+  // ER_NO_REFERENCED_ROW_2 (1452) — FK violation
+  if (code === 'ER_NO_REFERENCED_ROW_2' || err?.errno === 1452) {
+    return new AppError('Referenced record does not exist', 409, {
       dbError: env.isProduction ? undefined : msg,
     });
   }
 
-  if (code === 2291 || code === 2292 || msg.includes('ORA-02291') || msg.includes('ORA-02292')) {
-    return new AppError('Referenced record does not exist or cannot be removed due to dependencies', 409, {
+  // ER_ROW_IS_REFERENCED_2 (1451) — FK dependency
+  if (code === 'ER_ROW_IS_REFERENCED_2' || err?.errno === 1451) {
+    return new AppError('Cannot remove due to dependencies', 409, {
       dbError: env.isProduction ? undefined : msg,
     });
   }
 
-  if (code === 1400 || msg.includes('ORA-01400') || msg.includes('cannot insert NULL')) {
+  // ER_BAD_NULL_ERROR (1048) — required field missing
+  if (code === 'ER_BAD_NULL_ERROR' || err?.errno === 1048) {
     return new AppError('A required field is missing', 400, {
+      dbError: env.isProduction ? undefined : msg,
+    });
+  }
+
+  // ER_CHECK_CONSTRAINT_VIOLATED (3819) — check constraint
+  if (err?.errno === 3819 || msg.includes('Check constraint')) {
+    return new AppError('Field value violates database validation rules', 400, {
       dbError: env.isProduction ? undefined : msg,
     });
   }
@@ -65,7 +76,7 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
-  const mapped = mapOracleError(err);
+  const mapped = mapMySQLError(err);
   if (mapped) err = mapped;
 
   const statusCode = err.statusCode ?? 500;
