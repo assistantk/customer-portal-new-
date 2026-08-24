@@ -2,6 +2,30 @@
 
 Oracle-backed Customer Registration application with FOIS migration-ready schema.
 
+> Active local deployment note: the application in this workspace uses the MySQL schema
+> (`mysql_schema.sql`) and Node backend. The Oracle/Supabase material below is legacy migration
+> documentation and is not used by the active registration flow.
+
+## MySQL Document Verification
+
+Run `07_add_document_verification.sql` after `mysql_schema.sql` when upgrading an existing
+database. It adds PAN verification status and per-GSTIN registered address, GSTIN verification
+status, and address verification status. Documents are stored as files under `backend/uploads`
+and only their metadata/reference is stored in MySQL.
+
+PAN processing is `PDF -> text extraction -> OCR fallback -> PAN detection -> normalized
+comparison -> VERIFIED`. GST processing is `GST PDF -> text extraction -> OCR fallback ->
+GSTIN and registered-address detection -> GSTIN comparison -> address similarity comparison ->
+VERIFIED`. The backend exposes `POST /api/documents/pan/scan` and
+`POST /api/documents/gstin/scan`, and re-scans files during PAN/GST uploads before persisting
+verification metadata. GST address matching gives the PIN code priority and tolerates case,
+line breaks, punctuation, whitespace, and common abbreviations.
+
+Both Old User and New Entry flows use the same backend checks. Multiple GSTIN rows are kept
+independent, so each state/GSTIN is verified against its own PDF and address. Invalid PDFs,
+OCR failures, undetected values, identifier mismatches, and address mismatches are rejected;
+the frontend cannot mark a document verified by itself.
+
 ## Architecture
 
 ```

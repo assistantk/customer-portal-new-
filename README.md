@@ -299,3 +299,29 @@ src/                   Legacy Spring Boot (MySQL) — not used for Oracle
 -- Verify GSTIN records attached to customers
 SELECT * FROM customer_gstins;
 ```
+
+## Document Scanning and Verification
+
+The active MySQL/Node implementation scans uploaded PDFs through the backend:
+
+```
+PAN PDF -> PDF text extraction -> OCR fallback -> PAN detection -> comparison -> verification
+GST PDF -> PDF text extraction -> OCR fallback -> GSTIN/address detection -> comparison -> verification
+```
+
+The endpoints `POST /api/documents/pan/scan` and `POST /api/documents/gstin/scan` accept a
+5 MB PDF in the `document` field. Text-based PDFs are parsed first; scanned PDFs are rendered
+and OCRed with Tesseract. PAN uses `^[A-Z]{5}[0-9]{4}[A-Z]$`; GSTIN uses the standard
+15-character format. GST addresses are normalized for case, punctuation, whitespace, common
+abbreviations, and PIN code before similarity matching.
+
+The existing PAN and per-customer GSTIN upload endpoints re-scan documents on the backend.
+They reject invalid, unreadable, mismatched, or address-mismatched documents and only mark
+records `VERIFIED` after the comparison succeeds. Each GSTIN retains its own file reference,
+registered address, GSTIN status, and address status. Files remain outside the database and are
+stored under the configured backend upload directory; database credentials and file paths are
+never exposed to the frontend. `database/07_add_document_verification.sql` adds the metadata
+columns to an existing MySQL database.
+
+Both Old User reload/update and New Entry upload flows use the same per-document endpoints.
+Submission validation blocks a pending or failed scan, and the server remains the final authority.

@@ -7,17 +7,17 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('login'); // 'login' | 'signup'
 
-  if (!user) {
-    if (page === 'signup') {
-      return <SignUp onNavigateLogin={() => setPage('login')} />;
-    }
-    return (
-      <Login
-        onLoginSuccess={setUser}
-        onNavigateSignUp={() => setPage('signup')}
-      />
-    );
-  }
+  // if (!user) {
+  //   if (page === 'signup') {
+  //     return <SignUp onNavigateLogin={() => setPage('login')} />;
+  //   }
+  //   return (
+  //     <Login
+  //       onLoginSuccess={setUser}
+  //       onNavigateSignUp={() => setPage('signup')}
+  //     />
+  //   );
+  // }
 
   return <CustomerRegistration />;
 }
