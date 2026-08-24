@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { User, Lock, ShieldCheck, RotateCcw, CircleUser, LogIn, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { loginUser } from '../services/authService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
@@ -62,7 +63,7 @@ function drawCaptcha(canvas, text) {
 }
 
 /* ── Component ── */
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, onNavigateSignUp }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
@@ -93,9 +94,8 @@ export default function Login({ onLoginSuccess }) {
 
     setLoading(true);
     try {
-      // Simulated login — replace with actual API call
-      await new Promise(r => setTimeout(r, 1200));
-      if (onLoginSuccess) onLoginSuccess({ username });
+      const result = await loginUser({ username: username.trim(), password });
+      if (onLoginSuccess) onLoginSuccess(result.data || { username });
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -103,13 +103,7 @@ export default function Login({ onLoginSuccess }) {
     }
   };
 
-  const handleReset = () => {
-    setUsername('');
-    setPassword('');
-    setCaptchaInput('');
-    setError('');
-    refreshCaptcha();
-  };
+
 
   return (
     <div className="login-app">
@@ -225,7 +219,7 @@ export default function Login({ onLoginSuccess }) {
                   {loading ? <Loader2 size={14} className="spin" /> : <LogIn size={14} />}
                   {loading ? 'Signing in…' : 'Login'}
                 </button>
-                <button type="button" className="login-reset" onClick={handleReset} disabled={loading}>
+                <button type="button" className="login-reset" onClick={onNavigateSignUp} disabled={loading}>
                   <CircleUser size={14} />
                   Sign Up
                 </button>

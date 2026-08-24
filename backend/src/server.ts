@@ -7,6 +7,7 @@ import { initPool, closePool } from './config/database.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import customerRoutes from './routes/customerRoutes.js';
 import codeRoutes from './routes/codeRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 app.use('/api/customers', customerRoutes);
 app.use('/api/codes', codeRoutes);
+app.use('/api/auth', authRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
