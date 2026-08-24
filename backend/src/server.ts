@@ -1,6 +1,7 @@
 import express, { Request, Response, json } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import fs from 'fs';
 import { env } from './config/env.js';
 import { initPool, closePool } from './config/database.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
@@ -30,7 +31,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
     message: 'Customer Registration API is running',
     timestamp: new Date().toISOString(),
     environment: env.NODE_ENV,
-    foisReady: env.DB_USERNAME.length > 0,
+    database: 'mysql',
   });
 });
 
@@ -59,6 +60,11 @@ process.on('unhandledRejection', (err) => {
 
 const start = async () => {
   try {
+    // Ensure upload directories exist
+    for (const dir of ['uploads', 'uploads/gstin', 'uploads/pan']) {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
+
     await initPool();
     app.listen(env.PORT, () => {
       console.log(`[Server] 🚀 Customer Registration API listening on port ${env.PORT}`);
