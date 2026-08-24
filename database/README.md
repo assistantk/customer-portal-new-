@@ -309,57 +309,293 @@ proxy: {
 
 ---
 
-## 9. Files Summary
+## 9. Authentication Tables
+
+### MEMUSERS (User Login/Registration)
+
+Created by `06_create_users_table.sql`. Stores portal user accounts.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `MAVUSERID` | `NUMBER IDENTITY` | Auto-generated PK |
+| `MAVEMAIL` | `VARCHAR2(255)` | Unique, NOT NULL |
+| `MAVUSERNAME` | `VARCHAR2(100)` | Unique, NOT NULL |
+| `MAVPASSWORDHASH` | `VARCHAR2(255)` | bcrypt hash — **NEVER plaintext** |
+| `MACACTIVEFLAG` | `CHAR(1)` | Default `'Y'` |
+| `MADCREATEDDATE` | `DATE` | Default `SYSDATE` |
+
+**Sign Up Flow:**
 
 ```
-database/
-├── 01_create_tables.sql      FOIS tables + MEMCUSTOMER + MEMCUSTOMERGSTIN + SEQ_…_GSTINID
-├── 02_constraints.sql        PK / FK / Unique / Check (PAN, GSTIN, mobile, etc.)
-├── 03_indexes.sql            Search + FK performance indexes
-├── 04_sample_data.sql        Test seed data (2 customers · 5 GSTINs · NYIL→NYI1→NYI2)
-├── 05_add_gstin_file_path.sql Existing DB migration for GSTIN PDF paths
-└── README.md                 This file
+User enters: Email + Username + Password + Confirm Password
+    ↓
+Frontend validates (format, match, strength)
+    ↓
+POST /api/auth/register
+    ↓
+Backend validates → checks duplicate email → checks duplicate username
+    ↓
+bcrypt.hash(password, 10) → INSERT INTO MEMUSERS
+    ↓
+"Account created successfully. Please sign in."
+    ↓
+Redirect to Login page
+```
 
-backend/
-├── .env.example              Copy → .env, fill Oracle creds
-├── package.json              npm install ; npm run dev
-├── tsconfig.json
-└── src/
-    ├── server.ts             Express entry, CORS, error handler
-    ├── config/
-    │   ├── env.ts            Dotenv loader + CODE_MAX_LENGTH wiring
-    │   └── database.ts       oracledb pool + withTransaction() helper
-    ├── middleware/errorHandler.ts  404, mapped ORA- errors, stack masking in prod
-    ├── utils/
-    │   ├── codeGenerator.ts  Strip suffixes · base code · fallback suffix · reserve w/ retry on ORA-00001
-    │   └── validators.ts     PAN / GSTIN / mobile / pincode / customer payloads
-    ├── routes/
-    │   ├── customerRoutes.ts  GET POST PUT customer + GSTIN CRUD (multer upload)
-    │   └── codeRoutes.ts      POST /generate-global /generate-handling
-    └── controllers/
-        ├── customerController.ts
-        ├── gstinController.ts    (Supabase GSTIN PDF storage + metadata update)
-        └── codeController.ts
+**Login Flow:**
 
-src/ (Vite frontend)
-├── lib/customerApi.ts        fetch wrapper, customerApi.<method>(…)
-├── pages/CustomerRegistration.tsx  Old User + New Entry, 3-col layout, multi-GSTIN, file uploads
-├── components/PanelSpotlightCard.tsx  customer variant added (stat/secondaryStat rendered)
-├── components/Navbar.tsx     FOIS Customer nav item added
-├── App.tsx                   /customer-registration route added
-└── vite.config.ts            /api proxy to :4000
+```
+User enters: Username + Password + Captcha
+    ↓
+POST /api/auth/login
+    ↓
+SELECT from MEMUSERS WHERE username matches
+    ↓
+bcrypt.compare(password, stored hash)
+    ↓
+Success → redirect to application
+```
+
+**Dev-mode bypass:** If `MEMUSERS` table does not exist and `NODE_ENV !== 'production'`, login accepts any credentials so the app is usable during development without Oracle auth setup.
+
+---
+
+## 10. How to Check Database Data Manually
+
+Use **Oracle SQL\*Plus**, **SQL Developer**, or any Oracle client.
+
+### Connect to the Database
+
+```sql
+-- Using SQL*Plus
+sqlplus <username>/<password>@<host>:<port>/<service_name>
+
+-- Example:
+sqlplus customer_admin/mypassword@localhost:1521/ORCL
+```
+
+### List All Tables
+
+```sql
+SELECT table_name FROM user_tables ORDER BY table_name;
+```
+
+### View All Data in Each Table
+
+```sql
+-- Global Customer Codes
+SELECT * FROM MEMGLBLCUST;
+
+-- Handling Agent Codes
+SELECT * FROM MEMGLBLHNDGAGNT;
+
+-- Registered Customers
+SELECT * FROM MEMCUSTOMER;
+
+-- Customer GSTINs
+SELECT * FROM MEMCUSTOMERGSTIN;
+
+-- User Accounts (passwords are hashed — you won't see plaintext)
+SELECT MAVUSERID, MAVEMAIL, MAVUSERNAME, MACACTIVEFLAG, MADCREATEDDATE
+FROM MEMUSERS;
+```
+
+### Filtered Queries
+
+```sql
+-- Find a specific customer by code
+SELECT * FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+
+-- Check if a Global Code exists
+SELECT * FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'NYIL';
+
+-- Check if a Handling Agent Code exists
+SELECT * FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = 'ATPL';
+
+-- Find all GSTINs for a customer
+SELECT * FROM MEMCUSTOMERGSTIN WHERE MAVCUSTOMERCODE = 'CUST002';
+
+-- Find a user account by username
+SELECT MAVUSERID, MAVEMAIL, MAVUSERNAME, MACACTIVEFLAG
+FROM MEMUSERS WHERE LOWER(MAVUSERNAME) = 'johndoe';
+
+-- Count records in each table
+SELECT 'MEMGLBLCUST' AS TBL, COUNT(*) AS CNT FROM MEMGLBLCUST
+UNION ALL SELECT 'MEMGLBLHNDGAGNT', COUNT(*) FROM MEMGLBLHNDGAGNT
+UNION ALL SELECT 'MEMCUSTOMER', COUNT(*) FROM MEMCUSTOMER
+UNION ALL SELECT 'MEMCUSTOMERGSTIN', COUNT(*) FROM MEMCUSTOMERGSTIN
+UNION ALL SELECT 'MEMUSERS', COUNT(*) FROM MEMUSERS;
 ```
 
 ---
 
-## 10. Support / FOIS Migration Checklist
+## 11. How to Modify Test Data Safely
+
+### UPDATE — Change Existing Records
+
+⚠ **Always use a WHERE clause.** Without one, ALL rows are updated.
+
+```sql
+-- ✅ CORRECT: Update a specific customer's PAN
+UPDATE MEMCUSTOMER
+SET MAVPAN = 'ABCDE1234F'
+WHERE MAVCUSTOMERCODE = 'CUST001';
+
+-- Verify the update
+SELECT MAVCUSTOMERCODE, MAVPAN FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+
+COMMIT;
+```
+
+```sql
+-- ❌ DANGEROUS: This updates EVERY customer!
+-- UPDATE MEMCUSTOMER SET MAVPAN = 'ABCDE1234F';
+-- DO NOT RUN without a WHERE clause.
+```
+
+### INSERT — Add Test Records
+
+```sql
+-- Insert a new Global Customer Code for testing
+INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVCENTBLNG, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK)
+VALUES ('TST1', 'Test Company', 'N', 'N', SYSDATE, 'Test record');
+
+COMMIT;
+```
+
+### DELETE — Remove Test Records
+
+⚠ **Only delete test data.** Always verify with SELECT first.
+
+```sql
+-- Step 1: Verify what you're about to delete
+SELECT * FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+
+-- Step 2: Delete (GSTINs are auto-deleted via ON DELETE CASCADE)
+DELETE FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+
+-- Step 3: Verify deletion
+SELECT * FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+-- Should return 0 rows
+
+COMMIT;
+```
+
+### Best Practice: Test with SELECT First
+
+Before running any UPDATE or DELETE, run the equivalent SELECT to confirm which rows will be affected:
+
+```sql
+-- Before UPDATE:
+SELECT * FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+-- Review the results, then run the UPDATE.
+
+-- Before DELETE:
+SELECT COUNT(*) FROM MEMCUSTOMERGSTIN WHERE MAVCUSTOMERCODE = 'CUST001';
+-- Confirm the count, then run the DELETE.
+```
+
+---
+
+## 12. Database Backup / Safety Guidelines
+
+### Development Rules
+
+1. **Never manually modify production data during development.** Use the TEST environment.
+2. **Take a backup before structural changes** (ALTER TABLE, DROP, etc.):
+   ```sql
+   -- Export with Oracle Data Pump
+   expdp <username>/<password>@<service> schemas=<schema> directory=DATA_PUMP_DIR dumpfile=backup.dmp
+   ```
+3. **Test UPDATE/DELETE statements with SELECT first** — see § 11 above.
+4. **Use transactions** — don't set `autoCommit` for multi-step operations:
+   ```sql
+   -- Make changes
+   UPDATE MEMCUSTOMER SET MAVPAN = 'NEWPAN1234' WHERE MAVCUSTOMERCODE = 'CUST001';
+   -- Review
+   SELECT * FROM MEMCUSTOMER WHERE MAVCUSTOMERCODE = 'CUST001';
+   -- If correct:
+   COMMIT;
+   -- If wrong:
+   ROLLBACK;
+   ```
+
+### Security Rules
+
+5. **Never expose database credentials in Git.** The `.env` file is in `.gitignore`.
+6. **Never commit `.env` files** containing real passwords.
+7. **Never put passwords in source code** — use environment variables only.
+8. **Never use `SYS` or `SYSTEM`** as the application database user.
+
+---
+
+## 13. Files Summary
+
+```
+database/
+├── 01_create_tables.sql        FOIS tables + MEMCUSTOMER + MEMCUSTOMERGSTIN + SEQ_…_GSTINID
+├── 02_constraints.sql          PK / FK / Unique / Check (PAN, GSTIN, mobile, etc.)
+├── 03_indexes.sql              Search + FK performance indexes
+├── 04_sample_data.sql          Test seed data (2 customers · 5 GSTINs · NYIL→NYI1→NYI2)
+├── 05_add_gstin_file_path.sql  Existing DB migration for GSTIN PDF paths
+├── 06_create_users_table.sql   User authentication table (MEMUSERS)
+├── schema.sql                  Consolidated schema reference (all tables + constraints)
+└── README.md                   This file
+
+backend/
+├── .env.example                Copy → .env, fill Oracle creds
+├── package.json                npm install ; npm run dev
+├── tsconfig.json
+└── src/
+    ├── server.ts               Express entry, CORS, error handler
+    ├── config/
+    │   ├── env.ts              Dotenv loader + CODE_MAX_LENGTH wiring
+    │   └── database.ts         oracledb pool + withTransaction() helper
+    ├── middleware/errorHandler.ts  404, mapped ORA- errors, stack masking in prod
+    ├── utils/
+    │   ├── codeGenerator.ts    Strip suffixes · base code · fallback suffix · reserve w/ retry on ORA-00001
+    │   ├── supabaseStorage.ts  GSTIN PDF upload/download via Supabase Storage
+    │   └── validators.ts       PAN / GSTIN / mobile / pincode / customer payloads
+    ├── routes/
+    │   ├── customerRoutes.ts   GET POST PUT customer + GSTIN CRUD (multer upload)
+    │   ├── codeRoutes.ts       POST /generate-global /generate-handling
+    │   └── authRoutes.ts       POST /auth/register /auth/login
+    └── controllers/
+        ├── customerController.ts
+        ├── gstinController.ts
+        ├── codeController.ts
+        └── authController.ts   Registration + Login (bcrypt hashing, dev-mode bypass)
+
+frontend/
+├── src/
+│   ├── pages/
+│   │   ├── Login.jsx           Login page (captcha, real auth API)
+│   │   ├── SignUp.jsx          Sign Up page (vertical form, validation)
+│   │   └── CustomerRegistration.jsx  Old User + New Entry
+│   ├── services/
+│   │   ├── authService.js      Auth API client (register, login)
+│   │   └── customerService.js  Customer API client
+│   ├── styles/
+│   │   ├── login.css           Login page styles
+│   │   ├── signup.css          Sign Up page styles
+│   │   ├── registration.css    Customer Registration styles
+│   │   └── zone-dropdown.css   Zone dropdown styles
+│   ├── App.jsx                 Page routing (Login ↔ SignUp ↔ CustomerRegistration)
+│   └── main.jsx                Entry point, CSS imports
+└── vite.config.js              /api proxy to :4000
+```
+
+---
+
+## 14. Support / FOIS Migration Checklist
 
 Before cutting over to FOIS production:
 
 - [ ] Confirm `CODE_MAX_LENGTH` stays 4 until FOIS team changes both PK columns.
 - [ ] Configure Supabase Storage env vars for GSTIN PDF uploads.
-- [ ] Run only `01_create_tables.sql` → `02_constraints.sql` → `03_indexes.sql` → `05_add_gstin_file_path.sql` (skip sample data).
-- [ ] Set backend `NODE_ENV=production` (masks Oracle error details / stack traces).
+- [ ] Run only `01_create_tables.sql` → `02_constraints.sql` → `03_indexes.sql` → `05_add_gstin_file_path.sql` → `06_create_users_table.sql` (skip sample data).
+- [ ] Set backend `NODE_ENV=production` (masks Oracle error details / stack traces, disables auth dev-bypass).
 - [ ] Confirm CORS origins list matches reverse-proxy / F5 URLs used for FOIS.
 - [ ] Point `DB_HOST / DB_PORT / DB_SERVICE / DB_USERNAME / DB_PASSWORD` at FOIS database (only `.env` changes).
 - [ ] Validate against duplicate-code concurrency test (parallel POSTs to `/codes/generate-global`).
+

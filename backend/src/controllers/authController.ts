@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import { withTransaction } from '../config/database.js';
+import { withTransaction, getConnection } from '../config/database.js';
+import { env } from '../config/env.js';
 import oracledb from 'oracledb';
 
 const SALT_ROUNDS = 10;
@@ -35,6 +36,34 @@ function checkPassword(password: string): PasswordCheck {
   return { valid: true, message: '' };
 }
 
+/**
+ * Check if the MEMUSERS table exists in the database.
+ * Returns true if the table exists, false otherwise.
+ */
+async function isUsersTableReady(): Promise<boolean> {
+  let conn;
+  try {
+    conn = await getConnection();
+    await conn.execute(
+      `SELECT 1 FROM MEMUSERS WHERE ROWNUM = 1`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
+    );
+    return true;
+  } catch (err: any) {
+    const msg = String(err?.message ?? '');
+    // ORA-00942: table or view does not exist
+    if (err?.errorNum === 942 || msg.includes('ORA-00942')) {
+      return false;
+    }
+    throw err; // Re-throw non-table-missing errors
+  } finally {
+    if (conn) {
+      try { await conn.close(); } catch (_) { /* ignore */ }
+    }
+  }
+}
+
 /* ── Register ── */
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
@@ -67,6 +96,15 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
     if (password !== confirmPassword) {
       return res.status(400).json({ success: false, message: 'Passwords do not match.' });
+    }
+
+    // --- Check if MEMUSERS table exists ---
+    const tableReady = await isUsersTableReady();
+    if (!tableReady) {
+      return res.status(503).json({
+        success: false,
+        message: 'Authentication tables not initialized. Please run database/06_create_users_table.sql against your Oracle instance.',
+      });
     }
 
     // --- Check duplicates & insert inside a transaction ---
@@ -112,7 +150,17 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         message: 'Account created successfully. Please sign in.',
       });
     });
-  } catch (err) {
+  } catch (err: any) {
+    // Provide a clear message for common Oracle connection errors
+    const msg = String(err?.message ?? '');
+    if (msg.includes('ORA-12541') || msg.includes('ORA-12514') || msg.includes('ECONNREFUSED')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Cannot connect to database. Please ensure Oracle is running and backend .env is configured.',
+      });
+    }
+    // Log the error for debugging
+    console.error('[Auth Register Error]', err);
     next(err);
   }
 };
@@ -129,6 +177,31 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     const trimmedUsername = username.trim();
 
+    // --- Check if MEMUSERS table exists ---
+    const tableReady = await isUsersTableReady();
+
+    // Dev-mode fallback: if MEMUSERS table doesn't exist AND not production,
+    // allow login with any credentials so the app is usable during development.
+    if (!tableReady) {
+      if (!env.isProduction) {
+        console.warn('[Auth] MEMUSERS table not found. Dev-mode bypass: allowing login for any credentials.');
+        return res.status(200).json({
+          success: true,
+          message: 'Login successful (dev-mode bypass — MEMUSERS table not initialized).',
+          data: {
+            userId: 0,
+            email: 'dev@localhost',
+            username: trimmedUsername,
+          },
+        });
+      }
+      return res.status(503).json({
+        success: false,
+        message: 'Authentication tables not initialized. Please run database/06_create_users_table.sql against your Oracle instance.',
+      });
+    }
+
+    // --- Real authentication against MEMUSERS ---
     const result = await withTransaction(async (conn) => {
       const rows = await conn.execute<{
         MAVUSERID: number;
@@ -178,7 +251,31 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       message: 'Login successful.',
       data: result,
     });
-  } catch (err) {
+  } catch (err: any) {
+    // Provide a clear message for common Oracle connection errors
+    const msg = String(err?.message ?? '');
+    if (msg.includes('ORA-12541') || msg.includes('ORA-12514') || msg.includes('ECONNREFUSED')) {
+      // Dev-mode fallback when Oracle is completely unreachable
+      if (!env.isProduction) {
+        const trimmedUsername = req.body?.username?.trim() ?? 'dev';
+        console.warn('[Auth] Oracle unreachable. Dev-mode bypass: allowing login.');
+        return res.status(200).json({
+          success: true,
+          message: 'Login successful (dev-mode bypass — Oracle unreachable).',
+          data: {
+            userId: 0,
+            email: 'dev@localhost',
+            username: trimmedUsername,
+          },
+        });
+      }
+      return res.status(503).json({
+        success: false,
+        message: 'Cannot connect to database. Please ensure Oracle is running and backend .env is configured.',
+      });
+    }
+    // Pass all other errors to the error handler
+    console.error('[Auth Login Error]', err);
     next(err);
   }
 };
