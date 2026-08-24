@@ -1,56 +1,72 @@
-import oracledb from 'oracledb';
+import mysql from 'mysql2/promise';
 import { env } from './env.js';
 
-let pool: oracledb.Pool | null = null;
+let pool: mysql.Pool | null = null;
 
-export const getConnectionString = (): string => {
-  return `(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=${env.DB_HOST})(PORT=${env.DB_PORT}))(CONNECT_DATA=(SERVICE_NAME=${env.DB_SERVICE})))`;
-};
-
-export const initPool = async (): Promise<oracledb.Pool> => {
+export const initPool = async (): Promise<mysql.Pool> => {
   if (pool) return pool;
 
-  env.validateRequired();
-
-  oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
-  oracledb.fetchAsString = [oracledb.CLOB];
-  oracledb.autoCommit = false;
-
-  pool = await oracledb.createPool({
-    user: env.DB_USERNAME,
+  pool = mysql.createPool({
+    host: env.DB_HOST,
+    port: env.DB_PORT,
+    database: env.DB_NAME,
+    user: env.DB_USER,
     password: env.DB_PASSWORD,
-    connectString: getConnectionString(),
-    poolMin: env.DB_POOL_MIN,
-    poolMax: env.DB_POOL_MAX,
-    poolIncrement: env.DB_POOL_INCREMENT,
-    poolTimeout: 60,
-    queueTimeout: 60000,
-    stmtCacheSize: 30,
-    enableStatistics: env.isDevelopment,
+    waitForConnections: true,
+    connectionLimit: env.DB_POOL_MAX,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
+    charset: 'utf8mb4',
+    timezone: '+00:00',
   });
 
-  console.log(`[DB] Oracle pool created: ${env.DB_USERNAME}@${env.DB_HOST}:${env.DB_PORT}/${env.DB_SERVICE}`);
+  // Test the connection
+  const conn = await pool.getConnection();
+  await conn.ping();
+  conn.release();
+
+  console.log(`[DB] MySQL pool created: ${env.DB_USER}@${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}`);
   return pool;
 };
 
-export const getConnection = async (): Promise<oracledb.Connection> => {
-  if (!pool) await initPool();
-  return await pool!.getConnection();
+export const getPool = (): mysql.Pool => {
+  if (!pool) throw new Error('Database pool not initialized. Call initPool() first.');
+  return pool;
 };
 
 export const closePool = async (): Promise<void> => {
   if (pool) {
-    await pool.close(0);
+    await pool.end();
     pool = null;
-    console.log('[DB] Oracle pool closed.');
+    console.log('[DB] MySQL pool closed.');
   }
 };
 
+/**
+ * Execute a query using a connection from the pool.
+ * Returns [rows, fields].
+ */
+export const executeQuery = async <T = any>(
+  sql: string,
+  params: any[] = []
+): Promise<T[]> => {
+  const p = getPool();
+  const [rows] = await p.execute(sql, params);
+  return rows as T[];
+};
+
+/**
+ * Run a function inside a MySQL transaction.
+ * Automatically commits on success, rolls back on error.
+ */
 export const withTransaction = async <T>(
-  fn: (conn: oracledb.Connection) => Promise<T>
+  fn: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> => {
-  const conn = await getConnection();
+  const p = getPool();
+  const conn = await p.getConnection();
   try {
+    await conn.beginTransaction();
     const result = await fn(conn);
     await conn.commit();
     return result;
@@ -62,31 +78,6 @@ export const withTransaction = async <T>(
     }
     throw err;
   } finally {
-    try {
-      await conn.close();
-    } catch (_) {
-      /* ignore close errors */
-    }
-  }
-};
-
-export const executeQuery = async <T = any>(
-  sql: string,
-  binds: any[] | Record<string, any> = [],
-  options: oracledb.ExecuteOptions = {}
-): Promise<oracledb.Result<T>> => {
-  const conn = await getConnection();
-  try {
-    return await conn.execute<T>(sql, binds, {
-      outFormat: oracledb.OUT_FORMAT_OBJECT,
-      autoCommit: options.autoCommit ?? false,
-      ...options,
-    });
-  } finally {
-    try {
-      await conn.close();
-    } catch (_) {
-      /* ignore */
-    }
+    conn.release();
   }
 };

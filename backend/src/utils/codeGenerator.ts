@@ -1,5 +1,5 @@
 import { env } from '../config/env.js';
-import { getConnection } from '../config/database.js';
+import { executeQuery } from '../config/database.js';
 
 const CORPORATE_SUFFIXES = [
   'PVT', 'PRIVATE', 'LTD', 'LIMITED', 'LLP', 'INC', 'CORP',
@@ -78,8 +78,9 @@ export const findNextUniqueSuffix = (
     }
   }
 
-  for (let a = 0; a < ALPHA.length && maxRetries-- > 0; a++) {
-    for (let n = 0; n < 10 && maxRetries-- > 0; n++) {
+  let retries = maxRetries;
+  for (let a = 0; a < ALPHA.length && retries-- > 0; a++) {
+    for (let n = 0; n < 10 && retries-- > 0; n++) {
       const candidate = (basePrefix.slice(0, maxLength - 2) + ALPHA[a] + n.toString()).slice(0, maxLength);
       if (!existingCodes.includes(candidate)) return candidate;
     }
@@ -90,28 +91,15 @@ export const findNextUniqueSuffix = (
 
 export type CodeType = 'global' | 'handling';
 
-const GLOBAL_TABLE = 'MEMGLBLCUST';
-const GLOBAL_CODE_COL = 'MAVGLBLCUSTCODE';
-const GLOBAL_NAME_COL = 'MAVGLBLCUSTNAME';
-const HANDLING_TABLE = 'MEMGLBLHNDGAGNT';
-const HANDLING_CODE_COL = 'MAVHNDGAGNTCODE';
-const HANDLING_NAME_COL = 'MAVHNDGAGNTNAME';
-
 const getTableMeta = (type: CodeType) =>
   type === 'global'
-    ? { table: GLOBAL_TABLE, codeCol: GLOBAL_CODE_COL, nameCol: GLOBAL_NAME_COL }
-    : { table: HANDLING_TABLE, codeCol: HANDLING_CODE_COL, nameCol: HANDLING_NAME_COL };
+    ? { table: 'global_customers', codeCol: 'global_code', nameCol: 'company_name' }
+    : { table: 'handling_agents', codeCol: 'handling_agent_code', nameCol: 'handling_agent_name' };
 
 export const fetchExistingCodes = async (type: CodeType): Promise<string[]> => {
   const { table, codeCol } = getTableMeta(type);
-  const conn = await getConnection();
-  try {
-    const sql = `SELECT ${codeCol} FROM ${table}`;
-    const result = await conn.execute<any>(sql, [], { outFormat: 4002 });
-    return (result.rows ?? []).map((r: any) => r[codeCol] as string);
-  } finally {
-    await conn.close();
-  }
+  const rows = await executeQuery<any>(`SELECT ${codeCol} FROM ${table}`, []);
+  return rows.map((r: any) => r[codeCol] as string);
 };
 
 export const insertCodeRow = async (
@@ -120,24 +108,11 @@ export const insertCodeRow = async (
   name: string
 ): Promise<void> => {
   const { table, codeCol, nameCol } = getTableMeta(type);
-  const conn = await getConnection();
-  try {
-    const now = new Date();
-    const sql = `
-      INSERT INTO ${table} (
-        ${codeCol}, ${nameCol},
-        MAVCENTBLNG, MAVEDMNDFLAG,
-        MADIMPLDATE, MAVIMPLREMK
-      ) VALUES (
-        :code, :name,
-        'N', 'N',
-        :now, 'Registered via Customer Portal'
-      )
-    `;
-    await conn.execute(sql, { code, name, now }, { autoCommit: true });
-  } finally {
-    await conn.close();
-  }
+  await executeQuery(
+    `INSERT INTO ${table} (${codeCol}, ${nameCol}, central_belonging, edemand_flag, implementation_date, implementation_remark)
+     VALUES (?, ?, 'N', 'N', NOW(), 'Registered via Customer Portal')`,
+    [code, name]
+  );
 };
 
 export const generateUniqueCode = async (
@@ -177,10 +152,11 @@ export const reserveUniqueCode = async (
   try {
     await insertCodeRow(type, generated.code, companyName.trim().slice(0, 45));
   } catch (dbErr: any) {
+    // MySQL duplicate entry error code
     if (
-      dbErr?.errorNum === 1 ||
-      String(dbErr?.message ?? '').includes('ORA-00001') ||
-      String(dbErr?.message ?? '').includes('unique constraint')
+      dbErr?.code === 'ER_DUP_ENTRY' ||
+      dbErr?.errno === 1062 ||
+      String(dbErr?.message ?? '').includes('Duplicate entry')
     ) {
       return reserveUniqueCode(companyName, type, maxLength);
     }

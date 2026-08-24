@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "oracledb": {
+      "$typeName": "exa.cascade_plugins_pb.CascadePluginCommandTemplate",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@toolbox-sdk/server@>=0.30.0",
+        "--prebuilt",
+        "oracledb",
+        "--stdio",
+        "--user-agent-metadata",
+        "antigravity"
+      ],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "Saurav_Kumar:1521/XEPDB1",
+        "ORACLE_USERNAME": "System",
+        "ORACLE_PASSWORD": "System"
+      }
+    }
+  }
+}

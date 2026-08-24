@@ -4,14 +4,13 @@ dotenv.config();
 
 export const env = {
   DB_HOST: process.env.DB_HOST ?? 'localhost',
-  DB_PORT: Number(process.env.DB_PORT ?? 1521),
-  DB_SERVICE: process.env.DB_SERVICE ?? 'ORCL',
-  DB_USERNAME: process.env.DB_USERNAME ?? '',
+  DB_PORT: Number(process.env.DB_PORT ?? 3306),
+  DB_NAME: process.env.DB_NAME ?? 'customer_portal',
+  DB_USER: process.env.DB_USER ?? 'root',
   DB_PASSWORD: process.env.DB_PASSWORD ?? '',
 
-  DB_POOL_MIN: Number(process.env.DB_POOL_MIN ?? 4),
+  DB_POOL_MIN: Number(process.env.DB_POOL_MIN ?? 2),
   DB_POOL_MAX: Number(process.env.DB_POOL_MAX ?? 20),
-  DB_POOL_INCREMENT: Number(process.env.DB_POOL_INCREMENT ?? 2),
 
   PORT: Number(process.env.PORT ?? 4000),
   NODE_ENV: process.env.NODE_ENV ?? 'development',
@@ -21,17 +20,14 @@ export const env = {
   CODE_MAX_LENGTH: Number(process.env.CODE_MAX_LENGTH ?? 4),
   CODE_MAX_RETRIES: Number(process.env.CODE_MAX_RETRIES ?? 50),
 
-  SUPABASE_URL: process.env.SUPABASE_URL ?? '',
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  SUPABASE_GSTIN_BUCKET: process.env.SUPABASE_GSTIN_BUCKET ?? 'gstin-documents',
+  UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
 
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: process.env.NODE_ENV !== 'production',
 
   validateRequired: () => {
     const missing: string[] = [];
-    if (!process.env.DB_USERNAME) missing.push('DB_USERNAME');
-    if (!process.env.DB_PASSWORD) missing.push('DB_PASSWORD');
+    if (!process.env.DB_USER && !process.env.DB_USERNAME) missing.push('DB_USER');
     if (missing.length > 0) {
       throw new Error(
         `Missing required environment variables: ${missing.join(', ')}. ` +

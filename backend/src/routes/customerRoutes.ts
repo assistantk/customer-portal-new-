@@ -12,6 +12,7 @@ import {
   deleteGstin,
   getGstinFile,
 } from '../controllers/gstinController.js';
+import { uploadPanFile } from '../controllers/panController.js';
 
 const router = Router({ mergeParams: true });
 
@@ -40,6 +41,7 @@ router.get('/:customerCode/gstins/:gstinId/file', getGstinFile);
 
 router.post('/', multiUpload.array('gstinFiles', 20), createCustomer);
 router.put('/:customerCode', updateCustomer);
+router.put('/:customerCode/pan-file', singleUpload.single('panFile'), uploadPanFile);
 
 router.post('/:customerCode/gstins', singleUpload.single('gstinFile'), createGstin);
 router.put('/:customerCode/gstins/:gstinId', singleUpload.single('gstinFile'), updateGstin);
