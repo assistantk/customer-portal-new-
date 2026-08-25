@@ -1,4 +1,5 @@
 package com.cris.customerportal.service;
+
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
@@ -13,12 +14,20 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException; import java.nio.file.*; import java.util.*;
 import java.util.stream.Collectors;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import org.springframework.beans.factory.annotation.Autowired;
+
 @Service
 public class CustomerServiceImpl implements CustomerService {
  private final CustomerRepository repo;
  private final CustomerGstinRepository gstinRepo;
  private final Path uploadPath;
- public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); }
+ private final DataSource dataSource;
+ public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir, DataSource dataSource) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); this.dataSource=dataSource;}
 
  public Long register(CustomerRegistrationRequest r, List<MultipartFile> files) {
   if (r.gstins() == null || files == null || r.gstins().size() != files.size()) throw new IllegalArgumentException("Number of GSTIN records must match uploaded files");
@@ -78,6 +87,28 @@ public class CustomerServiceImpl implements CustomerService {
   int suffix = 1;
   while(existing.contains(upper + suffix)) { suffix++; }
   return upper + suffix;
+ }
+
+ public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
+  String sql = "SELECT phone_number, email_id, company_name, address FROM customer_code WHERE customer_code = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, customerCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+     response.setPhoneNumber(rs.getString("phone_number"));
+     response.setEmailId(rs.getString("email_id"));
+     response.setCompanyName(rs.getString("company_name"));
+     response.setAddress(rs.getString("address"));
+     return response;
+    } else {
+     throw new ResourceNotFoundException("Invalid Customer Code");
+    }
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error occurred while fetching old customer data", e);
+  }
  }
 
  private void validateFile(MultipartFile f) { if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required"); if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB"); String type=Optional.ofNullable(f.getContentType()).orElse(""); if(!Set.of("application/pdf").contains(type))throw new IllegalArgumentException("Only PDF files are allowed"); }
