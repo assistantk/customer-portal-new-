@@ -102,7 +102,10 @@ export const errorHandler = (
     console.error('[ERROR]', err);
   }
 
-  res.status(statusCode).json(payload);
+  // Ensure we always send JSON, even if response is already sent
+  if (!res.headersSent) {
+    res.status(statusCode).json(payload);
+  }
 };
 
 export const asyncHandler = (

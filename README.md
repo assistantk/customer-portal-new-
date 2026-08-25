@@ -272,6 +272,8 @@ src/                   Legacy Spring Boot (MySQL) — not used for Oracle
 3. Backend looks up the user by username, verifies the password hash with bcrypt.
 4. On success: user is authenticated and redirected to the Customer Registration portal.
 
+> **Dev-mode bypass:** If `MEMUSERS` table doesn't exist and `NODE_ENV !== 'production'`, login accepts any credentials so the app is usable during development without running the auth migration. In production, real authentication is always required.
+
 ### Validation Rules
 
 | Field | Rules |

@@ -20,21 +20,32 @@ async function request(url, options = {}) {
   // For file downloads, return raw response
   if (options.rawResponse) return res;
 
-  const responseText = await res.text();
+  // Handle non-JSON responses (e.g. empty body, proxy errors, HTML error pages)
   let body = {};
-  if (responseText.trim()) {
-    try {
-      body = JSON.parse(responseText);
-    } catch {
-      throw new Error(`Server returned an invalid response (${res.status}). Please try again.`);
+  let text = '';
+
+  try {
+    text = await res.text();
+    if (text && text.trim()) {
+      body = JSON.parse(text);
     }
+  } catch (parseErr) {
+    // If response is not OK and we have a parsing error, it's likely an error from the server
+    if (!res.ok) {
+      throw new Error(`Server error (${res.status}). Please ensure the backend is running.`);
+    }
+    // For successful responses with invalid JSON, this is still an error
+    console.error('Response parse error:', parseErr, 'Response text:', text);
+    throw new Error('Invalid response format from server.');
   }
+
   if (!res.ok) {
     const msg =
-      body.message ||
-      (body.details?.errors
+      body?.message ||
+      body?.error ||
+      (body?.details?.errors
         ? body.details.errors.map((e) => e.message).join('; ')
-        : `Request failed (${res.status})`);
+        : `Request failed with status ${res.status}`);
     throw new Error(msg);
   }
   if (!responseText.trim()) throw new Error('The document scan service returned an empty response. Please try again.');

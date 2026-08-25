@@ -97,7 +97,17 @@ export default function Login({ onLoginSuccess, onNavigateSignUp }) {
       const result = await loginUser({ username: username.trim(), password });
       if (onLoginSuccess) onLoginSuccess(result.data || { username });
     } catch (err) {
-      setError(err.message || 'Login failed');
+      // Provide a user-friendly error message
+      let errorMsg = 'Login failed. Please try again.';
+      
+      if (err instanceof Error) {
+        errorMsg = err.message;
+        // Log full error for debugging
+        console.error('[Login Error]', err);
+      }
+      
+      setError(errorMsg);
+      refreshCaptcha();
     } finally {
       setLoading(false);
     }
