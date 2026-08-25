@@ -12,6 +12,15 @@ CREATE DATABASE IF NOT EXISTS customer_portal
 
 USE customer_portal;
 
+CREATE TABLE IF NOT EXISTS users (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    email         VARCHAR(255) NOT NULL UNIQUE,
+    username      VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    active        BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------------
 -- 1. GLOBAL CUSTOMERS (mirrors FOIS MEMGLBLCUST)
 -- ---------------------------------------------------------------------------
@@ -69,6 +78,7 @@ CREATE TABLE IF NOT EXISTS customers (
     pan_file_name         VARCHAR(255),
     pan_file_type         VARCHAR(50),
     pan_file_path         VARCHAR(500),
+    pan_verification_status VARCHAR(20)  DEFAULT 'PENDING',
     email                 VARCHAR(100),
     mobile                VARCHAR(15),
     global_customer_code  VARCHAR(4),
@@ -108,6 +118,9 @@ CREATE TABLE IF NOT EXISTS customer_gstins (
     file_name         VARCHAR(255),
     file_type         VARCHAR(50),
     file_path         VARCHAR(500),
+    registered_address VARCHAR(500),
+    gstin_verification_status VARCHAR(20) DEFAULT 'PENDING',
+    address_verification_status VARCHAR(20) DEFAULT 'PENDING',
     active            CHAR(1)       DEFAULT 'Y',
     created_at        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

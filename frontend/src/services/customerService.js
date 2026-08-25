@@ -7,6 +7,12 @@
 
 const API = '/api';
 
+export async function scanDocument(kind, file) {
+  const form = new FormData();
+  form.append('document', file);
+  return request(`${API}/documents/${kind}/scan`, { method: 'POST', body: form });
+}
+
 /* ---------- helpers ---------- */
 
 async function request(url, options = {}) {
@@ -42,6 +48,7 @@ async function request(url, options = {}) {
         : `Request failed with status ${res.status}`);
     throw new Error(msg);
   }
+  if (!responseText.trim()) throw new Error('The document scan service returned an empty response. Please try again.');
   return body;
 }
 
@@ -77,6 +84,9 @@ export async function lookupCustomer(code) {
     stateCode: g.stateCode || '',
     gstin: g.gstinNumber || '',
     gstinFileName: g.fileName || '',
+    registeredAddress: g.registeredAddress || '',
+    gstinStatus: g.gstinStatus || '',
+    addressStatus: g.addressStatus || '',
     hasFile: g.hasFile || false,
     file: null,
     existingFileName: g.fileName || '',
@@ -91,6 +101,7 @@ export async function lookupCustomer(code) {
     pincode: c.pincode || '',
     pcoCode: c.pcoCode || '',
     panNumber: c.pan || '',
+    panVerificationStatus: c.panVerificationStatus || '',
     email: c.email || '',
     mobile: c.mobile || '',
     globalCustomerCode: c.globalCustomerCode || '',
@@ -150,56 +161,16 @@ export async function registerCustomer(payload, gstinEntries) {
     })),
   };
 
-  const createResp = await request(`${API}/customers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(customerBody),
+  const formData = new FormData();
+  Object.entries(customerBody).forEach(([key, value]) => {
+    if (key !== 'gstins') formData.append(key, value == null ? '' : String(value));
   });
+  formData.set('gstins', JSON.stringify(customerBody.gstins));
+  if (payload.panFile) formData.append('panFile', payload.panFile);
+  gstinEntries.forEach(entry => { if (entry.file) formData.append('gstinFiles', entry.file); });
+  const createResp = await request(`${API}/customers`, { method: 'POST', body: formData });
 
   const savedCode = createResp.data?.customerCode;
-
-  // Step 2: Upload GSTIN files individually (if any have files attached)
-  if (savedCode) {
-    // Fetch the GSTINs that were just created to get their IDs
-    const gstinResp = await request(
-      `${API}/customers/${encodeURIComponent(savedCode)}/gstins`
-    );
-    const savedGstins = gstinResp.data || [];
-
-    for (let i = 0; i < gstinEntries.length; i++) {
-      const entry = gstinEntries[i];
-      if (!entry.file) continue;
-
-      // Match by GSTIN number to find the saved record's ID
-      const match = savedGstins.find(
-        (sg) =>
-          sg.gstinNumber?.toUpperCase() === entry.gstin?.toUpperCase()
-      );
-      if (match) {
-        // Update the existing GSTIN record with the file
-        const fd = new FormData();
-        fd.append('gstinFile', entry.file);
-        fd.append('state', entry.state);
-        fd.append('stateCode', entry.stateCode || '');
-        fd.append('gstinNumber', entry.gstin);
-
-        await request(
-          `${API}/customers/${encodeURIComponent(savedCode)}/gstins/${match.gstinId}`,
-          { method: 'PUT', body: fd }
-        );
-      }
-    }
-  }
-
-  // Step 3: Upload PAN card file if provided
-  if (savedCode && payload.panFile) {
-    const panFd = new FormData();
-    panFd.append('panFile', payload.panFile);
-    await request(
-      `${API}/customers/${encodeURIComponent(savedCode)}/pan-file`,
-      { method: 'PUT', body: panFd }
-    );
-  }
 
   return {
     success: true,
@@ -236,6 +207,7 @@ export async function updateCustomer(code, payload, gstinEntries) {
   if (payload.panFile) {
     const panFd = new FormData();
     panFd.append('panFile', payload.panFile);
+    panFd.append('panNumber', payload.panNumber || '');
     await request(
       `${API}/customers/${encodeURIComponent(trimmedCode)}/pan-file`,
       { method: 'PUT', body: panFd }
@@ -250,6 +222,7 @@ export async function updateCustomer(code, payload, gstinEntries) {
       fd.append('state', g.state);
       fd.append('stateCode', g.stateCode || '');
       fd.append('gstinNumber', g.gstin);
+      fd.append('address', payload.address || '');
       if (g.file) {
         fd.append('gstinFile', g.file);
       }
@@ -264,6 +237,7 @@ export async function updateCustomer(code, payload, gstinEntries) {
       fd.append('state', g.state);
       fd.append('stateCode', g.stateCode || '');
       fd.append('gstinNumber', g.gstin);
+      fd.append('address', payload.address || '');
       if (g.file) {
         fd.append('gstinFile', g.file);
       }

@@ -3,6 +3,11 @@ import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery } from '../config/database.js';
 import { validateCustomer, validateGstin, CustomerPayload } from '../utils/validators.js';
 import { reserveUniqueCode } from '../utils/codeGenerator.js';
+import path from 'path';
+import fs from 'fs/promises';
+import { env } from '../config/env.js';
+import { addressesMatch, scanDocument } from '../utils/documentScanner.js';
+import { isValidPAN, isValidGSTIN } from '../utils/validators.js';
 
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
 const paramStr = (val: string | string[] | undefined): string =>
@@ -17,6 +22,7 @@ const mapRowToCustomer = (row: any): any => ({
   pcoCode: row.pco_code,
   pan: row.pan_number,
   panFileName: row.pan_file_name,
+  panVerificationStatus: row.pan_verification_status,
   email: row.email,
   mobile: row.mobile,
   globalCustomerCode: row.global_customer_code,
@@ -58,6 +64,26 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
   }
 
   const payload: CustomerPayload & { codeType?: 'global' | 'handling'; gstins?: any[] } = rawBody;
+  const uploaded = (req.files || {}) as Record<string, Express.Multer.File[]>;
+  const panFile = uploaded.panFile?.[0];
+  const gstinFiles = uploaded.gstinFiles || [];
+
+  if (panFile) {
+    const panScan = await scanDocument('pan', panFile.buffer);
+    if (!panScan.pan || !isValidPAN(panScan.pan) || panScan.pan !== String(payload.pan ?? '').trim().toUpperCase()) throw new AppError('PAN number does not match the uploaded PAN Card.', 422);
+    (payload as any).panScan = panScan.pan;
+  }
+  if (Array.isArray(payload.gstins)) {
+    for (let i = 0; i < payload.gstins.length; i++) {
+      const file = gstinFiles[i];
+      if (!file) continue;
+      const scan = await scanDocument('gstin', file.buffer);
+      const entry = payload.gstins[i];
+      if (!scan.gstin || !scan.address || !isValidGSTIN(scan.gstin) || scan.gstin !== String(entry.gstinNumber ?? '').trim().toUpperCase()) throw new AppError('GSTIN number does not match the uploaded GST certificate.', 422);
+      if (!addressesMatch(String(payload.address ?? ''), scan.address)) throw new AppError('Business address does not match the GST certificate.', 422);
+      entry.scannedAddress = scan.address;
+    }
+  }
 
   const validationErrors = validateCustomer(payload, true);
   const gstinValidationErrors: any[] = [];
@@ -159,15 +185,31 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       ]
     );
 
+    if (panFile) {
+      const filePath = path.join('pan', `${customerCode}_PAN_${Date.now()}.pdf`);
+      await fs.mkdir(path.join(env.UPLOAD_DIR, 'pan'), { recursive: true });
+      await fs.writeFile(path.join(env.UPLOAD_DIR, filePath), panFile.buffer);
+      await conn.execute(`UPDATE customers SET pan_file_name = ?, pan_file_type = ?, pan_file_path = ?, pan_verification_status = 'VERIFIED' WHERE customer_code = ?`, [panFile.originalname, panFile.mimetype, filePath, customerCode]);
+    }
+
     const gstins = Array.isArray(payload.gstins) ? payload.gstins : [];
 
-    for (const gstin of gstins) {
+    for (let index = 0; index < gstins.length; index++) {
+      const gstin = gstins[index];
       if (!gstin.gstinNumber?.trim() || !gstin.state?.trim()) continue;
+      const file = gstinFiles[index];
+      let filePath: string | null = null;
+      if (file) {
+        filePath = path.join('gstin', `${customerCode}_${Date.now()}_${index}.pdf`);
+        await fs.mkdir(path.join(env.UPLOAD_DIR, 'gstin'), { recursive: true });
+        await fs.writeFile(path.join(env.UPLOAD_DIR, filePath), file.buffer);
+      }
       await conn.execute(
         `INSERT INTO customer_gstins (
           customer_code, state, state_code, gstin_number,
-          file_name, file_type, active
-        ) VALUES (?, ?, ?, ?, ?, ?, 'Y')`,
+          file_name, file_type, file_path, registered_address,
+          gstin_verification_status, address_verification_status, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Y')`,
         [
           customerCode,
           gstin.state.trim().slice(0, 50),
@@ -175,6 +217,10 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
           gstin.gstinNumber.trim().toUpperCase().slice(0, 15),
           gstin.fileName?.trim().slice(0, 255) ?? null,
           gstin.fileType?.trim().slice(0, 50) ?? null,
+          filePath,
+          gstin.scannedAddress ?? null,
+          gstin.scannedAddress ? 'VERIFIED' : 'PENDING',
+          gstin.scannedAddress ? 'VERIFIED' : 'PENDING',
         ]
       );
     }

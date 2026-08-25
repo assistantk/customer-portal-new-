@@ -110,39 +110,20 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     // --- Check duplicates & insert inside a transaction ---
     await withTransaction(async (conn) => {
       // Duplicate email?
-      const emailCheck = await conn.execute<{ CNT: number }>(
-        `SELECT COUNT(*) AS CNT FROM MEMUSERS WHERE LOWER(MAVEMAIL) = :email`,
-        { email: trimmedEmail },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT },
-      );
-      if ((emailCheck.rows as any)?.[0]?.CNT > 0) {
-        return res.status(409).json({
-          success: false,
-          message: 'An account with this email already exists.',
-        });
-      }
+      const emailCheck = await conn.execute<any>(`SELECT COUNT(*) AS count FROM users WHERE LOWER(email) = ?`, [trimmedEmail]);
+      if ((emailCheck[0] as any[])[0]?.count > 0) throw new Error('EMAIL_EXISTS');
 
       // Duplicate username?
-      const usernameCheck = await conn.execute<{ CNT: number }>(
-        `SELECT COUNT(*) AS CNT FROM MEMUSERS WHERE LOWER(MAVUSERNAME) = :username`,
-        { username: trimmedUsername.toLowerCase() },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT },
-      );
-      if ((usernameCheck.rows as any)?.[0]?.CNT > 0) {
-        return res.status(409).json({
-          success: false,
-          message: 'This username is already taken.',
-        });
-      }
+      const usernameCheck = await conn.execute<any>(`SELECT COUNT(*) AS count FROM users WHERE LOWER(username) = ?`, [trimmedUsername.toLowerCase()]);
+      if ((usernameCheck[0] as any[])[0]?.count > 0) throw new Error('USERNAME_EXISTS');
 
       // Hash password
       const hash = await bcrypt.hash(password, SALT_ROUNDS);
 
       // Insert
       await conn.execute(
-        `INSERT INTO MEMUSERS (MAVEMAIL, MAVUSERNAME, MAVPASSWORDHASH)
-         VALUES (:email, :username, :hash)`,
-        { email: trimmedEmail, username: trimmedUsername, hash },
+        `INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)`,
+        [trimmedEmail, trimmedUsername, hash],
       );
 
       return res.status(201).json({
@@ -203,38 +184,25 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     // --- Real authentication against MEMUSERS ---
     const result = await withTransaction(async (conn) => {
-      const rows = await conn.execute<{
-        MAVUSERID: number;
-        MAVEMAIL: string;
-        MAVUSERNAME: string;
-        MAVPASSWORDHASH: string;
-        MACACTIVEFLAG: string;
-      }>(
-        `SELECT MAVUSERID, MAVEMAIL, MAVUSERNAME, MAVPASSWORDHASH, MACACTIVEFLAG
-         FROM MEMUSERS
-         WHERE LOWER(MAVUSERNAME) = :username`,
-        { username: trimmedUsername.toLowerCase() },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT },
-      );
-
-      const user = (rows.rows as any)?.[0];
+      const [userRows] = await conn.execute<any>(`SELECT id, email, username, password_hash, active FROM users WHERE LOWER(username) = ?`, [trimmedUsername.toLowerCase()]);
+      const user = (userRows as any[])[0];
       if (!user) {
         return null;
       }
 
-      if (user.MACACTIVEFLAG !== 'Y') {
+      if (!user.active) {
         return { inactive: true };
       }
 
-      const match = await bcrypt.compare(password, user.MAVPASSWORDHASH);
+      const match = await bcrypt.compare(password, user.password_hash);
       if (!match) {
         return null;
       }
 
       return {
-        userId: user.MAVUSERID,
-        email: user.MAVEMAIL,
-        username: user.MAVUSERNAME,
+        userId: user.id,
+        email: user.email,
+        username: user.username,
       };
     });
 

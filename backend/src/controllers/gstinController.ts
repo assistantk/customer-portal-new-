@@ -5,6 +5,8 @@ import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery } from '../config/database.js';
 import { validateGstin } from '../utils/validators.js';
 import { env } from '../config/env.js';
+import { addressesMatch, scanDocument } from '../utils/documentScanner.js';
+import { isValidGSTIN } from '../utils/validators.js';
 
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
 const paramStr = (val: string | string[] | undefined): string =>
@@ -19,6 +21,14 @@ const ensureUploadDir = async (subDir: string): Promise<string> => {
   return dir;
 };
 
+const verifyGstinFile = async (file: Express.Multer.File, gstin: string, address: string) => {
+  const scan = await scanDocument('gstin', file.buffer);
+  if (!scan.gstin || !scan.address) throw new AppError('GSTIN or registered address could not be detected. Please upload a clearer GST certificate.', 422);
+  if (!isValidGSTIN(scan.gstin) || scan.gstin !== gstin.trim().toUpperCase()) throw new AppError('GSTIN number does not match the uploaded GST certificate.', 422);
+  if (!address.trim() || !addressesMatch(address, scan.address)) throw new AppError('Business address does not match the GST certificate.', 422);
+  return scan.address;
+};
+
 export const getCustomerGstins = asyncHandler(async (req: Request, res: Response) => {
   const customerCode = paramStr(req.params.customerCode);
   if (!customerCode.trim()) {
@@ -27,7 +37,9 @@ export const getCustomerGstins = asyncHandler(async (req: Request, res: Response
 
   const rows = await executeQuery<any>(
     `SELECT id, customer_code, state, state_code, gstin_number,
-            file_name, file_type, file_path, active, created_at, updated_at
+            file_name, file_type, file_path, registered_address,
+            gstin_verification_status, address_verification_status,
+            active, created_at, updated_at
      FROM customer_gstins
      WHERE customer_code = ?
      ORDER BY state_code, state`,
@@ -44,6 +56,9 @@ export const getCustomerGstins = asyncHandler(async (req: Request, res: Response
     fileType: r.file_type,
     filePath: r.file_path,
     hasFile: !!r.file_path,
+    registeredAddress: r.registered_address,
+    gstinStatus: r.gstin_verification_status,
+    addressStatus: r.address_verification_status,
     activeFlag: r.active,
     createdDate: r.created_at ? new Date(r.created_at).toISOString() : null,
     updatedDate: r.updated_at ? new Date(r.updated_at).toISOString() : null,
@@ -112,8 +127,9 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
     const [insertResult] = await conn.execute(
       `INSERT INTO customer_gstins (
         customer_code, state, state_code, gstin_number,
-        file_name, file_type, file_path, active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        file_name, file_type, file_path, registered_address,
+        gstin_verification_status, address_verification_status, active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         normalizedCustomerCode,
         payload.state.trim().slice(0, 50),
@@ -122,6 +138,9 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
         payload.fileName?.slice(0, 255) ?? null,
         payload.fileType?.slice(0, 50) ?? null,
         filePath,
+        file ? await verifyGstinFile(file, normalizedGstinNumber, String(req.body.address ?? '')) : null,
+        file ? 'VERIFIED' : 'PENDING',
+        file ? 'VERIFIED' : 'PENDING',
         (payload.activeFlag ?? 'Y').toUpperCase(),
       ]
     );
@@ -168,6 +187,10 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
     activeFlag: req.body.activeFlag ?? existing.active,
   };
 
+  const registeredAddress = file
+    ? await verifyGstinFile(file, payload.gstinNumber, String(req.body.address ?? ''))
+    : existing.registered_address;
+
   const errors = validateGstin(payload, false);
   if (errors.length > 0) {
     throw new AppError('Validation failed', 400, { errors });
@@ -196,7 +219,8 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
   await executeQuery(
     `UPDATE customer_gstins SET
       state = ?, state_code = ?, gstin_number = ?,
-      file_name = ?, file_type = ?, file_path = ?,
+      file_name = ?, file_type = ?, file_path = ?, registered_address = ?,
+      gstin_verification_status = ?, address_verification_status = ?,
       active = ?
     WHERE id = ? AND customer_code = ?`,
     [
@@ -206,6 +230,9 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
       payload.fileName?.slice(0, 255) ?? null,
       payload.fileType?.slice(0, 50) ?? null,
       filePath,
+      registeredAddress,
+      file ? 'VERIFIED' : existing.gstin_verification_status ?? 'PENDING',
+      file ? 'VERIFIED' : existing.address_verification_status ?? 'PENDING',
       (payload.activeFlag ?? 'Y').toUpperCase(),
       id,
       normalizedCustomerCode,

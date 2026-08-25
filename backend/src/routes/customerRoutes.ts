@@ -34,12 +34,17 @@ const multiUpload = multer({
   fileFilter: pdfOnly,
   limits: { fileSize: 5 * 1024 * 1024, files: 20 },
 });
+const registrationUpload = multer({
+  storage,
+  fileFilter: pdfOnly,
+  limits: { fileSize: 5 * 1024 * 1024, files: 21 },
+});
 
 router.get('/:customerCode', getCustomer);
 router.get('/:customerCode/gstins', getCustomerGstins);
 router.get('/:customerCode/gstins/:gstinId/file', getGstinFile);
 
-router.post('/', multiUpload.array('gstinFiles', 20), createCustomer);
+router.post('/', registrationUpload.fields([{ name: 'panFile', maxCount: 1 }, { name: 'gstinFiles', maxCount: 20 }]), createCustomer);
 router.put('/:customerCode', updateCustomer);
 router.put('/:customerCode/pan-file', singleUpload.single('panFile'), uploadPanFile);
 
