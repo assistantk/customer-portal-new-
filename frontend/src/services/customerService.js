@@ -48,7 +48,7 @@ async function request(url, options = {}) {
         : `Request failed with status ${res.status}`);
     throw new Error(msg);
   }
-  if (!responseText.trim()) throw new Error('The document scan service returned an empty response. Please try again.');
+  if (!text.trim()) throw new Error('The service returned an empty response. Please try again.');
   return body;
 }
 
@@ -69,6 +69,11 @@ export async function getMasterData() {
 }
 
 /* ---------- Customer Lookup (Old User) ---------- */
+
+export async function lookupOldCustomerJDBC(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/old-lookup?code=${encodeURIComponent(trimmed)}`);
+}
 
 export async function lookupCustomer(code) {
   const trimmed = code.trim().toUpperCase();

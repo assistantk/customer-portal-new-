@@ -6,4 +6,5 @@ public interface CustomerService {
   Long register(CustomerRegistrationRequest request, java.util.List<MultipartFile> files);
   CustomerLookupResponse lookupByCode(String customerCode);
   String generateUniqueCode(String baseCode);
+  com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
 }

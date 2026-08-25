@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, scanDocument } from '../services/customerService';
+import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, scanDocument } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
@@ -116,44 +116,47 @@ export default function CustomerRegistration() {
             setLookupLoading(true);
             lookupTimerRef.current = setTimeout(async () => {
                 try {
-                    const customer = await lookupCustomer(code.trim());
+                    const customer = await lookupOldCustomerJDBC(code.trim());
                     setForm({
                         companyName: customer.companyName || '',
-                        customerCode: customer.customerCode || code,
+                        customerCode: code,
                         address: customer.address || '',
-                        city: customer.city || '',
-                        pincode: customer.pincode || '',
-                        panNumber: customer.panNumber || '',
+                        city: '',
+                        pincode: '',
+                        panNumber: '',
                         operatingDivision: '',
                         zone: '',
-                        email: customer.email || '',
-                        mobile: customer.mobile || '',
-                        globalCustomerCode: customer.globalCustomerCode || '',
-                        handlingAgentCode: customer.handlingAgentCode || '',
+                        email: customer.emailId || '',
+                        mobile: customer.phoneNumber || '',
+                        globalCustomerCode: '',
+                        handlingAgentCode: '',
                     });
                     setPanFile(null);
-                    setPanStatus(customer.panVerificationStatus || '');
-                    setExistingPanFileName(customer.panFileName || '');
+                    setPanStatus('');
+                    setExistingPanFileName('');
                     if (panFileRef.current) panFileRef.current.value = '';
-                    if (customer.gstins && customer.gstins.length > 0) {
-                        setGstins(customer.gstins.map(g => ({
-                            gstinId: g.gstinId || null,
-                            state: g.state,
-                            stateCode: g.stateCode || '',
-                            gstin: g.gstin,
-                            file: null,
-                            existingFileName: g.existingFileName || g.gstinFileName || '',
-                            registeredAddress: g.registeredAddress || '',
-                            gstinStatus: g.gstinStatus || '',
-                            addressStatus: g.addressStatus || '',
-                        })));
-                    } else {
-                        setGstins([{ ...blankGstin }]);
-                    }
+                    setGstins([{ ...blankGstin }]);
                     setRemovedGstinIds([]);
                     setLookupDone(true); setLookupError('');
-                } catch {
-                    setLookupDone(false); setLookupError('Customer Code not found. Please check the code or register as a New User.');
+                } catch (err) {
+                    console.error("Lookup error:", err);
+                    setLookupDone(false); 
+                    setLookupError(err.message || 'Error occurred while fetching customer data');
+                    setForm({
+                        companyName: '',
+                        customerCode: code,
+                        address: '',
+                        city: '',
+                        pincode: '',
+                        panNumber: '',
+                        operatingDivision: '',
+                        zone: '',
+                        email: '',
+                        mobile: '',
+                        globalCustomerCode: '',
+                        handlingAgentCode: '',
+                    });
+                    setGstins([{ ...blankGstin }]);
                 } finally {
                     setLookupLoading(false);
                 }
