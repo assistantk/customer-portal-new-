@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, scanDocument } from '../services/customerService';
+import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
 const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '' };
 const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (f.type !== 'application/pdf') return 'Only PDF files are allowed'; return '' };
-const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '', registeredAddress: '', gstinStatus: '', addressStatus: '' };
+const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
 const INDIAN_STATES = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
@@ -75,7 +75,6 @@ export default function CustomerRegistration() {
     const [form, setForm] = useState(blank);
     const [gstins, setGstins] = useState([{ ...blankGstin }]);
     const [panFile, setPanFile] = useState(null);
-    const [panStatus, setPanStatus] = useState('');
     const [existingPanFileName, setExistingPanFileName] = useState('');
     const [data, setData] = useState(initialMasterData);
     const [errors, setErrors] = useState({});
@@ -100,7 +99,7 @@ export default function CustomerRegistration() {
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
         setRemovedGstinIds([]);
-        setPanFile(null); setPanStatus(''); setExistingPanFileName('');
+        setPanFile(null); setExistingPanFileName('');
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
         if (panFileRef.current) panFileRef.current.value = '';
     };
@@ -132,7 +131,6 @@ export default function CustomerRegistration() {
                         handlingAgentCode: '',
                     });
                     setPanFile(null);
-                    setPanStatus('');
                     setExistingPanFileName('');
                     if (panFileRef.current) panFileRef.current.value = '';
                     setGstins([{ ...blankGstin }]);
@@ -213,7 +211,6 @@ export default function CustomerRegistration() {
         if (form.panNumber && !panRe.test(form.panNumber)) e.panNumber = 'PAN No. must contain exactly 10 letters or numbers';
         if (!panFile && !existingPanFileName) e.panFile = 'PAN card PDF is required';
         else if (panFile) { const pe = checkPanFile(panFile); if (pe) e.panFile = pe; }
-        if (panFile && panStatus !== 'DETECTED') e.panFile = panStatus === 'SCANNING' ? 'Scanning PAN Card...' : 'PAN must be detected and verified before submission';
 
         let stateSet = new Set();
         let gstinSet = new Set();
@@ -232,12 +229,16 @@ export default function CustomerRegistration() {
             } else if (g.file) {
                 const fe = checkFile(g.file);
                 if (fe) e[`gstin_${i}_file`] = fe;
-                else if (g.gstinStatus !== 'DETECTED' || g.addressStatus !== 'DETECTED') e[`gstin_${i}_file`] = g.gstinStatus === 'SCANNING' ? 'Scanning GST certificate...' : 'GSTIN and registered address must be detected before submission';
-                else if (!normalizeAddress(form.address).includes(normalizeAddress(g.registeredAddress)) && !normalizeAddress(g.registeredAddress).includes(normalizeAddress(form.address))) e[`gstin_${i}_file`] = 'Business address does not match the GST certificate';
             }
         });
 
-        if (mode === 'new' && !codeConfirmed && form.companyName) e.customerCode = 'Please wait — code is being verified';
+        if (mode === 'new' && !codeConfirmed && form.companyName) {
+            if (codeChecking) {
+                e.customerCode = 'Please wait — code is being verified';
+            } else {
+                e.customerCode = 'Failed to verify code. Make sure the Java backend is running with the latest code.';
+            }
+        }
         setErrors(e);
         return !Object.keys(e).length;
     };
@@ -304,7 +305,13 @@ export default function CustomerRegistration() {
                     // refresh failed, keep current state
                 }
             }
-        } catch (error) { setNotice(error.message) } finally { setLoading(false) }
+        } catch (error) { 
+            let msg = error.message;
+            if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
+            setNotice(msg);
+        } finally { 
+            setLoading(false);
+        }
     };
 
     const addGstin = () => setGstins([...gstins, { ...blankGstin }]);
@@ -325,37 +332,14 @@ export default function CustomerRegistration() {
         const selected = e.target.files[0];
         if (!selected) return;
         const error = checkFile(selected);
-        handleGstinChange(index, { file: error ? null : selected, gstinStatus: error ? '' : 'SCANNING', addressStatus: '', registeredAddress: '' });
+        handleGstinChange(index, { file: error ? null : selected });
         setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: error }));
-        if (!error) {
-            try {
-                const result = await scanDocument('gstin', selected);
-                const gstinMatches = !g.gstin || g.gstin.toUpperCase() === (result.gstin || '').toUpperCase();
-                const addressMatches = !form.address || normalizeAddress(form.address).includes(normalizeAddress(result.address || '')) || normalizeAddress(result.address || '').includes(normalizeAddress(form.address));
-                handleGstinChange(index, { gstin: g.gstin || result.gstin || '', registeredAddress: result.address || '', gstinStatus: gstinMatches ? 'DETECTED' : 'MISMATCH', addressStatus: addressMatches ? 'DETECTED' : 'MISMATCH' });
-            } catch (scanError) {
-                handleGstinChange(index, { gstinStatus: 'FAILED', addressStatus: 'FAILED' });
-                setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: scanError.message || 'GST certificate could not be read. Please upload a clearer PDF.' }));
-            }
-        }
     };
     const handlePanFileChange = async (e) => {
         const selected = e.target.files[0];
         const error = checkPanFile(selected);
         setPanFile(error ? null : selected);
-        setPanStatus(error ? '' : 'SCANNING');
         setErrors(prev => ({ ...prev, panFile: error }));
-        if (!error) {
-            try {
-                const result = await scanDocument('pan', selected);
-                setForm(prev => ({ ...prev, panNumber: prev.panNumber || result.pan }));
-                setPanStatus(!form.panNumber || form.panNumber.toUpperCase() === result.pan.toUpperCase() ? 'DETECTED' : 'MISMATCH');
-                if (form.panNumber && form.panNumber.toUpperCase() !== result.pan.toUpperCase()) setErrors(prev => ({ ...prev, panFile: 'PAN number does not match the uploaded PAN Card.' }));
-            } catch (scanError) {
-                setPanStatus('FAILED');
-                setErrors(prev => ({ ...prev, panFile: scanError.message || 'PAN could not be detected from this document.' }));
-            }
-        }
     };
 
     const cities = Object.keys(data?.cities || {}), pins = form.city ? (data?.cities?.[form.city] || []) : [], zones = Object.keys(divisionsByZone), divisions = form.zone ? (divisionsByZone[form.zone] || []) : [];
@@ -451,8 +435,6 @@ export default function CustomerRegistration() {
                         </button>
                     </div>
                     <input ref={panFileRef} className="hidden" type="file" accept=".pdf" onChange={handlePanFileChange} />
-                    {panStatus === 'SCANNING' && <small className="error">Scanning PAN Card...</small>}
-                    {panStatus === 'DETECTED' && <small className="code-confirmed">✓ PAN detected from document</small>}
                     {errors.panNumber && <small className="error">{errors.panNumber}</small>}
                     {errors.panFile && <small className="error">{errors.panFile}</small>}
                 </div>
@@ -485,7 +467,7 @@ export default function CustomerRegistration() {
                                 {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
                             </div>
                             <div className="grid">
-                                <Field label="Company Name" name="companyName" icon={Building2} placeholder="Enter company name" form={form} setForm={setForm} error={errors.companyName} />
+                                <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
                                 <div className="field gstin-number-field">
                                     <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
                                     <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
@@ -497,8 +479,6 @@ export default function CustomerRegistration() {
                                             {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                         </button>
                                     </div>
-                                    {g.gstinStatus === 'SCANNING' && <small className="error">Scanning GST certificate...</small>}
-                                    {g.gstinStatus === 'DETECTED' && g.addressStatus === 'DETECTED' && <small className="code-confirmed">✓ GSTIN detected · Address detected</small>}
                                     <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf" onChange={e => handleGstinFileChange(index, e)} />
                                     {errors[`gstin_${index}_gstin`] && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
                                     {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}

@@ -7,4 +7,6 @@ public interface CustomerService {
   CustomerLookupResponse lookupByCode(String customerCode);
   String generateUniqueCode(String baseCode);
   com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
+  String generateUniqueCodeJDBC(String companyName, String type);
+  String registerNewEntryJDBC(java.util.Map<String, String> formData);
 }

@@ -5,6 +5,6 @@ import org.springframework.http.*; import org.springframework.web.bind.MethodArg
  @ExceptionHandler({ResourceAlreadyExistsException.class}) ResponseEntity<?> duplicate(RuntimeException e){return error(HttpStatus.CONFLICT,e.getMessage());}
  @ExceptionHandler({ResourceNotFoundException.class}) ResponseEntity<?> notFound(RuntimeException e){return error(HttpStatus.NOT_FOUND,e.getMessage());}
  @ExceptionHandler({IllegalArgumentException.class}) ResponseEntity<?> bad(RuntimeException e){return error(HttpStatus.BAD_REQUEST,e.getMessage());}
- @ExceptionHandler(Exception.class) ResponseEntity<?> general(Exception e){return error(HttpStatus.INTERNAL_SERVER_ERROR,"Unable to process the request");}
+ @ExceptionHandler(Exception.class) ResponseEntity<?> general(Exception e){return error(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage() + " - " + Arrays.toString(e.getStackTrace()));}
  private ResponseEntity<?> error(HttpStatus s,String m){return ResponseEntity.status(s).body(Map.of("success",false,"message",m,"timestamp",Instant.now().toString()));}
 }
