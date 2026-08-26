@@ -112,4 +112,88 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private void validateFile(MultipartFile f) { if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required"); if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB"); String type=Optional.ofNullable(f.getContentType()).orElse(""); if(!Set.of("application/pdf").contains(type))throw new IllegalArgumentException("Only PDF files are allowed"); }
+
+ public String generateUniqueCodeJDBC(String companyName, String type) {
+  int maxLength = 4;
+  String cleaned = (companyName != null ? companyName.replaceAll("[^A-Za-z0-9]", " ").replaceAll("\\s+", " ").trim().toUpperCase() : "");
+  String[] words = cleaned.split(" ");
+  String base = "";
+  if (words.length >= maxLength) {
+   for(int i = 0; i < maxLength; i++) base += words[i].charAt(0);
+  } else if (words.length == 1) {
+   base = words[0].length() > maxLength ? words[0].substring(0, maxLength) : words[0];
+  } else if (words.length > 0) {
+   for (String w : words) base += w.charAt(0);
+   int remaining = maxLength - base.length();
+   String lastWord = words[words.length - 1];
+   if (remaining > 0 && lastWord.length() > 1) {
+    base += lastWord.substring(1, Math.min(1 + remaining, lastWord.length()));
+   }
+  }
+  if (base.length() > maxLength) base = base.substring(0, maxLength);
+  if (base.isEmpty()) base = "TEMP";
+
+  String tableName = type.equals("global") ? "global_customers" : "handling_agents";
+  String colName = type.equals("global") ? "global_code" : "handling_code";
+  String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
+
+  String candidate = base;
+  int suffix = 1;
+  while (true) {
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, candidate);
+    try (ResultSet rs = ps.executeQuery()) {
+     if (!rs.next()) return candidate;
+    }
+   } catch (SQLException e) {
+    throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
+   }
+   candidate = base + suffix;
+   if (candidate.length() > maxLength) {
+       String num = String.valueOf(suffix);
+       candidate = base.substring(0, Math.max(1, maxLength - num.length())) + num;
+   }
+   suffix++;
+  }
+ }
+
+ public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
+  String type = formData.get("codeType");
+  if (type != null) type = type.toLowerCase();
+  if ("handling_agent".equals(type)) type = "handling";
+  if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
+
+  String tableName = "global".equals(type) ? "global_customers" : "handling_agents";
+  String colName = "global".equals(type) ? "global_code" : "handling_code";
+  String sql = "INSERT INTO " + tableName + " (" + colName + ", company_name, pan_number, address, city, pincode, zone, division, email, mobile) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+  String providedCode = "global".equals(type) ? formData.get("globalCustomerCode") : formData.get("handlingAgentCode");
+
+  while (true) {
+   String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode : generateUniqueCodeJDBC(formData.get("customerName"), type);
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, finalCode);
+    ps.setString(2, formData.get("customerName"));
+    ps.setString(3, formData.get("pan"));
+    ps.setString(4, formData.get("address"));
+    ps.setString(5, formData.get("city"));
+    ps.setString(6, formData.get("pincode"));
+    ps.setString(7, formData.get("zone"));
+    ps.setString(8, formData.get("operatingDivision")); // Match frontend key
+    ps.setString(9, formData.get("email"));
+    ps.setString(10, formData.get("mobile"));
+    ps.executeUpdate();
+    return finalCode;
+   } catch (SQLException e) {
+    // MySQL Duplicate Entry Code
+    if (e.getErrorCode() == 1062) {
+     providedCode = null; // Regenerate code
+    } else {
+     throw new RuntimeException("Database error in registerNewEntryJDBC: " + e.getMessage(), e);
+    }
+   }
+  }
+ }
 }

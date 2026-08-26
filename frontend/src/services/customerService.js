@@ -7,12 +7,6 @@
 
 const API = '/api';
 
-export async function scanDocument(kind, file) {
-  const form = new FormData();
-  form.append('document', file);
-  return request(`${API}/documents/${kind}/scan`, { method: 'POST', body: form });
-}
-
 /* ---------- helpers ---------- */
 
 async function request(url, options = {}) {
@@ -119,18 +113,16 @@ export async function lookupCustomer(code) {
 /* ---------- Code Generation (New User) ---------- */
 
 export async function generateUniqueCode(companyName, codeType = 'GLOBAL') {
-  const endpoint =
-    codeType === 'HANDLING_AGENT'
-      ? `${API}/codes/generate-handling`
-      : `${API}/codes/generate-global`;
+  const type = codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
+  const endpoint = `${API}/customers/new-generate-code?type=${type}`;
 
   const resp = await request(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ companyName, reserve: false }),
+    body: JSON.stringify({ companyName }),
   });
 
-  return resp.data?.code || '';
+  return resp.code || resp.data?.code || '';
 }
 
 /* ---------- New Customer Registration ---------- */
@@ -151,6 +143,8 @@ export async function registerCustomer(payload, gstinEntries) {
     panFileType: payload.panFile ? payload.panFile.type : '',
     email: payload.email,
     mobile: payload.mobile,
+    zone: payload.zone,
+    operatingDivision: payload.operatingDivision,
     globalCustomerCode:
       codeType === 'global' ? payload.customerCode : undefined,
     handlingAgentCode:
@@ -173,7 +167,7 @@ export async function registerCustomer(payload, gstinEntries) {
   formData.set('gstins', JSON.stringify(customerBody.gstins));
   if (payload.panFile) formData.append('panFile', payload.panFile);
   gstinEntries.forEach(entry => { if (entry.file) formData.append('gstinFiles', entry.file); });
-  const createResp = await request(`${API}/customers`, { method: 'POST', body: formData });
+  const createResp = await request(`${API}/customers/new-register`, { method: 'POST', body: formData });
 
   const savedCode = createResp.data?.customerCode;
 
