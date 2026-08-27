@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery } from '../config/database.js';
-import { validateGstin } from '../utils/validators.js';
+import { validateGstin, isGstinMatchingPan } from '../utils/validators.js';
 import { env } from '../config/env.js';
 import { addressesMatch, scanDocument } from '../utils/documentScanner.js';
 import { isValidGSTIN } from '../utils/validators.js';
@@ -105,6 +105,11 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
     if (!(custRows as any[]).length) {
       throw new AppError('Customer Code not found.', 404, { customerCode });
     }
+    const [panRows] = await conn.execute(`SELECT pan_number FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+    const customerPan = (panRows as any[])[0]?.pan_number ?? '';
+    if (!isGstinMatchingPan(normalizedGstinNumber, customerPan)) {
+      throw new AppError('GSTIN does not match the PAN number', 400);
+    }
 
     // Check duplicate GSTIN
     const [dupRows] = await conn.execute(
@@ -197,6 +202,12 @@ export const updateGstin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const normalizedGstinNumber = payload.gstinNumber.trim().toUpperCase();
+
+  const customerRows = await executeQuery<any>(`SELECT pan_number FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+  const customerPan = customerRows[0]?.pan_number ?? '';
+  if (!isGstinMatchingPan(normalizedGstinNumber, customerPan)) {
+    throw new AppError('GSTIN does not match the PAN number', 400);
+  }
 
   // Check duplicate GSTIN (excluding self)
   const dupRows = await executeQuery<any>(

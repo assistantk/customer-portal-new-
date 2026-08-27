@@ -33,6 +33,15 @@ const divisionsByZone = {
     'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
 };
 const gstinRe = /^[A-Za-z0-9]{15}$/, panRe = /^[A-Za-z0-9]{10}$/, mobileRe = /^[6-9][0-9]{9}$/;
+const normalizeDocumentNumber = value => String(value || '').replace(/\s+/g, '').toUpperCase();
+const getGstinPanStatus = (gstin, pan) => {
+    const normalizedGstin = normalizeDocumentNumber(gstin);
+    const normalizedPan = normalizeDocumentNumber(pan);
+    if (!normalizedGstin) return null;
+    if (normalizedGstin.length !== 15) return 'Enter a valid 15-character GSTIN.';
+    if (normalizedPan.length !== 10 || !panRe.test(normalizedPan)) return null;
+    return normalizedGstin.slice(2, 12) === normalizedPan ? '✓ GSTIN matches PAN' : '✕ GSTIN does not match the PAN number.';
+};
 const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
 
@@ -221,7 +230,8 @@ export default function CustomerRegistration() {
         if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
         if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
         if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) e.pincode = 'Invalid pincode';
-        if (form.panNumber && !panRe.test(form.panNumber)) e.panNumber = 'PAN No. must contain exactly 10 letters or numbers';
+        const normalizedPan = normalizeDocumentNumber(form.panNumber);
+        if (form.panNumber && (!panRe.test(normalizedPan) || normalizedPan.length !== 10)) e.panNumber = 'Enter a valid 10-character PAN.';
         if (!panFile && !existingPanFileName) e.panFile = 'PAN card PDF is required';
         else if (panFile) { const pe = checkPanFile(panFile); if (pe) e.panFile = pe; }
 
@@ -232,10 +242,12 @@ export default function CustomerRegistration() {
             else if (stateSet.has(g.state)) e[`gstin_${i}_state`] = 'State already added';
             else stateSet.add(g.state);
 
+            const normalizedGstin = normalizeDocumentNumber(g.gstin);
             if (!g.gstin) e[`gstin_${i}_gstin`] = 'GSTIN is required';
-            else if (!gstinRe.test(g.gstin)) e[`gstin_${i}_gstin`] = 'Must be exactly 15 alphanumeric characters';
-            else if (gstinSet.has(g.gstin)) e[`gstin_${i}_gstin`] = 'GSTIN already added';
-            else gstinSet.add(g.gstin);
+            else if (!gstinRe.test(normalizedGstin) || normalizedGstin.length !== 15) e[`gstin_${i}_gstin`] = 'Enter a valid 15-character GSTIN.';
+            else if (gstinSet.has(normalizedGstin)) e[`gstin_${i}_gstin`] = 'GSTIN already added';
+            else if (normalizedGstin.slice(2, 12) !== normalizedPan) e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
+            else gstinSet.add(normalizedGstin);
 
             if (!g.file && !g.existingFileName) {
                 e[`gstin_${i}_file`] = 'GSTIN file is required';
@@ -328,6 +340,33 @@ export default function CustomerRegistration() {
         const newGstins = [...gstins];
         newGstins[index] = { ...newGstins[index], ...updates };
         setGstins(newGstins);
+        if (Object.prototype.hasOwnProperty.call(updates, 'gstin')) {
+            const status = getGstinPanStatus(updates.gstin, form.panNumber);
+            setErrors(prev => {
+                const next = { ...prev };
+                const field = `gstin_${index}_gstin`;
+                if (status?.startsWith('✕')) next[field] = 'GSTIN does not match the PAN number.';
+                else if (status?.startsWith('Enter')) next[field] = status;
+                else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[field])) delete next[field];
+                return next;
+            });
+        }
+    };
+    const handlePanChange = value => {
+        setForm(prev => ({ ...prev, panNumber: value }));
+        setErrors(prev => {
+            const next = { ...prev };
+            const normalizedPan = normalizeDocumentNumber(value);
+            if (value && (!panRe.test(normalizedPan) || normalizedPan.length !== 10)) next.panNumber = 'Enter a valid 10-character PAN.';
+            else if (next.panNumber === 'Enter a valid 10-character PAN.') delete next.panNumber;
+            gstins.forEach((gstin, index) => {
+                const status = getGstinPanStatus(gstin.gstin, value);
+                if (status?.startsWith('✕')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
+                else if (status?.startsWith('Enter')) next[`gstin_${index}_gstin`] = status;
+                else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[`gstin_${index}_gstin`])) delete next[`gstin_${index}_gstin`];
+            });
+            return next;
+        });
     };
     const handleGstinFileChange = async (index, e) => {
         const selected = e.target.files[0];
@@ -430,7 +469,7 @@ export default function CustomerRegistration() {
                     <label htmlFor="panNumber">PAN No. <b>*</b></label>
                     <div className={'control pan-control ' + (errors.panNumber || errors.panFile ? 'invalid' : '')}>
                         <FileText size={15} />
-                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => setForm({ ...form, panNumber: e.target.value })} />
+                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => handlePanChange(e.target.value)} />
                         <button type="button" className={'pan-upload-btn' + (panFile || existingPanFileName ? ' has-file' : '')} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card PDF')}>
                             <UploadCloud size={14} />
                             <span className="pan-upload-label">{panFile ? panFile.name : (existingPanFileName || 'Upload PDF')}</span>
@@ -483,6 +522,8 @@ export default function CustomerRegistration() {
                                     </div>
                                     <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf" onChange={e => handleGstinFileChange(index, e)} />
                                     {errors[`gstin_${index}_gstin`] && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
+                                    {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✓') && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
+                                    {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✕') && <small className="error">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
                                     {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                 </div>
                             </div>

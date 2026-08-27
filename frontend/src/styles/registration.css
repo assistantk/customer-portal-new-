@@ -300,6 +300,13 @@ label b {
     margin-top: 2px
 }
 
+.gstin-verified {
+    color: #126c38;
+    font: 11px Arial;
+    display: block;
+    margin-top: 2px
+}
+
 .hidden {
     display: none
 }
