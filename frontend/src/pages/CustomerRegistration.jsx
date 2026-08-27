@@ -178,8 +178,10 @@ export default function CustomerRegistration() {
                     const unique = await generateUniqueCode(newName, codeType);
                     setForm(prev => ({ ...prev, customerCode: unique }));
                     setCodeConfirmed(true);
-                } catch {
+                } catch (err) {
+                    console.error("Code verification error:", err);
                     setCodeConfirmed(false);
+                    setLookupError("Verify failed: " + (err.message || 'Unknown error'));
                 } finally {
                     setCodeChecking(false);
                 }
@@ -407,6 +409,7 @@ export default function CustomerRegistration() {
                             </span>
                         </div>
                         {codeConfirmed && <small className="code-confirmed">✓ {codeType === 'GLOBAL' ? 'Global' : 'Handling Agent'} Code "{form.customerCode}" is available</small>}
+                        {lookupError && !codeConfirmed && mode === 'new' && <small className="error lookup-error"><AlertCircle size={13} /> {lookupError}</small>}
                         {errors.customerCode && <small className="error">{errors.customerCode}</small>}
                     </div>
                 )}
