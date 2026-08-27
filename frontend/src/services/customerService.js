@@ -114,7 +114,7 @@ export async function lookupCustomer(code) {
 
 export async function generateUniqueCode(companyName, codeType = 'GLOBAL') {
   const type = codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
-  const endpoint = `${API}/customers/new-generate-code?type=${type}`;
+  const endpoint = `${API}/codes/generate-${type}`;
 
   const resp = await request(endpoint, {
     method: 'POST',
@@ -122,7 +122,7 @@ export async function generateUniqueCode(companyName, codeType = 'GLOBAL') {
     body: JSON.stringify({ companyName }),
   });
 
-  return resp.code || resp.data?.code || '';
+  return resp.data?.code || resp.code || '';
 }
 
 /* ---------- New Customer Registration ---------- */
@@ -167,7 +167,7 @@ export async function registerCustomer(payload, gstinEntries) {
   formData.set('gstins', JSON.stringify(customerBody.gstins));
   if (payload.panFile) formData.append('panFile', payload.panFile);
   gstinEntries.forEach(entry => { if (entry.file) formData.append('gstinFiles', entry.file); });
-  const createResp = await request(`${API}/customers/new-register`, { method: 'POST', body: formData });
+  const createResp = await request(`${API}/customers`, { method: 'POST', body: formData });
 
   const savedCode = createResp.data?.customerCode;
 
