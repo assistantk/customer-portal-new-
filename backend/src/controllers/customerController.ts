@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { env } from '../config/env.js';
 import { addressesMatch, scanDocument } from '../utils/documentScanner.js';
-import { isValidPAN, isValidGSTIN } from '../utils/validators.js';
+import { isValidPAN, isValidGSTIN, isGstinMatchingPan } from '../utils/validators.js';
 
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
 const paramStr = (val: string | string[] | undefined): string =>
@@ -104,6 +104,9 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       fileType: gstin.fileType,
       activeFlag: 'Y',
     }, true));
+    if (isValidPAN(String(payload.pan ?? '').trim().toUpperCase()) && isValidGSTIN(normalizedGstin) && !isGstinMatchingPan(normalizedGstin, String(payload.pan ?? ''))) {
+      gstinValidationErrors.push({ field: 'gstinNumber', message: 'GSTIN does not match the PAN number' });
+    }
   }
   // When codeType is set, the server will generate/handle the code — skip code-required validation
   const codeType = rawBody.codeType;
@@ -287,6 +290,16 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
   };
 
   const errors = validateCustomer(merged, false);
+  const existingGstinRows = await executeQuery<any>(
+    `SELECT gstin_number FROM customer_gstins WHERE customer_code = ? AND active = 'Y'`,
+    [normalizedCode]
+  );
+  for (const row of existingGstinRows) {
+    if (isValidPAN(String(merged.pan ?? '')) && isValidGSTIN(String(row.gstin_number ?? '').trim().toUpperCase()) && !isGstinMatchingPan(row.gstin_number, String(merged.pan ?? ''))) {
+      errors.push({ field: 'pan', message: 'PAN does not match an existing GSTIN for this customer' });
+      break;
+    }
+  }
   if (errors.length > 0) {
     throw new AppError('Validation failed', 400, { errors });
   }
