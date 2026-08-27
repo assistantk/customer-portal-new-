@@ -90,7 +90,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-  String sql = "SELECT phone_number, email_id, company_name, address FROM customer_code WHERE customer_code = ?";
+  String sql = "SELECT phone_number, email_id, company_name, address, pan_number, gstin_numbers FROM customer_code WHERE customer_code = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode);
@@ -101,6 +101,8 @@ public class CustomerServiceImpl implements CustomerService {
      response.setEmailId(rs.getString("email_id"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
+     response.setPanNumber(rs.getString("pan_number"));
+     response.setGstinNumbers(rs.getString("gstin_numbers"));
      return response;
     } else {
      throw new ResourceNotFoundException("Invalid Customer Code");
@@ -194,6 +196,27 @@ public class CustomerServiceImpl implements CustomerService {
      throw new RuntimeException("Database error in registerNewEntryJDBC: " + e.getMessage(), e);
     }
    }
+  }
+ }
+
+ public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
+  String sql = "UPDATE customer_code SET company_name = ?, phone_number = ?, email_id = ?, address = ?, pan_number = ?, gstin_numbers = ? WHERE customer_code = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, formData.get("companyName"));
+   ps.setString(2, formData.get("mobile"));
+   ps.setString(3, formData.get("email"));
+   ps.setString(4, formData.get("address"));
+   ps.setString(5, formData.get("panNumber"));
+   ps.setString(6, formData.get("gstinNumbers"));
+   ps.setString(7, formData.get("customerCode"));
+   
+   int rowsAffected = ps.executeUpdate();
+   if (rowsAffected == 0) {
+    throw new ResourceNotFoundException("Customer Code not found for update");
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error in updateOldCustomerJDBC: " + e.getMessage(), e);
   }
  }
 }

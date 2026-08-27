@@ -9,4 +9,5 @@ public interface CustomerService {
   com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
   String generateUniqueCodeJDBC(String companyName, String type);
   String registerNewEntryJDBC(java.util.Map<String, String> formData);
+  void updateOldCustomerJDBC(java.util.Map<String, String> formData);
 }

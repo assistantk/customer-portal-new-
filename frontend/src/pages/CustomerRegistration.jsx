@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
+import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
@@ -122,7 +122,7 @@ export default function CustomerRegistration() {
                         address: customer.address || '',
                         city: '',
                         pincode: '',
-                        panNumber: '',
+                        panNumber: customer.panNumber || '',
                         operatingDivision: '',
                         zone: '',
                         email: customer.emailId || '',
@@ -133,7 +133,18 @@ export default function CustomerRegistration() {
                     setPanFile(null);
                     setExistingPanFileName('');
                     if (panFileRef.current) panFileRef.current.value = '';
-                    setGstins([{ ...blankGstin }]);
+                    
+                    if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
+                        const loadedGstins = customer.gstinNumbers.split(',').map((g, idx) => ({
+                            ...blankGstin,
+                            gstinId: `old-${idx}`, // temporary ID
+                            gstin: g.trim(),
+                        }));
+                        setGstins(loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }]);
+                    } else {
+                        setGstins([{ ...blankGstin }]);
+                    }
+                    
                     setRemovedGstinIds([]);
                     setLookupDone(true); setLookupError('');
                 } catch (err) {
@@ -260,51 +271,39 @@ export default function CustomerRegistration() {
                 setNotice(result.message || 'Customer registration submitted successfully');
                 reset();
             } else {
-                /* --- Old User: update customer + manage GSTINs --- */
-                // First, delete any GSTINs that were removed
-                for (const gstinId of removedGstinIds) {
-                    try {
-                        await deleteGstin(form.customerCode, gstinId);
-                    } catch {
-                        // Silently skip if already deleted
-                    }
-                }
-
-                // Then update customer + upsert GSTINs
-                const result = await updateCustomer(
-                    form.customerCode,
-                    { ...form, panFile },
+                /* --- Old User: update customer via JDBC --- */
+                const result = await updateOldCustomerJDBC(
+                    form,
                     gstins
                 );
+                
                 setNotice(result.message || 'Customer updated successfully');
                 setRemovedGstinIds([]);
+                
                 // Re-lookup to refresh data from DB
                 try {
-                    const refreshed = await lookupCustomer(form.customerCode);
+                    const refreshed = await lookupOldCustomerJDBC(form.customerCode.trim());
                     setForm(prev => ({
                         ...prev,
                         companyName: refreshed.companyName || prev.companyName,
                         address: refreshed.address || prev.address,
-                        city: refreshed.city || prev.city,
-                        pincode: refreshed.pincode || prev.pincode,
                         panNumber: refreshed.panNumber || prev.panNumber,
-                        email: refreshed.email || prev.email,
-                        mobile: refreshed.mobile || prev.mobile,
-                        globalCustomerCode: refreshed.globalCustomerCode || '',
-                        handlingAgentCode: refreshed.handlingAgentCode || '',
+                        email: refreshed.emailId || prev.email,
+                        mobile: refreshed.phoneNumber || prev.mobile,
                     }));
-                    if (refreshed.gstins && refreshed.gstins.length > 0) {
-                        setGstins(refreshed.gstins.map(g => ({
-                            gstinId: g.gstinId || null,
-                            state: g.state,
-                            stateCode: g.stateCode || '',
-                            gstin: g.gstin,
-                            file: null,
-                            existingFileName: g.existingFileName || g.gstinFileName || '',
-                        })));
+                    
+                    if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
+                        const loadedGstins = refreshed.gstinNumbers.split(',').map((g, idx) => ({
+                            ...blankGstin,
+                            gstinId: `old-${idx}`, // temporary ID
+                            gstin: g.trim(),
+                        }));
+                        setGstins(loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }]);
+                    } else {
+                        setGstins([{ ...blankGstin }]);
                     }
-                } catch {
-                    // refresh failed, keep current state
+                } catch (refreshErr) {
+                    console.error("Refresh lookup error:", refreshErr);
                 }
             }
         } catch (error) { 

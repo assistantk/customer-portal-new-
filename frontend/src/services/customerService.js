@@ -257,8 +257,32 @@ export async function updateCustomer(code, payload, gstinEntries) {
 /* ---------- Delete GSTIN ---------- */
 
 export async function deleteGstin(customerCode, gstinId) {
-  return request(
-    `${API}/customers/${encodeURIComponent(customerCode)}/gstins/${gstinId}`,
-    { method: 'DELETE' }
-  );
+  return request(`${API}/customers/${encodeURIComponent(customerCode)}/gstins/${gstinId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function updateOldCustomerJDBC(payload, gstinEntries) {
+  const gstinNumbers = gstinEntries
+    .map(g => g.gstin)
+    .filter(Boolean)
+    .join(',');
+
+  const updateBody = {
+    customerCode: payload.customerCode,
+    companyName: payload.companyName,
+    address: payload.address,
+    email: payload.email,
+    mobile: payload.mobile,
+    panNumber: payload.panNumber,
+    gstinNumbers: gstinNumbers
+  };
+
+  const resp = await request(`${API}/customers/old-update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateBody),
+  });
+
+  return resp;
 }
