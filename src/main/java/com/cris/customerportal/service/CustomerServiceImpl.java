@@ -211,10 +211,7 @@ public class CustomerServiceImpl implements CustomerService {
    ps.setString(6, formData.get("gstinNumbers"));
    ps.setString(7, formData.get("customerCode"));
    
-   int rowsAffected = ps.executeUpdate();
-   if (rowsAffected == 0) {
-    throw new ResourceNotFoundException("Customer Code not found for update");
-   }
+   ps.executeUpdate();
   } catch (SQLException e) {
    throw new RuntimeException("Database error in updateOldCustomerJDBC: " + e.getMessage(), e);
   }

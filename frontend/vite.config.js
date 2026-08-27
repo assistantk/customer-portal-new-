@@ -6,15 +6,15 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/customers/old-lookup': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/api/customers/new-generate-code': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/api/customers/new-register': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/api/customers/old-update': {
