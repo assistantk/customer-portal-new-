@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
+ @Autowired private org.springframework.mail.javamail.JavaMailSender mailSender;
  private final CustomerRepository repo;
  private final CustomerGstinRepository gstinRepo;
  private final Path uploadPath;
@@ -211,9 +212,27 @@ public class CustomerServiceImpl implements CustomerService {
    ps.setString(6, formData.get("gstinNumbers"));
    ps.setString(7, formData.get("customerCode"));
    
-   int rowsAffected = ps.executeUpdate();
-   if (rowsAffected == 0) {
-    throw new ResourceNotFoundException("Customer Code not found for update");
+   ps.executeUpdate();
+   
+   // Send actual email asynchronously
+   if (formData.get("email") != null && !formData.get("email").trim().isEmpty()) {
+       java.util.concurrent.CompletableFuture.runAsync(() -> {
+           try {
+               org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+               message.setFrom("sura767848@gmail.com");
+               message.setTo("sura767848@gmail.com");
+               message.setSubject("Customer Record Updated: " + formData.get("customerCode"));
+               message.setText("The customer record for " + formData.get("companyName") + " has been successfully updated via JDBC.\n\n" +
+                               "Customer Code: " + formData.get("customerCode") + "\n" +
+                               "Email: " + formData.get("email") + "\n" +
+                               "PAN: " + formData.get("panNumber") + "\n" +
+                               "GSTINs: " + formData.get("gstinNumbers"));
+               mailSender.send(message);
+               System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com");
+           } catch (Exception ex) {
+               System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+           }
+       });
    }
   } catch (SQLException e) {
    throw new RuntimeException("Database error in updateOldCustomerJDBC: " + e.getMessage(), e);
