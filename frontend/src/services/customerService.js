@@ -26,11 +26,11 @@ async function request(url, options = {}) {
   } catch (parseErr) {
     // If response is not OK and we have a parsing error, it's likely an error from the server
     if (!res.ok) {
-      throw new Error(`Server error (${res.status}). Please ensure the backend is running.`);
+      throw new Error(`Server error (${res.status}). Response: ${text.substring(0, 50)}...`);
     }
     // For successful responses with invalid JSON, this is still an error
     console.error('Response parse error:', parseErr, 'Response text:', text);
-    throw new Error('Invalid response format from server.');
+    throw new Error(`Invalid response format from server. Response: ${text.substring(0, 50)}...`);
   }
 
   if (!res.ok) {

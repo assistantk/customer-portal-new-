@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import { withTransaction, getConnection } from '../config/database.js';
+import { withTransaction, getPool } from '../config/database.js';
 import { env } from '../config/env.js';
-import oracledb from 'oracledb';
+
 
 const SALT_ROUNDS = 10;
 
@@ -37,29 +37,25 @@ function checkPassword(password: string): PasswordCheck {
 }
 
 /**
- * Check if the MEMUSERS table exists in the database.
+ * Check if the users table exists in the database.
  * Returns true if the table exists, false otherwise.
  */
 async function isUsersTableReady(): Promise<boolean> {
   let conn;
   try {
-    conn = await getConnection();
-    await conn.execute(
-      `SELECT 1 FROM MEMUSERS WHERE ROWNUM = 1`,
-      [],
-      { outFormat: oracledb.OUT_FORMAT_OBJECT },
-    );
+    conn = await getPool().getConnection();
+    await conn.execute(`SELECT 1 FROM users LIMIT 1`);
     return true;
   } catch (err: any) {
     const msg = String(err?.message ?? '');
-    // ORA-00942: table or view does not exist
-    if (err?.errorNum === 942 || msg.includes('ORA-00942')) {
+    // ER_NO_SUCH_TABLE
+    if (err?.errno === 1146 || msg.includes('doesn\'t exist')) {
       return false;
     }
     throw err; // Re-throw non-table-missing errors
   } finally {
     if (conn) {
-      try { await conn.close(); } catch (_) { /* ignore */ }
+      try { conn.release(); } catch (_) { /* ignore */ }
     }
   }
 }
