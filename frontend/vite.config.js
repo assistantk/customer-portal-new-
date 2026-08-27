@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
+      '/api/customers/old-update': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/api': {
         target: process.env.VITE_API_BASE_URL || 'http://localhost:4000',
         changeOrigin: true,
@@ -24,3 +28,6 @@ export default defineConfig({
     },
   },
 });
+
+// trigger restart
+// trigger restart 2

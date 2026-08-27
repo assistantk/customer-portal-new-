@@ -26,11 +26,11 @@ async function request(url, options = {}) {
   } catch (parseErr) {
     // If response is not OK and we have a parsing error, it's likely an error from the server
     if (!res.ok) {
-      throw new Error(`Server error (${res.status}). Please ensure the backend is running.`);
+      throw new Error(`Server error (${res.status}). Response: ${text.substring(0, 50)}...`);
     }
     // For successful responses with invalid JSON, this is still an error
     console.error('Response parse error:', parseErr, 'Response text:', text);
-    throw new Error('Invalid response format from server.');
+    throw new Error(`Invalid response format from server. Response: ${text.substring(0, 50)}...`);
   }
 
   if (!res.ok) {
@@ -257,8 +257,32 @@ export async function updateCustomer(code, payload, gstinEntries) {
 /* ---------- Delete GSTIN ---------- */
 
 export async function deleteGstin(customerCode, gstinId) {
-  return request(
-    `${API}/customers/${encodeURIComponent(customerCode)}/gstins/${gstinId}`,
-    { method: 'DELETE' }
-  );
+  return request(`${API}/customers/${encodeURIComponent(customerCode)}/gstins/${gstinId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function updateOldCustomerJDBC(payload, gstinEntries) {
+  const gstinNumbers = gstinEntries
+    .map(g => g.gstin)
+    .filter(Boolean)
+    .join(',');
+
+  const updateBody = {
+    customerCode: payload.customerCode,
+    companyName: payload.companyName,
+    address: payload.address,
+    email: payload.email,
+    mobile: payload.mobile,
+    panNumber: payload.panNumber,
+    gstinNumbers: gstinNumbers
+  };
+
+  const resp = await request(`${API}/customers/old-update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateBody),
+  });
+
+  return resp;
 }
