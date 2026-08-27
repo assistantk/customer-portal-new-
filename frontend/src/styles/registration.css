@@ -358,6 +358,30 @@ label b {
     vertical-align: middle;
 }
 
+.pan-scan-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    margin-top: 3px;
+}
+
+.pan-scan-status.scanning {
+    color: #2563eb;
+}
+
+.pan-scan-status.success {
+    color: #15803d;
+}
+
+.pan-scan-status.warn {
+    color: #b45309;
+}
+
+.pan-scan-status > svg {
+    flex-shrink: 0;
+}
+
 /* ===== Actions / Footer ===== */
 .actions {
     justify-content: space-between;

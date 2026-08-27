@@ -3,6 +3,7 @@ import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery } from '../config/database.js';
 import { validateCustomer, validateGstin, CustomerPayload } from '../utils/validators.js';
 import { reserveUniqueCode } from '../utils/codeGenerator.js';
+import { sendAuditEmail } from '../utils/email.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { env } from '../config/env.js';
@@ -170,8 +171,8 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
         customer_code, company_name, address, city, pincode, pco_code,
         pan_number, email, mobile,
         global_customer_code, handling_agent_code,
-        active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        active, code_type, operating_division, zone
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         customerCode,
         payload.customerName.trim().slice(0, 100),
@@ -185,6 +186,9 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
         globalCode ?? null,
         handlingCode ?? null,
         (payload.activeFlag ?? 'Y').toUpperCase(),
+        payload.codeType?.slice(0, 255) ?? 'Unknown',
+        payload.operatingDivision?.slice(0, 255) ?? 'Unknown',
+        payload.zone?.slice(0, 255) ?? 'Unknown',
       ]
     );
 
@@ -226,6 +230,106 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
           gstin.scannedAddress ? 'VERIFIED' : 'PENDING',
         ]
       );
+    }
+
+    // Prepare audit data after successful transaction
+    const timestamp = new Date().toISOString();
+    const submittedBy = undefined; // No user auth yet
+
+    // Audit for customers table
+    const customerChanges: { fieldName: string; oldValue: any; newValue: any }[] = [];
+    const customerColumns = [
+      { field: 'customer_name', value: payload.customerName?.trim().slice(0, 100) ?? null },
+      { field: 'address', value: payload.address?.trim().slice(0, 255) ?? null },
+      { field: 'city', value: payload.city?.trim().slice(0, 50) ?? null },
+      { field: 'pincode', value: payload.pincode?.trim().slice(0, 10) ?? null },
+      { field: 'pco_code', value: payload.pcoCode?.trim().slice(0, 3) ?? null },
+      { field: 'pan_number', value: payload.pan?.trim().toUpperCase().slice(0, 10) ?? null },
+      { field: 'email', value: payload.email?.trim().toLowerCase().slice(0, 100) ?? null },
+      { field: 'mobile', value: payload.mobile?.trim().slice(0, 15) ?? null },
+      { field: 'global_customer_code', value: globalCode ?? null },
+      { field: 'handling_agent_code', value: handlingCode ?? null },
+      { field: 'active', value: (payload.activeFlag ?? 'Y').toUpperCase() },
+      { field: 'code_type', value: payload.codeType?.slice(0, 255) ?? 'Unknown' },
+      { field: 'operating_division', value: payload.operatingDivision?.slice(0, 255) ?? 'Unknown' },
+      { field: 'zone', value: payload.zone?.slice(0, 255) ?? 'Unknown' },
+    ];
+    // For INSERT, we consider all columns as changes (oldValue = null)
+    customerColumns.forEach(col => {
+      customerChanges.push({
+        fieldName: col.field,
+        oldValue: null,
+        newValue: col.value,
+      });
+    });
+
+    // Audit for customer_gstins table
+    const gstinChanges: { fieldName: string; oldValue: any; newValue: any }[] = [];
+    let gstinQueryParts = [];
+    for (let index = 0; index < gstins.length; index++) {
+      const gstin = gstins[index];
+      if (!gstin.gstinNumber?.trim() || !gstin.state?.trim()) continue;
+      // For INSERT, oldValue = null
+      gstinChanges.push(
+        { fieldName: 'state', oldValue: null, newValue: gstin.state.trim().slice(0, 50) },
+        { fieldName: 'state_code', oldValue: null, newValue: gstin.stateCode?.trim().slice(0, 2) ?? null },
+        { fieldName: 'gstin_number', oldValue: null, newValue: gstin.gstinNumber.trim().toUpperCase().slice(0, 15) },
+        { fieldName: 'file_name', oldValue: null, newValue: gstin.fileName?.trim().slice(0, 255) ?? null },
+        { fieldName: 'file_type', oldValue: null, newValue: gstin.fileType?.trim().slice(0, 50) ?? null },
+        { fieldName: 'registered_address', oldValue: null, newValue: gstin.scannedAddress ?? null },
+        { fieldName: 'gstin_verification_status', oldValue: null, newValue: gstin.scannedAddress ? 'VERIFIED' : 'PENDING' },
+        { fieldName: 'address_verification_status', oldValue: null, newValue: gstin.scannedAddress ? 'VERIFIED' : 'PENDING' },
+        { fieldName: 'active', oldValue: null, newValue: 'Y' }
+      );
+      // Build individual INSERT for this GSTIN (we could combine, but simpler to do separate statements)
+      const gstinCols = 'customer_code, state, state_code, gstin_number, file_name, file_type, file_path, registered_address, gstin_verification_status, address_verification_status, active';
+      const gstinVals = [
+        `'${customerCode}'`,
+        `'${gstin.state.trim().slice(0, 50)}'`,
+        gstin.stateCode?.trim().slice(0, 2) ? `'${gstin.stateCode.trim().slice(0, 2)}'` : 'NULL',
+        `'${gstin.gstinNumber.trim().toUpperCase().slice(0, 15)}'`,
+        gstin.fileName?.trim().slice(0, 255) ? `'${gstin.fileName.trim().slice(0, 255).replace(/'/g, "''")}'` : 'NULL',
+        gstin.fileType?.trim().slice(0, 50) ? `'${gstin.fileType.trim().slice(0, 50).replace(/'/g, "''")}'` : 'NULL',
+        gstin.filePath ? `'${gstin.filePath.replace(/'/g, "''")}'` : 'NULL',
+        gstin.scannedAddress ? `'${gstin.scannedAddress.replace(/'/g, "''")}'` : 'NULL',
+        gstin.scannedAddress ? `'VERIFIED'` : `'PENDING'`,
+        gstin.scannedAddress ? `'VERIFIED'` : `'PENDING'`,
+        `'Y'`
+      ].join(', ');
+      gstinQueryParts.push(`INSERT INTO customer_gstins (${gstinCols}) VALUES (${gstinVals});`);
+    }
+    const gstinQuery = gstinQueryParts.join('\n');
+
+    const customerCols = customerColumns.map(c => c.field).join(', ');
+    const customerVals = customerColumns.map(c => c.value === null ? 'NULL' : `'${String(c.value).replace(/'/g, "''")}'`).join(', ');
+    const customerQuery = `INSERT INTO customers (${customerCols}) VALUES (${customerVals});`;
+
+    // Combine executed queries
+    const executedQuery = `${customerQuery}\n${gstinQuery}`.trim();
+
+    // Combine all changes
+    const allChanges: { fieldName: string; oldValue: any; newValue: any }[] = [
+      ...customerChanges,
+      ...gstinChanges,
+    ];
+
+    // Send audit email
+    try {
+      await sendAuditEmail({
+        page: 'New Entry',
+        operation: 'INSERT',
+        table: 'customers',
+        customerCode,
+        globalCode,
+        handlingAgentCode: handlingCode, // Fixed variable name
+        changes: allChanges,
+        executedQuery,
+        timestamp,
+        submittedBy,
+      });
+    } catch (emailError) {
+      console.error('[EMAIL AUDIT] Failed to send audit email for createCustomer:', emailError);
+      // Don't fail the request if email fails
     }
 
     return {
@@ -287,6 +391,9 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
       payload.activeFlag !== undefined
         ? payload.activeFlag.toUpperCase()
         : existing.active,
+    codeType: payload.codeType !== undefined ? payload.codeType : existing.code_type,
+    operatingDivision: payload.operatingDivision !== undefined ? payload.operatingDivision : existing.operating_division,
+    zone: payload.zone !== undefined ? payload.zone : existing.zone,
   };
 
   const errors = validateCustomer(merged, false);
@@ -316,7 +423,10 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
       mobile = ?,
       global_customer_code = ?,
       handling_agent_code = ?,
-      active = ?
+      active = ?,
+      code_type = ?,
+      operating_division = ?,
+      zone = ?
     WHERE customer_code = ?`,
     [
       merged.customerName.trim().slice(0, 100),
@@ -330,6 +440,9 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
       merged.globalCustomerCode ?? null,
       merged.handlingAgentCode ?? null,
       (merged.activeFlag ?? 'Y').toUpperCase(),
+      merged.codeType?.slice(0, 255) ?? 'Unknown',
+      merged.operatingDivision?.slice(0, 255) ?? 'Unknown',
+      merged.zone?.slice(0, 255) ?? 'Unknown',
       normalizedCode,
     ]
   );
@@ -338,6 +451,93 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
     `SELECT * FROM customers WHERE customer_code = ?`,
     [normalizedCode]
   );
+
+  // Prepare audit data after successful update
+  const timestamp = new Date().toISOString();
+  const submittedBy = undefined; // No user auth yet
+
+  // Audit for customers table - compare existing vs afterRows
+  const customerChanges: { fieldName: string; oldValue: any; newValue: any }[] = [];
+  const customerFields = [
+    { field: 'customer_name', existing: existing.company_name, after: afterRows[0]?.company_name },
+    { field: 'address', existing: existing.address, after: afterRows[0]?.address },
+    { field: 'city', existing: existing.city, after: afterRows[0]?.city },
+    { field: 'pincode', existing: existing.pincode, after: afterRows[0]?.pincode },
+    { field: 'pco_code', existing: existing.pco_code, after: afterRows[0]?.pco_code },
+    { field: 'pan_number', existing: existing.pan_number, after: afterRows[0]?.pan_number },
+    { field: 'email', existing: existing.email, after: afterRows[0]?.email },
+    { field: 'mobile', existing: existing.mobile, after: afterRows[0]?.mobile },
+    { field: 'global_customer_code', existing: existing.global_customer_code, after: afterRows[0]?.global_customer_code },
+    { field: 'handling_agent_code', existing: existing.handling_agent_code, after: afterRows[0]?.handling_agent_code },
+    { field: 'active', existing: existing.active, after: afterRows[0]?.active },
+    { field: 'code_type', existing: existing.code_type, after: afterRows[0]?.code_type },
+    { field: 'operating_division', existing: existing.operating_division, after: afterRows[0]?.operating_division },
+    { field: 'zone', existing: existing.zone, after: afterRows[0]?.zone },
+  ];
+  customerFields.forEach(field => {
+    const existingVal = field.existing ?? null;
+    const afterVal = field.after ?? null;
+    if (JSON.stringify(existingVal) !== JSON.stringify(afterVal)) {
+      customerChanges.push({
+        fieldName: field.field,
+        oldValue: existingVal,
+        newValue: afterVal,
+      });
+    }
+  });
+
+  // Audit for customer_gstins table - check if any GSTINs were modified
+  // Note: GSTIN modifications are handled separately in gstinController.ts
+  // For customer update, we only audit customer table changes
+  const allChanges = customerChanges;
+
+  // Build executed query string (UPDATE customers)
+  const setClauses = [
+    merged.customerName ? `company_name = '${merged.customerName.trim().slice(0, 100).replace(/'/g, "''")}'` : null,
+    merged.address !== undefined ? `address = ${merged.address ? `'${merged.address.trim().slice(0, 255).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.city !== undefined ? `city = ${merged.city ? `'${merged.city.trim().slice(0, 50).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.pincode !== undefined ? `pincode = ${merged.pincode ? `'${merged.pincode.trim().slice(0, 10).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.pcoCode !== undefined ? `pco_code = ${merged.pcoCode ? `'${merged.pcoCode.trim().slice(0, 3).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.pan !== undefined ? `pan_number = ${merged.pan ? `'${merged.pan.trim().toUpperCase().slice(0, 10).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.email !== undefined ? `email = ${merged.email ? `'${merged.email.trim().toLowerCase().slice(0, 100).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.mobile !== undefined ? `mobile = ${merged.mobile ? `'${merged.mobile.trim().slice(0, 15).replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.globalCustomerCode !== undefined ? `global_customer_code = ${merged.globalCustomerCode ? `'${merged.globalCustomerCode.trim().toUpperCase().replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.handlingAgentCode !== undefined ? `handling_agent_code = ${merged.handlingAgentCode ? `'${merged.handlingAgentCode.trim().toUpperCase().replace(/'/g, "''")}'` : 'NULL'}` : null,
+    merged.activeFlag !== undefined ? `active = '${(merged.activeFlag ?? 'Y').toUpperCase()}'` : null,
+  ].filter(Boolean).join(', ');
+
+  const executedQuery = `UPDATE customers SET ${setClauses} WHERE customer_code = '${normalizedCode}';`;
+
+  // Log audit information for debugging
+  console.log('[AUDIT DEBUG] updateCustomer called for customerCode:', normalizedCode);
+  console.log('[AUDIT DEBUG] Number of changes detected:', allChanges.length);
+  if (allChanges.length > 0) {
+    console.log('[AUDIT DEBUG] Changes:', JSON.stringify(allChanges, null, 2));
+  } else {
+    console.log('[AUDIT DEBUG] No changes detected');
+  }
+  console.log('[AUDIT DEBUG] Executing query:', executedQuery);
+
+  // Send audit email
+  try {
+    console.log('[AUDIT DEBUG] About to call sendAuditEmail...');
+    await sendAuditEmail({
+      page: 'Old User',
+      operation: 'UPDATE',
+      table: 'customers',
+      customerCode: normalizedCode,
+      globalCode: afterRows[0]?.global_customer_code ?? null,
+      handlingAgentCode: afterRows[0]?.handling_agent_code ?? null,
+      changes: allChanges,
+      executedQuery,
+      timestamp,
+      submittedBy,
+    });
+    console.log('[AUDIT DEBUG] sendAuditEmail completed successfully');
+  } catch (emailError) {
+    console.error('[EMAIL AUDIT] Failed to send audit email for updateCustomer:', emailError);
+    // Don't fail the request if email fails
+  }
 
   res.status(200).json({
     success: true,

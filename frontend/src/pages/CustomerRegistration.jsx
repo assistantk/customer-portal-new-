@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
 import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
+import { extractPanFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
@@ -85,6 +86,8 @@ export default function CustomerRegistration() {
     const [gstins, setGstins] = useState([{ ...blankGstin }]);
     const [panFile, setPanFile] = useState(null);
     const [existingPanFileName, setExistingPanFileName] = useState('');
+    const [panScanning, setPanScanning] = useState(false);
+    const [panScanStatus, setPanScanStatus] = useState('idle'); // idle | success | notfound | error
     const [data, setData] = useState(initialMasterData);
     const [errors, setErrors] = useState({});
     const [notice, setNotice] = useState('');
@@ -380,6 +383,25 @@ export default function CustomerRegistration() {
         const error = checkPanFile(selected);
         setPanFile(error ? null : selected);
         setErrors(prev => ({ ...prev, panFile: error }));
+        setPanScanStatus('idle');
+        if (error || !selected) return;
+
+        setPanScanning(true);
+        try {
+            const extracted = await extractPanFromFile(selected);
+            if (extracted) {
+                setForm(prev => ({ ...prev, panNumber: extracted }));
+                setErrors(prev => ({ ...prev, panNumber: '' }));
+                setPanScanStatus('success');
+            } else {
+                setPanScanStatus('notfound');
+            }
+        } catch (err) {
+            console.error('PAN OCR scan failed:', err);
+            setPanScanStatus('error');
+        } finally {
+            setPanScanning(false);
+        }
     };
 
     const cities = Object.keys(data?.cities || {}), pins = form.city ? (data?.cities?.[form.city] || []) : [], zones = Object.keys(divisionsByZone), divisions = form.zone ? (divisionsByZone[form.zone] || []) : [];
@@ -476,6 +498,10 @@ export default function CustomerRegistration() {
                         </button>
                     </div>
                     <input ref={panFileRef} className="hidden" type="file" accept=".pdf" onChange={handlePanFileChange} />
+                    {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Scanning PAN card…</small>}
+                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> PAN No. auto-filled from document</small>}
+                    {!panScanning && panScanStatus === 'notfound' && <small className="pan-scan-status warn"><AlertCircle size={12} /> Couldn't detect PAN — please enter it manually</small>}
+                    {!panScanning && panScanStatus === 'error' && <small className="pan-scan-status warn"><AlertCircle size={12} /> Scan failed — please enter PAN manually</small>}
                     {errors.panNumber && <small className="error">{errors.panNumber}</small>}
                     {errors.panFile && <small className="error">{errors.panFile}</small>}
                 </div>

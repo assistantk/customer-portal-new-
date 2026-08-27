@@ -22,6 +22,12 @@ export const env = {
 
   UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
 
+  DBA_EMAIL: process.env.DBA_EMAIL,
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS: process.env.SMTP_PASS,
+
   isProduction: process.env.NODE_ENV === 'production',
   isDevelopment: process.env.NODE_ENV !== 'production',
 

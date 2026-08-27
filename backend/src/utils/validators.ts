@@ -56,6 +56,9 @@ export interface CustomerPayload {
   globalCustomerCode?: string;
   handlingAgentCode?: string;
   activeFlag?: string;
+  codeType?: string;
+  operatingDivision?: string;
+  zone?: string;
 }
 
 export interface GstinPayload {
