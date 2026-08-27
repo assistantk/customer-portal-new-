@@ -40,4 +40,14 @@ public class CustomerController { private final CustomerService service; public 
   String code = service.registerNewEntryJDBC(formData);
   return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success",true,"message","Customer registration submitted successfully","customerCode",code));
  }
+
+ @PostMapping("/old-update")
+ public ResponseEntity<?> oldUpdate(@RequestBody Map<String, String> payload) {
+  try {
+   service.updateOldCustomerJDBC(payload);
+   return ResponseEntity.ok(Map.of("success", true, "message", "Customer updated successfully"));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
+  }
+ }
 }

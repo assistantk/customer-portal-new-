@@ -5,6 +5,8 @@ public class OldCustomerResponse {
     private String emailId;
     private String companyName;
     private String address;
+    private String panNumber;
+    private String gstinNumbers;
 
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
@@ -17,4 +19,10 @@ public class OldCustomerResponse {
 
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
+
+    public String getPanNumber() { return panNumber; }
+    public void setPanNumber(String panNumber) { this.panNumber = panNumber; }
+
+    public String getGstinNumbers() { return gstinNumbers; }
+    public void setGstinNumbers(String gstinNumbers) { this.gstinNumbers = gstinNumbers; }
 }
