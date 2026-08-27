@@ -11,6 +11,12 @@ export const isValidGSTIN = (gstin: string): boolean => {
   return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}[Z]{1}[A-Z0-9]{1}$/.test(gstin);
 };
 
+export const isGstinMatchingPan = (gstin: string, pan: string): boolean => {
+  const normalizedGstin = String(gstin ?? '').replace(/\s+/g, '').toUpperCase();
+  const normalizedPan = String(pan ?? '').replace(/\s+/g, '').toUpperCase();
+  return normalizedGstin.length === 15 && normalizedPan.length === 10 && normalizedGstin.slice(2, 12) === normalizedPan;
+};
+
 export const isValidIndianMobile = (mobile: string): boolean => {
   return /^[6-9][0-9]{9}$/.test(mobile);
 };
@@ -85,7 +91,9 @@ export const validateCustomer = (
     errors.push({ field: 'customerCode', message: 'Customer code must be 2-10 alphanumeric characters' });
   }
 
-  if (payload.pan && !isValidPAN(payload.pan)) {
+  if (!payload.pan?.trim()) {
+    errors.push({ field: 'pan', message: 'PAN is required' });
+  } else if (!isValidPAN(payload.pan.trim().toUpperCase())) {
     errors.push({ field: 'pan', message: 'PAN must be in format AAAAA9999A (5 letters + 4 digits + 1 letter)' });
   }
 
