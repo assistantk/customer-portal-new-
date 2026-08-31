@@ -262,6 +262,16 @@ export async function deleteGstin(customerCode, gstinId) {
   });
 }
 
+export async function lookupGlobalCustomerJDBC(code) {
+  if (!code || !code.trim()) throw new Error('Global Code is required.');
+  return request(`${API}/customers/global-lookup?code=${encodeURIComponent(code.trim())}`);
+}
+
+export async function lookupHandlingAgentJDBC(code) {
+  if (!code || !code.trim()) throw new Error('Handling Agent Code is required.');
+  return request(`${API}/customers/agent-lookup?code=${encodeURIComponent(code.trim())}`);
+}
+
 export async function updateOldCustomerJDBC(payload, gstinEntries) {
   const gstinNumbers = gstinEntries
     .map(g => g.gstin)

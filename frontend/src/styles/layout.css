@@ -1,0 +1,99 @@
+/* ===== Layout with Drawer ===== */
+.app-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 5%, #fff 0, #edf7ff 48%, #dbeeff 100%);
+}
+
+.layout-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden; /* To allow drawer to stick and main to scroll independently if needed */
+}
+
+/* Sidebar / Drawer */
+.drawer {
+    width: 250px;
+    background: #ffffff;
+    border-right: 1px solid #e2e8f0;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+    transition: width 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.drawer.collapsed {
+    width: 0;
+    border-right: none;
+}
+
+/* Header Toggle Button */
+.drawer-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.drawer-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.drawer-nav {
+    padding: 20px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #475569;
+    font: 600 14px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.drawer-item:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.drawer-item.active {
+    background: #eff6ff;
+    color: #2563eb;
+    border-left: 4px solid #3b82f6;
+    /* Adjust padding to account for border */
+    padding-left: 12px;
+}
+
+/* Ensure the main area takes up remaining space */
+.layout-main-content {
+    flex: 1;
+    overflow-y: auto;
+    /* Main area styling is inherited from registration.css's main tag, but let's be explicit */
+    display: flex;
+    flex-direction: column;
+}
+
+/* We override the existing main to handle scrolling properly if needed */
+.layout-main-content > main {
+    flex: 1;
+}

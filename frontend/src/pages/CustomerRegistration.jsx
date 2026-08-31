@@ -147,10 +147,11 @@ export default function CustomerRegistration() {
                     if (panFileRef.current) panFileRef.current.value = '';
                     
                     if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
-                        const loadedGstins = customer.gstinNumbers.split(',').map((g, idx) => ({
+                        const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
+                        const loadedGstins = cleanGstins.split(',').filter(Boolean).map((g, idx) => ({
                             ...blankGstin,
                             gstinId: `old-${idx}`, // temporary ID
-                            gstin: g.trim(),
+                            gstin: g,
                         }));
                         setGstins(loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }]);
                     } else {
@@ -308,10 +309,11 @@ export default function CustomerRegistration() {
                     }));
                     
                     if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
-                        const loadedGstins = refreshed.gstinNumbers.split(',').map((g, idx) => ({
+                        const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');
+                        const loadedGstins = cleanGstins.split(',').filter(Boolean).map((g, idx) => ({
                             ...blankGstin,
                             gstinId: `old-${idx}`, // temporary ID
-                            gstin: g.trim(),
+                            gstin: g,
                         }));
                         setGstins(loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }]);
                     } else {
@@ -406,17 +408,7 @@ export default function CustomerRegistration() {
 
     const cities = Object.keys(data?.cities || {}), pins = form.city ? (data?.cities?.[form.city] || []) : [], zones = Object.keys(divisionsByZone), divisions = form.zone ? (divisionsByZone[form.zone] || []) : [];
 
-    return <div className="app">
-        <header>
-            <div className="brand">
-                <div className="cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
-                <span>CUSTOMER REGISTRATION PORTAL</span>
-            </div>
-            <div className="cris"><img src={crisLogo} alt="CRIS – making IT happen" /></div>
-        </header>
-
-        
-
+    return (
         <main><form className="card" onSubmit={submit}>
             <div className="card-head">
                 <div className="title-icon"><UserRound /><div>
@@ -559,6 +551,6 @@ export default function CustomerRegistration() {
             </div>
 
             <div className="actions"><span className="secure"><ShieldCheck /> 256-bit encryption</span><div><button type="button" className="reset" onClick={reset}><RotateCcw /> Reset</button><button className="submit" disabled={loading}><Send />{loading ? 'Submitting...' : 'Submit Request'}</button></div></div>
-        </form></main><footer>Copyright©2026. Designed and Developed by Centre for Railway Information Systems (CRIS)</footer>
-    </div>;
+        </form></main>
+    );
 }
