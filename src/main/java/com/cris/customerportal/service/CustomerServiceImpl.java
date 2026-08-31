@@ -188,6 +188,61 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(9, formData.get("email"));
     ps.setString(10, formData.get("mobile"));
     ps.executeUpdate();
+    
+    // Send INSERT audit email asynchronously
+    final String finalCodeForEmail = finalCode;
+    final String finalTypeForEmail = type;
+    java.util.concurrent.CompletableFuture.runAsync(() -> {
+        try {
+            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+            message.setFrom("shurak949@gmail.com");
+            message.setTo("shurak949@gmail.com");
+            message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
+            
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String timestamp = sdf.format(new java.util.Date());
+            String table = "global".equals(finalTypeForEmail) ? "global_customers" : "handling_agents";
+            String col = "global".equals(finalTypeForEmail) ? "global_code" : "handling_code";
+            
+            String sqlQuery = "INSERT INTO " + table + "\n(\n" +
+                    "    " + col + ",\n" +
+                    "    company_name,\n" +
+                    "    pan_number,\n" +
+                    "    address,\n" +
+                    "    city,\n" +
+                    "    pincode,\n" +
+                    "    zone,\n" +
+                    "    division,\n" +
+                    "    email,\n" +
+                    "    mobile\n" +
+                    ")\nVALUES\n(\n" +
+                    "    '" + finalCodeForEmail + "',\n" +
+                    "    '" + formData.get("customerName") + "',\n" +
+                    "    '" + formData.get("pan") + "',\n" +
+                    "    '" + formData.get("address") + "',\n" +
+                    "    '" + formData.get("city") + "',\n" +
+                    "    '" + formData.get("pincode") + "',\n" +
+                    "    '" + formData.get("zone") + "',\n" +
+                    "    '" + formData.get("operatingDivision") + "',\n" +
+                    "    '" + formData.get("email") + "',\n" +
+                    "    '" + formData.get("mobile") + "'\n" +
+                    ");";
+                    
+            String text = "Operation: INSERT\n" +
+                    "Table: " + table + "\n\n" +
+                    sqlQuery + "\n\n" +
+                    "Date/Time: " + timestamp + "\n" +
+                    "Generated Code: " + finalCodeForEmail + "\n" +
+                    "Company Name: " + formData.get("customerName");
+                    
+            message.setText(text);
+            mailSender.send(message);
+            System.out.println("[EMAIL AUDIT] Real email sent successfully to shurak949@gmail.com for INSERT " + finalCodeForEmail);
+        } catch (Exception ex) {
+            System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+        }
+    });
+    
     return finalCode;
    } catch (SQLException e) {
     // MySQL Duplicate Entry Code
@@ -214,28 +269,91 @@ public class CustomerServiceImpl implements CustomerService {
    
    ps.executeUpdate();
    
-   // Send actual email asynchronously
-   if (formData.get("email") != null && !formData.get("email").trim().isEmpty()) {
-       java.util.concurrent.CompletableFuture.runAsync(() -> {
-           try {
-               org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-               message.setFrom("sura767848@gmail.com");
-               message.setTo("sura767848@gmail.com");
-               message.setSubject("Customer Record Updated: " + formData.get("customerCode"));
-               message.setText("The customer record for " + formData.get("companyName") + " has been successfully updated via JDBC.\n\n" +
-                               "Customer Code: " + formData.get("customerCode") + "\n" +
-                               "Email: " + formData.get("email") + "\n" +
-                               "PAN: " + formData.get("panNumber") + "\n" +
-                               "GSTINs: " + formData.get("gstinNumbers"));
-               mailSender.send(message);
-               System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com");
-           } catch (Exception ex) {
-               System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
-           }
-       });
-   }
+   // Send UPDATE audit email asynchronously
+   java.util.concurrent.CompletableFuture.runAsync(() -> {
+       try {
+           org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+           message.setFrom("sura767848@gmail.com");
+           message.setTo("sura767848@gmail.com");
+           message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
+           
+           java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+           String timestamp = sdf.format(new java.util.Date());
+           
+           String sqlQuery = "UPDATE customer_code\nSET\n" +
+                   "    company_name = '" + formData.get("companyName") + "',\n" +
+                   "    phone_number = '" + formData.get("mobile") + "',\n" +
+                   "    email_id = '" + formData.get("email") + "',\n" +
+                   "    address = '" + formData.get("address") + "',\n" +
+                   "    pan_number = '" + formData.get("panNumber") + "',\n" +
+                   "    gstin_numbers = '" + formData.get("gstinNumbers") + "'\n" +
+                   "WHERE customer_code = '" + formData.get("customerCode") + "';";
+                   
+           String text = "Operation: UPDATE\n" +
+                   "Table: customer_code\n" +
+                   "Customer Code: " + formData.get("customerCode") + "\n\n" +
+                   sqlQuery + "\n\n" +
+                   "Date/Time: " + timestamp;
+                   
+           message.setText(text);
+           mailSender.send(message);
+           System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com for UPDATE " + formData.get("customerCode"));
+       } catch (Exception ex) {
+           System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+       }
+   });
   } catch (SQLException e) {
    throw new RuntimeException("Database error in updateOldCustomerJDBC: " + e.getMessage(), e);
+  }
+ }
+
+ public com.cris.customerportal.dto.GlobalAgentResponse lookupGlobalCustomerByCode(String globalCode) {
+  String sql = "SELECT global_code, company_name, address, city, email, mobile FROM global_customers WHERE global_code = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, globalCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
+     response.setCode(rs.getString("global_code"));
+     response.setCompanyName(rs.getString("company_name"));
+     response.setAddress(rs.getString("address"));
+     response.setCity(rs.getString("city"));
+     response.setEmail(rs.getString("email"));
+     response.setMobile(rs.getString("mobile"));
+     response.setStatus("Active");
+     return response;
+    } else {
+     throw new ResourceNotFoundException("Global Customer Code not found.");
+    }
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error occurred while fetching global customer data", e);
+  }
+ }
+
+ public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
+  String sql = "SELECT handling_code, company_name, address, city, email, mobile FROM handling_agents WHERE handling_code = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, handlingCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
+     response.setCode(rs.getString("handling_code"));
+     response.setCompanyName(rs.getString("company_name"));
+     response.setAddress(rs.getString("address"));
+     response.setCity(rs.getString("city"));
+     response.setEmail(rs.getString("email"));
+     response.setMobile(rs.getString("mobile"));
+     response.setStatus("Active");
+     return response;
+    } else {
+     throw new ResourceNotFoundException("Agent Handling Code not found.");
+    }
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
  }
 }

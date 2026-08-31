@@ -9,6 +9,14 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/api/customers/global-lookup': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/api/customers/agent-lookup': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/api/customers/new-generate-code': {
         target: 'http://localhost:8080',
         changeOrigin: true,
