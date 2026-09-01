@@ -5,9 +5,9 @@ interface AuditEmailOptions {
   page: 'Old User' | 'New Entry';
   operation: 'INSERT' | 'UPDATE' | 'DELETE';
   table: string;
-  customerCode: string;
-  globalCode?: string;
-  handlingAgentCode?: string;
+  customerCode?: string | null;
+  globalCode?: string | null;
+  handlingAgentCode?: string | null;
   changes: Array<{ fieldName: string; oldValue: any; newValue: any }>;
   executedQuery: string;
   timestamp: string;
@@ -64,7 +64,9 @@ export async function sendAuditEmail(options: AuditEmailOptions) {
   lines.push(`Page: ${page}`);
   lines.push(`Operation: ${operation}`);
   lines.push(`Table: ${table}`);
-  lines.push(`Customer Code: ${customerCode}`);
+  if (customerCode) {
+    lines.push(`Customer Code: ${customerCode}`);
+  }
   if (globalCode) {
     lines.push(`Global Code: ${globalCode}`);
   }

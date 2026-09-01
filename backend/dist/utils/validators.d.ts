@@ -4,6 +4,7 @@ export interface ValidationError {
 }
 export declare const isValidPAN: (pan: string) => boolean;
 export declare const isValidGSTIN: (gstin: string) => boolean;
+export declare const isGstinMatchingPan: (gstin: string, pan: string) => boolean;
 export declare const isValidIndianMobile: (mobile: string) => boolean;
 export declare const isValidPincode: (pincode: string) => boolean;
 export declare const isValidPCO: (pco: string) => boolean;
@@ -24,6 +25,9 @@ export interface CustomerPayload {
     globalCustomerCode?: string;
     handlingAgentCode?: string;
     activeFlag?: string;
+    codeType?: string;
+    operatingDivision?: string;
+    zone?: string;
 }
 export interface GstinPayload {
     gstinId?: number;

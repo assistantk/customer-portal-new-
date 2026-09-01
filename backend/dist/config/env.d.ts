@@ -12,6 +12,11 @@ export declare const env: {
     CODE_MAX_LENGTH: number;
     CODE_MAX_RETRIES: number;
     UPLOAD_DIR: string;
+    DBA_EMAIL: string | undefined;
+    SMTP_HOST: string | undefined;
+    SMTP_PORT: string | undefined;
+    SMTP_USER: string | undefined;
+    SMTP_PASS: string | undefined;
     isProduction: boolean;
     isDevelopment: boolean;
     validateRequired: () => void;

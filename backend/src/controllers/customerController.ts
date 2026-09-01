@@ -385,7 +385,7 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
     pan: payload.pan !== undefined ? (payload.pan?.trim().toUpperCase() ?? null) : existing.pan_number,
     email: payload.email !== undefined ? (payload.email?.trim().toLowerCase() ?? null) : existing.email,
     mobile: payload.mobile !== undefined ? (payload.mobile?.trim() ?? null) : existing.mobile,
-    handlingAgentCode: null,
+    handlingAgentCode: undefined,
     activeFlag:
       payload.activeFlag !== undefined
         ? payload.activeFlag.toUpperCase()

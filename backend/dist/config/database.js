@@ -4,15 +4,14 @@ let pool = null;
 export const initPool = async () => {
     if (pool)
         return pool;
-
     pool = mysql.createPool({
-        host: 'localhost',
-        port: 3306,
-        database: 'customer_portal',
-        user: 'root',
-        password: 'Root',
+        host: env.DB_HOST,
+        port: env.DB_PORT,
+        database: env.DB_NAME,
+        user: env.DB_USER,
+        password: env.DB_PASSWORD,
         waitForConnections: true,
-        connectionLimit: 10,
+        connectionLimit: env.DB_POOL_MAX,
         queueLimit: 0,
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000,

@@ -2,10 +2,11 @@ import path from 'path';
 import fs from 'fs/promises';
 import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { withTransaction, executeQuery } from '../config/database.js';
-import { validateGstin } from '../utils/validators.js';
+import { validateGstin, isGstinMatchingPan } from '../utils/validators.js';
 import { env } from '../config/env.js';
 import { addressesMatch, scanDocument } from '../utils/documentScanner.js';
 import { isValidGSTIN } from '../utils/validators.js';
+import { sendAuditEmail } from '../utils/email.js';
 /** Safely extract a string route param (Express 5 types it as string | string[]). */
 const paramStr = (val) => Array.isArray(val) ? val[0] ?? '' : val ?? '';
 const sanitizeSegment = (value) => value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'document';
@@ -85,6 +86,11 @@ export const createGstin = asyncHandler(async (req, res) => {
         if (!custRows.length) {
             throw new AppError('Customer Code not found.', 404, { customerCode });
         }
+        const [panRows] = await conn.execute(`SELECT pan_number FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+        const customerPan = panRows[0]?.pan_number ?? '';
+        if (!isGstinMatchingPan(normalizedGstinNumber, customerPan)) {
+            throw new AppError('GSTIN does not match the PAN number', 400);
+        }
         // Check duplicate GSTIN
         const [dupRows] = await conn.execute(`SELECT id FROM customer_gstins WHERE customer_code = ? AND gstin_number = ?`, [normalizedCustomerCode, normalizedGstinNumber]);
         if (dupRows.length) {
@@ -107,15 +113,64 @@ export const createGstin = asyncHandler(async (req, res) => {
             payload.state.trim().slice(0, 50),
             payload.stateCode?.trim().slice(0, 2) ?? null,
             normalizedGstinNumber.slice(0, 15),
-            payload.fileName?.slice(0, 255) ?? null,
-            payload.fileType?.slice(0, 50) ?? null,
+            payload.fileName?.trim().slice(0, 255) ?? null,
+            payload.fileType?.trim().slice(0, 50) ?? null,
             filePath,
             file ? await verifyGstinFile(file, normalizedGstinNumber, String(req.body.address ?? '')) : null,
             file ? 'VERIFIED' : 'PENDING',
             file ? 'VERIFIED' : 'PENDING',
             (payload.activeFlag ?? 'Y').toUpperCase(),
         ]);
-        return { gstinId: insertResult.insertId };
+        const gstinId = insertResult.insertId;
+        // Prepare audit data
+        const timestamp = new Date().toISOString();
+        const submittedBy = undefined;
+        // Fetch customer context
+        const [custRowsGlobal] = await conn.execute(`SELECT customer_code FROM customer_code WHERE customer_code = ? UNION SELECT handling_code as customer_code FROM handling_agents WHERE handling_code = ?`, [normalizedCustomerCode, normalizedCustomerCode]);
+        const globalCode = null; // Removed
+        const handlingCode = null; // Unused for GSTIN audit anyway
+        // Audit changes for GSTIN insert (we'll include key fields)
+        const changes = [
+            { fieldName: 'state', oldValue: null, newValue: payload.state.trim().slice(0, 50) },
+            { fieldName: 'state_code', oldValue: null, newValue: payload.stateCode?.trim().slice(0, 2) ?? null },
+            { fieldName: 'gstin_number', oldValue: null, newValue: normalizedGstinNumber.slice(0, 15) },
+        ];
+        // Build executed query string
+        const cols = 'customer_code, state, state_code, gstin_number, file_name, file_type, file_path, registered_address, gstin_verification_status, address_verification_status, active';
+        const vals = [
+            `'${normalizedCustomerCode}'`,
+            `'${payload.state.trim().slice(0, 50)}'`,
+            payload.stateCode?.trim().slice(0, 2) ? `'${payload.stateCode.trim().slice(0, 2)}'` : 'NULL',
+            `'${normalizedGstinNumber.slice(0, 15)}'`,
+            payload.fileName?.trim().slice(0, 255) ? `'${payload.fileName.trim().slice(0, 255).replace(/'/g, "''")}'` : 'NULL',
+            payload.fileType?.trim().slice(0, 50) ? `'${payload.fileType.trim().slice(0, 50).replace(/'/g, "''")}'` : 'NULL',
+            filePath ? `'${filePath.replace(/'/g, "''")}'` : 'NULL',
+            file ? await verifyGstinFile(file, normalizedGstinNumber, String(req.body.address ?? '')) ? `'VERIFIED'` : `'PENDING'` : `'NULL'`,
+            file ? 'VERIFIED' : 'PENDING',
+            file ? 'VERIFIED' : 'PENDING',
+            `(payload.activeFlag ?? 'Y').toUpperCase()`,
+        ].map(v => v === null ? 'NULL' : v).join(', ');
+        const executedQuery = `INSERT INTO customer_gstins (${cols}) VALUES (${vals});`;
+        // Send audit email
+        try {
+            await sendAuditEmail({
+                page: 'Old User',
+                operation: 'INSERT',
+                table: 'customer_gstins',
+                customerCode: normalizedCustomerCode,
+                globalCode,
+                handlingAgentCode: handlingCode,
+                changes,
+                executedQuery,
+                timestamp,
+                submittedBy,
+            });
+        }
+        catch (emailError) {
+            console.error('[EMAIL AUDIT] Failed to send audit email for createGstin:', emailError);
+            // Don't fail the request if email fails
+        }
+        return { gstinId };
     });
     res.status(201).json({
         success: true,
@@ -155,6 +210,11 @@ export const updateGstin = asyncHandler(async (req, res) => {
         throw new AppError('Validation failed', 400, { errors });
     }
     const normalizedGstinNumber = payload.gstinNumber.trim().toUpperCase();
+    const customerRows = await executeQuery(`SELECT pan_number FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+    const customerPan = customerRows[0]?.pan_number ?? '';
+    if (!isGstinMatchingPan(normalizedGstinNumber, customerPan)) {
+        throw new AppError('GSTIN does not match the PAN number', 400);
+    }
     // Check duplicate GSTIN (excluding self)
     const dupRows = await executeQuery(`SELECT id FROM customer_gstins WHERE customer_code = ? AND gstin_number = ? AND id <> ?`, [normalizedCustomerCode, normalizedGstinNumber, id]);
     if (dupRows.length) {
@@ -170,7 +230,7 @@ export const updateGstin = asyncHandler(async (req, res) => {
     }
     await executeQuery(`UPDATE customer_gstins SET
       state = ?, state_code = ?, gstin_number = ?,
-      file_name = ?, file_type = ?, file_path = ?, registered_address = ?,
+      file_name = ?, file_type, file_path, registered_address = ?,
       gstin_verification_status = ?, address_verification_status = ?,
       active = ?
     WHERE id = ? AND customer_code = ?`, [
@@ -187,6 +247,63 @@ export const updateGstin = asyncHandler(async (req, res) => {
         id,
         normalizedCustomerCode,
     ]);
+    // Prepare audit data after update
+    const timestamp = new Date().toISOString();
+    const submittedBy = undefined;
+    // Fetch customer's global and handling codes for context
+    const custRows = await executeQuery(`SELECT global_customer_code, handling_agent_code FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+    const globalCode = custRows[0]?.global_customer_code ?? null;
+    const handlingCode = custRows[0]?.handling_agent_code ?? null;
+    // Determine changes (compare existing vs payload)
+    const changes = [];
+    const fields = [
+        { field: 'state', existing: existing.state, payload: payload.state },
+        { field: 'state_code', existing: existing.state_code, payload: payload.stateCode },
+        { field: 'gstin_number', existing: existing.gstin_number, payload: payload.gstinNumber },
+        { field: 'file_name', existing: existing.file_name, payload: payload.fileName },
+        { field: 'file_type', existing: existing.file_type, payload: payload.fileType },
+        { field: 'registered_address', existing: existing.registered_address, payload: registeredAddress },
+        { field: 'gstin_verification_status', existing: existing.gstin_verification_status, payload: file ? 'VERIFIED' : existing.gstin_verification_status },
+        { field: 'address_verification_status', existing: existing.address_verification_status, payload: file ? 'VERIFIED' : existing.address_verification_status },
+        { field: 'active', existing: existing.active, payload: payload.activeFlag },
+    ];
+    fields.forEach(f => {
+        const existingVal = f.existing ?? null;
+        const payloadVal = f.payload ?? null;
+        if (JSON.stringify(existingVal) !== JSON.stringify(payloadVal)) {
+            changes.push({
+                fieldName: f.field,
+                oldValue: existingVal,
+                newValue: payloadVal,
+            });
+        }
+    });
+    // Build executed query string (UPDATE)
+    const setClauses = fields.map(f => {
+        const val = f.payload ?? null;
+        const sqlVal = val === null ? 'NULL' : typeof val === 'string' ? `'${val.replace(/'/g, "''")}'` : val;
+        return `${f.field} = ${sqlVal}`;
+    }).join(', ');
+    const executedQuery = `UPDATE customer_gstins SET ${setClauses} WHERE id = ${id} AND customer_code = '${normalizedCustomerCode}';`;
+    // Send audit email
+    try {
+        await sendAuditEmail({
+            page: 'Old User',
+            operation: 'UPDATE',
+            table: 'customer_gstins',
+            customerCode: normalizedCustomerCode,
+            globalCode,
+            handlingAgentCode: handlingCode,
+            changes,
+            executedQuery,
+            timestamp,
+            submittedBy,
+        });
+    }
+    catch (emailError) {
+        console.error('[EMAIL AUDIT] Failed to send audit email for updateGstin:', emailError);
+        // Don't fail the request if email fails
+    }
     res.status(200).json({
         success: true,
         message: 'GSTIN updated successfully',
@@ -199,9 +316,55 @@ export const deleteGstin = asyncHandler(async (req, res) => {
     const id = Number(gstinId);
     if (!Number.isFinite(id))
         throw new AppError('Valid GSTIN ID is required', 400);
-    const [result] = await (await import('../config/database.js')).getPool().execute(`DELETE FROM customer_gstins WHERE id = ? AND customer_code = ?`, [id, customerCode.trim().toUpperCase()]);
-    if ((result.affectedRows ?? 0) === 0) {
+    const normalizedCustomerCode = customerCode.trim().toUpperCase();
+    // Fetch the GSTIN record to be deleted for audit
+    const [deletedRows] = await executeQuery(`SELECT * FROM customer_gstins WHERE id = ? AND customer_code = ?`, [id, normalizedCustomerCode]);
+    if (!deletedRows.length) {
         throw new AppError('GSTIN not found for this customer', 404);
+    }
+    const deleted = deletedRows[0];
+    // Delete the GSTIN
+    await (await import('../config/database.js')).getPool().execute(`DELETE FROM customer_gstins WHERE id = ? AND customer_code = ?`, [id, normalizedCustomerCode]);
+    // Prepare audit data after deletion
+    const timestamp = new Date().toISOString();
+    const submittedBy = undefined;
+    // Fetch customer's global and handling codes for context
+    const custRows = await executeQuery(`SELECT global_customer_code, handling_agent_code FROM customers WHERE customer_code = ?`, [normalizedCustomerCode]);
+    const globalCode = custRows[0]?.global_customer_code ?? null;
+    const handlingCode = custRows[0]?.handling_agent_code ?? null;
+    // Audit changes for GSTIN delete (show old values, newValue = null)
+    const changes = [
+        { fieldName: 'state', oldValue: deleted.state, newValue: null },
+        { fieldName: 'state_code', oldValue: deleted.state_code, newValue: null },
+        { fieldName: 'gstin_number', oldValue: deleted.gstin_number, newValue: null },
+        { fieldName: 'file_name', oldValue: deleted.file_name, newValue: null },
+        { fieldName: 'file_type', oldValue: deleted.file_type, newValue: null },
+        { fieldName: 'file_path', oldValue: deleted.file_path, newValue: null },
+        { fieldName: 'registered_address', oldValue: deleted.registered_address, newValue: null },
+        { fieldName: 'gstin_verification_status', oldValue: deleted.gstin_verification_status, newValue: null },
+        { fieldName: 'address_verification_status', oldValue: deleted.address_verification_status, newValue: null },
+        { fieldName: 'active', oldValue: deleted.active, newValue: null },
+    ];
+    // Build executed query string (DELETE)
+    const executedQuery = `DELETE FROM customer_gstins WHERE id = ${id} AND customer_code = '${normalizedCustomerCode}';`;
+    // Send audit email
+    try {
+        await sendAuditEmail({
+            page: 'Old User',
+            operation: 'DELETE',
+            table: 'customer_gstins',
+            customerCode: normalizedCustomerCode,
+            globalCode,
+            handlingAgentCode: handlingCode,
+            changes,
+            executedQuery,
+            timestamp,
+            submittedBy,
+        });
+    }
+    catch (emailError) {
+        console.error('[EMAIL AUDIT] Failed to send audit email for deleteGstin:', emailError);
+        // Don't fail the request if email fails
     }
     res.status(200).json({
         success: true,

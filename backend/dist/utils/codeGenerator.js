@@ -77,8 +77,8 @@ export const findNextUniqueSuffix = (existingCodes, base, maxLength = env.CODE_M
     return null;
 };
 const getTableMeta = (type) => type === 'global'
-    ? { table: 'global_customers', codeCol: 'global_code', nameCol: 'company_name' }
-    : { table: 'handling_agents', codeCol: 'handling_agent_code', nameCol: 'handling_agent_name' };
+    ? { table: 'customer_code', codeCol: 'customer_code', nameCol: 'company_name' }
+    : { table: 'handling_agents', codeCol: 'handling_code', nameCol: 'company_name' };
 export const fetchExistingCodes = async (type) => {
     const { table, codeCol } = getTableMeta(type);
     const rows = await executeQuery(`SELECT ${codeCol} FROM ${table}`, []);
@@ -107,11 +107,13 @@ export const generateUniqueCode = async (companyName, type, maxLength = env.CODE
 };
 export const reserveUniqueCode = async (companyName, type, maxLength = env.CODE_MAX_LENGTH) => {
     const generated = await generateUniqueCode(companyName, type, maxLength);
+    if (type === 'global') {
+        return generated; // No dummy row reservation for customer_code
+    }
     try {
         await insertCodeRow(type, generated.code, companyName.trim().slice(0, 45));
     }
     catch (dbErr) {
-        // MySQL duplicate entry error code
         if (dbErr?.code === 'ER_DUP_ENTRY' ||
             dbErr?.errno === 1062 ||
             String(dbErr?.message ?? '').includes('Duplicate entry')) {
