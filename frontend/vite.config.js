@@ -9,6 +9,10 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/api/customers/gstin-lookup': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/api/customers/global-lookup': {
         target: 'http://localhost:8080',
         changeOrigin: true,

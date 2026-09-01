@@ -157,13 +157,13 @@ export const createGstin = asyncHandler(async (req: Request, res: Response) => {
     const timestamp = new Date().toISOString();
     const submittedBy = undefined;
 
-    // Fetch customer's global and handling codes for context
+    // Fetch customer context
     const [custRowsGlobal] = await conn.execute(
-      `SELECT global_customer_code, handling_agent_code FROM customers WHERE customer_code = ?`,
-      [normalizedCustomerCode]
+      `SELECT customer_code FROM customer_code WHERE customer_code = ? UNION SELECT handling_code as customer_code FROM handling_agents WHERE handling_code = ?`,
+      [normalizedCustomerCode, normalizedCustomerCode]
     ) as any;
-    const globalCode = custRowsGlobal[0]?.global_customer_code ?? null;
-    const handlingCode = custRowsGlobal[0]?.handling_agent_code ?? null;
+    const globalCode = null; // Removed
+    const handlingCode = null; // Unused for GSTIN audit anyway
 
     // Audit changes for GSTIN insert (we'll include key fields)
     const changes = [
