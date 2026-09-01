@@ -91,26 +91,72 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-  String sql = "SELECT phone_number, email_id, company_name, address, pan_number, gstin_numbers FROM customer_code WHERE customer_code = ?";
+  String sql = "SELECT customer_code, phone_number, email_id, company_name, address, pan_number, gstin_numbers, city, pincode, zone, division, creation_date FROM customer_code WHERE customer_code = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode);
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+     response.setCustomerCode(rs.getString("customer_code"));
      response.setPhoneNumber(rs.getString("phone_number"));
      response.setEmailId(rs.getString("email_id"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
      response.setPanNumber(rs.getString("pan_number"));
      response.setGstinNumbers(rs.getString("gstin_numbers"));
+     response.setCity(rs.getString("city"));
+     response.setPincode(rs.getString("pincode"));
+     response.setZone(rs.getString("zone"));
+     response.setDivision(rs.getString("division"));
+     
+     java.sql.Timestamp ts = rs.getTimestamp("creation_date");
+     if (ts != null) {
+         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     }
+     
      return response;
     } else {
-     throw new ResourceNotFoundException("Invalid Customer Code");
+     throw new ResourceNotFoundException("Customer Code not found.");
     }
    }
   } catch (SQLException e) {
    throw new RuntimeException("Database error occurred while fetching old customer data", e);
+  }
+ }
+
+ public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByGstin(String gstin) {
+  String sql = "SELECT customer_code, phone_number, email_id, company_name, address, pan_number, gstin_numbers, city, pincode, zone, division, creation_date FROM customer_code WHERE gstin_numbers LIKE ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, "%" + gstin + "%");
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+     response.setCustomerCode(rs.getString("customer_code"));
+     response.setPhoneNumber(rs.getString("phone_number"));
+     response.setEmailId(rs.getString("email_id"));
+     response.setCompanyName(rs.getString("company_name"));
+     response.setAddress(rs.getString("address"));
+     response.setPanNumber(rs.getString("pan_number"));
+     response.setGstinNumbers(rs.getString("gstin_numbers"));
+     response.setCity(rs.getString("city"));
+     response.setPincode(rs.getString("pincode"));
+     response.setZone(rs.getString("zone"));
+     response.setDivision(rs.getString("division"));
+     
+     java.sql.Timestamp ts = rs.getTimestamp("creation_date");
+     if (ts != null) {
+         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     }
+     
+     return response;
+    } else {
+     throw new ResourceNotFoundException("No customer found for this GSTIN.");
+    }
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error occurred while fetching customer by GSTIN", e);
   }
  }
 
@@ -136,8 +182,8 @@ public class CustomerServiceImpl implements CustomerService {
   if (base.length() > maxLength) base = base.substring(0, maxLength);
   if (base.isEmpty()) base = "TEMP";
 
-  String tableName = type.equals("global") ? "global_customers" : "handling_agents";
-  String colName = type.equals("global") ? "global_code" : "handling_code";
+  String tableName = type.equals("global") ? "customer_code" : "handling_agents";
+  String colName = type.equals("global") ? "customer_code" : "handling_code";
   String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
 
   String candidate = base;
@@ -167,9 +213,11 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  String tableName = "global".equals(type) ? "global_customers" : "handling_agents";
-  String colName = "global".equals(type) ? "global_code" : "handling_code";
-  String sql = "INSERT INTO " + tableName + " (" + colName + ", company_name, pan_number, address, city, pincode, zone, division, email, mobile) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  String tableName = "global".equals(type) ? "customer_code" : "handling_agents";
+  String colName = "global".equals(type) ? "customer_code" : "handling_code";
+  String emailCol = "global".equals(type) ? "email_id" : "email";
+  String mobileCol = "global".equals(type) ? "phone_number" : "mobile";
+  String sql = "INSERT INTO " + tableName + " (" + colName + ", company_name, pan_number, address, city, pincode, zone, division, " + emailCol + ", " + mobileCol + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   String providedCode = "global".equals(type) ? formData.get("globalCustomerCode") : formData.get("handlingAgentCode");
 
@@ -201,8 +249,10 @@ public class CustomerServiceImpl implements CustomerService {
             
             java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             String timestamp = sdf.format(new java.util.Date());
-            String table = "global".equals(finalTypeForEmail) ? "global_customers" : "handling_agents";
-            String col = "global".equals(finalTypeForEmail) ? "global_code" : "handling_code";
+            String table = "global".equals(finalTypeForEmail) ? "customer_code" : "handling_agents";
+            String col = "global".equals(finalTypeForEmail) ? "customer_code" : "handling_code";
+            String eCol = "global".equals(finalTypeForEmail) ? "email_id" : "email";
+            String mCol = "global".equals(finalTypeForEmail) ? "phone_number" : "mobile";
             
             String sqlQuery = "INSERT INTO " + table + "\n(\n" +
                     "    " + col + ",\n" +
@@ -213,8 +263,8 @@ public class CustomerServiceImpl implements CustomerService {
                     "    pincode,\n" +
                     "    zone,\n" +
                     "    division,\n" +
-                    "    email,\n" +
-                    "    mobile\n" +
+                    "    " + eCol + ",\n" +
+                    "    " + mCol + "\n" +
                     ")\nVALUES\n(\n" +
                     "    '" + finalCodeForEmail + "',\n" +
                     "    '" + formData.get("customerName") + "',\n" +
@@ -307,30 +357,6 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
- public com.cris.customerportal.dto.GlobalAgentResponse lookupGlobalCustomerByCode(String globalCode) {
-  String sql = "SELECT global_code, company_name, address, city, email, mobile FROM global_customers WHERE global_code = ?";
-  try (Connection conn = dataSource.getConnection();
-       PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, globalCode);
-   try (ResultSet rs = ps.executeQuery()) {
-    if (rs.next()) {
-     com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
-     response.setCode(rs.getString("global_code"));
-     response.setCompanyName(rs.getString("company_name"));
-     response.setAddress(rs.getString("address"));
-     response.setCity(rs.getString("city"));
-     response.setEmail(rs.getString("email"));
-     response.setMobile(rs.getString("mobile"));
-     response.setStatus("Active");
-     return response;
-    } else {
-     throw new ResourceNotFoundException("Global Customer Code not found.");
-    }
-   }
-  } catch (SQLException e) {
-   throw new RuntimeException("Database error occurred while fetching global customer data", e);
-  }
- }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
   String sql = "SELECT handling_code, company_name, address, city, email, mobile FROM handling_agents WHERE handling_code = ?";

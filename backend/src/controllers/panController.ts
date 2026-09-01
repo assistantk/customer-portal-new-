@@ -26,19 +26,24 @@ export const uploadPanFile = asyncHandler(async (req: Request, res: Response) =>
   if (!scan.pan) throw new AppError('PAN number could not be detected from the uploaded document. Please upload a clearer PAN Card PDF or enter the PAN manually.', 422);
   if (suppliedPan && (!isValidPAN(suppliedPan) || suppliedPan !== scan.pan)) throw new AppError('PAN number does not match the uploaded PAN Card.', 422);
 
-  // Verify customer exists
-  const rows = await executeQuery<any>(
-    'SELECT customer_code FROM customers WHERE customer_code = ?',
+  // Verify customer exists in customer_code or handling_agents
+  let tableName = 'customer_code';
+  let codeCol = 'customer_code';
+  let existingRows = await executeQuery<any>(
+    `SELECT pan_file_name, pan_file_type, pan_file_path, pan_number, pan_verification_status FROM customer_code WHERE customer_code = ?`,
     [customerCode]
   );
-  if (!rows.length) throw new AppError('Customer Code not found.', 404);
+  
+  if (!existingRows.length) {
+    tableName = 'handling_agents';
+    codeCol = 'handling_code';
+    existingRows = await executeQuery<any>(
+      `SELECT pan_file_name, pan_file_type, pan_file_path, pan_number, pan_verification_status FROM handling_agents WHERE handling_code = ?`,
+      [customerCode]
+    );
+  }
 
-  // Fetch existing customer record for audit
-  const [existingRows] = await executeQuery<any>(
-    `SELECT pan_file_name, pan_file_type, pan_file_path, pan_number, pan_verification_status, global_customer_code, handling_agent_code FROM customers WHERE customer_code = ?`,
-    [customerCode]
-  );
-  if (!existingRows.length) throw new AppError('Customer Code not found.', 404);
+  if (!existingRows.length) throw new AppError('Code not found.', 404);
   const existing = existingRows[0];
 
   // Save file to disk
@@ -50,7 +55,7 @@ export const uploadPanFile = asyncHandler(async (req: Request, res: Response) =>
 
   // Update customer record
   await executeQuery(
-    `UPDATE customers SET pan_file_name = ?, pan_file_type = ?, pan_file_path = ?, pan_number = COALESCE(?, pan_number), pan_verification_status = 'VERIFIED' WHERE customer_code = ?`,
+    `UPDATE ${tableName} SET pan_file_name = ?, pan_file_type = ?, pan_file_path = ?, pan_number = COALESCE(?, pan_number), pan_verification_status = 'VERIFIED' WHERE ${codeCol} = ?`,
     [file.originalname, file.mimetype, filePath, scan.pan, customerCode]
   );
 
@@ -58,9 +63,8 @@ export const uploadPanFile = asyncHandler(async (req: Request, res: Response) =>
   const timestamp = new Date().toISOString();
   const submittedBy = undefined;
 
-  // Fetch customer's global and handling codes for context (we already have from existingRows)
-  const globalCode = existing.global_customer_code ?? null;
-  const handlingCode = existing.handling_agent_code ?? null;
+  // Fetch customer's handling codes for context
+  const handlingCode = tableName === 'handling_agents' ? customerCode : null;
 
   // Determine changes (compare existing vs new values)
   const changes: { fieldName: string; oldValue: any; newValue: any }[] = [];
@@ -89,16 +93,16 @@ export const uploadPanFile = asyncHandler(async (req: Request, res: Response) =>
     const sqlVal = val === null ? 'NULL' : typeof val === 'string' ? `'${val.replace(/'/g, "''")}'` : val;
     return `${f.field} = ${sqlVal}`;
   }).join(', ');
-  const executedQuery = `UPDATE customers SET ${setClauses} WHERE customer_code = '${customerCode}';`;
+  const executedQuery = `UPDATE ${tableName} SET ${setClauses} WHERE ${codeCol} = '${customerCode}';`;
 
   // Send audit email
   try {
     await sendAuditEmail({
-      page: 'Old User', // Note: This endpoint is used by both Old User and New Entry flows, but we'll label as Old User for simplicity; could improve by detecting page from context.
+      page: 'Old User', // Note: This endpoint is used by both Old User and New Entry flows
       operation: 'UPDATE',
-      table: 'customers',
-      customerCode,
-      globalCode,
+      table: tableName,
+      customerCode: tableName === 'customer_code' ? customerCode : undefined,
+      globalCode: undefined, // removed from DB
       handlingAgentCode: handlingCode,
       changes,
       executedQuery,

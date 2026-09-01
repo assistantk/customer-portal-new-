@@ -24,11 +24,9 @@ const mapRowToCustomer = (row: any): any => ({
   pan: row.pan_number,
   panFileName: row.pan_file_name,
   panVerificationStatus: row.pan_verification_status,
-  email: row.email,
-  mobile: row.mobile,
-  globalCustomerCode: row.global_customer_code,
-  handlingAgentCode: row.handling_agent_code,
-  activeFlag: row.active,
+  email: row.email_id || row.email,
+  mobile: row.phone_number || row.mobile,
+  activeFlag: row.active || 'Y',
   createdDate: row.created_at ? new Date(row.created_at).toISOString() : null,
   updatedDate: row.updated_at ? new Date(row.updated_at).toISOString() : null,
 });
@@ -162,33 +160,46 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       throw new AppError('Either Global Code or Handling Agent Code must be provided or generated', 400);
     }
 
-    const customerCode =
-      payload.customerCode?.trim().toUpperCase() ||
-      `CUST${Date.now().toString().slice(-6)}`;
+    const customerCode = codeType === 'global' ? globalCode! : handlingCode!;
+    const tableName = codeType === 'global' ? 'customer_code' : 'handling_agents';
+    const codeCol = codeType === 'global' ? 'customer_code' : 'handling_code';
+    const emailCol = codeType === 'global' ? 'email_id' : 'email';
+    const mobileCol = codeType === 'global' ? 'phone_number' : 'mobile';
 
+    // Insert full data into the respective table (customer_code or handling_agents)
+    // Note: for handling agents, if reserveUniqueCode inserted a row, this should be an UPDATE.
+    // However, since we now want to insert the full row, we'll try to DELETE the dummy row first or just UPDATE it.
+    // Wait, let's just do an INSERT ... ON DUPLICATE KEY UPDATE.
+    // Or, since we modified reserveUniqueCode to not insert for global, for handling we can just update.
+    // Let's use INSERT ... ON DUPLICATE KEY UPDATE for safety.
+    
     await conn.execute(
-      `INSERT INTO customers (
-        customer_code, company_name, address, city, pincode, pco_code,
-        pan_number, email, mobile,
-        global_customer_code, handling_agent_code,
-        active, code_type, operating_division, zone
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${tableName} (
+        ${codeCol}, company_name, address, city, pincode,
+        pan_number, ${emailCol}, ${mobileCol},
+        zone, division
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        company_name = VALUES(company_name),
+        address = VALUES(address),
+        city = VALUES(city),
+        pincode = VALUES(pincode),
+        pan_number = VALUES(pan_number),
+        ${emailCol} = VALUES(${emailCol}),
+        ${mobileCol} = VALUES(${mobileCol}),
+        zone = VALUES(zone),
+        division = VALUES(division)`,
       [
         customerCode,
         payload.customerName.trim().slice(0, 100),
         payload.address?.trim().slice(0, 255) ?? null,
         payload.city?.trim().slice(0, 50) ?? null,
-        payload.pincode?.trim().slice(0, 10) ?? null,
-        payload.pcoCode?.trim().slice(0, 3) ?? null,
+        payload.pincode?.trim().slice(0, 20) ?? null,
         payload.pan?.trim().toUpperCase().slice(0, 10) ?? null,
         payload.email?.trim().toLowerCase().slice(0, 100) ?? null,
         payload.mobile?.trim().slice(0, 15) ?? null,
-        globalCode ?? null,
-        handlingCode ?? null,
-        (payload.activeFlag ?? 'Y').toUpperCase(),
-        payload.codeType?.slice(0, 255) ?? 'Unknown',
-        payload.operatingDivision?.slice(0, 255) ?? 'Unknown',
-        payload.zone?.slice(0, 255) ?? 'Unknown',
+        payload.zone?.slice(0, 50) ?? null,
+        payload.operatingDivision?.slice(0, 50) ?? null,
       ]
     );
 
@@ -196,7 +207,7 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       const filePath = path.join('pan', `${customerCode}_PAN_${Date.now()}.pdf`);
       await fs.mkdir(path.join(env.UPLOAD_DIR, 'pan'), { recursive: true });
       await fs.writeFile(path.join(env.UPLOAD_DIR, filePath), panFile.buffer);
-      await conn.execute(`UPDATE customers SET pan_file_name = ?, pan_file_type = ?, pan_file_path = ?, pan_verification_status = 'VERIFIED' WHERE customer_code = ?`, [panFile.originalname, panFile.mimetype, filePath, customerCode]);
+      await conn.execute(`UPDATE ${tableName} SET pan_file_name = ?, pan_file_type = ?, pan_file_path = ?, pan_verification_status = 'VERIFIED' WHERE ${codeCol} = ?`, [panFile.originalname, panFile.mimetype, filePath, customerCode]);
     }
 
     const gstins = Array.isArray(payload.gstins) ? payload.gstins : [];
@@ -236,23 +247,18 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
     const timestamp = new Date().toISOString();
     const submittedBy = undefined; // No user auth yet
 
-    // Audit for customers table
+    // Audit for table
     const customerChanges: { fieldName: string; oldValue: any; newValue: any }[] = [];
     const customerColumns = [
-      { field: 'customer_name', value: payload.customerName?.trim().slice(0, 100) ?? null },
+      { field: 'company_name', value: payload.customerName?.trim().slice(0, 100) ?? null },
       { field: 'address', value: payload.address?.trim().slice(0, 255) ?? null },
       { field: 'city', value: payload.city?.trim().slice(0, 50) ?? null },
-      { field: 'pincode', value: payload.pincode?.trim().slice(0, 10) ?? null },
-      { field: 'pco_code', value: payload.pcoCode?.trim().slice(0, 3) ?? null },
+      { field: 'pincode', value: payload.pincode?.trim().slice(0, 20) ?? null },
       { field: 'pan_number', value: payload.pan?.trim().toUpperCase().slice(0, 10) ?? null },
-      { field: 'email', value: payload.email?.trim().toLowerCase().slice(0, 100) ?? null },
-      { field: 'mobile', value: payload.mobile?.trim().slice(0, 15) ?? null },
-      { field: 'global_customer_code', value: globalCode ?? null },
-      { field: 'handling_agent_code', value: handlingCode ?? null },
-      { field: 'active', value: (payload.activeFlag ?? 'Y').toUpperCase() },
-      { field: 'code_type', value: payload.codeType?.slice(0, 255) ?? 'Unknown' },
-      { field: 'operating_division', value: payload.operatingDivision?.slice(0, 255) ?? 'Unknown' },
-      { field: 'zone', value: payload.zone?.slice(0, 255) ?? 'Unknown' },
+      { field: emailCol, value: payload.email?.trim().toLowerCase().slice(0, 100) ?? null },
+      { field: mobileCol, value: payload.mobile?.trim().slice(0, 15) ?? null },
+      { field: 'zone', value: payload.zone?.slice(0, 50) ?? null },
+      { field: 'division', value: payload.operatingDivision?.slice(0, 50) ?? null },
     ];
     // For INSERT, we consider all columns as changes (oldValue = null)
     customerColumns.forEach(col => {
@@ -281,7 +287,7 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
         { fieldName: 'address_verification_status', oldValue: null, newValue: gstin.scannedAddress ? 'VERIFIED' : 'PENDING' },
         { fieldName: 'active', oldValue: null, newValue: 'Y' }
       );
-      // Build individual INSERT for this GSTIN (we could combine, but simpler to do separate statements)
+      // Build individual INSERT for this GSTIN
       const gstinCols = 'customer_code, state, state_code, gstin_number, file_name, file_type, file_path, registered_address, gstin_verification_status, address_verification_status, active';
       const gstinVals = [
         `'${customerCode}'`,
@@ -300,9 +306,9 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
     }
     const gstinQuery = gstinQueryParts.join('\n');
 
-    const customerCols = customerColumns.map(c => c.field).join(', ');
-    const customerVals = customerColumns.map(c => c.value === null ? 'NULL' : `'${String(c.value).replace(/'/g, "''")}'`).join(', ');
-    const customerQuery = `INSERT INTO customers (${customerCols}) VALUES (${customerVals});`;
+    const customerColsStr = customerColumns.map(c => c.field).join(', ');
+    const customerValsStr = customerColumns.map(c => c.value === null ? 'NULL' : `'${String(c.value).replace(/'/g, "''")}'`).join(', ');
+    const customerQuery = `INSERT INTO ${tableName} (${codeCol}, ${customerColsStr}) VALUES ('${customerCode}', ${customerValsStr});`;
 
     // Combine executed queries
     const executedQuery = `${customerQuery}\n${gstinQuery}`.trim();
@@ -318,9 +324,9 @@ export const createCustomer = asyncHandler(async (req: Request, res: Response) =
       await sendAuditEmail({
         page: 'New Entry',
         operation: 'INSERT',
-        table: 'customers',
+        table: tableName,
         customerCode,
-        globalCode,
+        globalCode: undefined, // removed from DB
         handlingAgentCode: handlingCode, // Fixed variable name
         changes: allChanges,
         executedQuery,
@@ -379,14 +385,7 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
     pan: payload.pan !== undefined ? (payload.pan?.trim().toUpperCase() ?? null) : existing.pan_number,
     email: payload.email !== undefined ? (payload.email?.trim().toLowerCase() ?? null) : existing.email,
     mobile: payload.mobile !== undefined ? (payload.mobile?.trim() ?? null) : existing.mobile,
-    globalCustomerCode:
-      payload.globalCustomerCode !== undefined
-        ? (payload.globalCustomerCode?.trim().toUpperCase() ?? null)
-        : existing.global_customer_code,
-    handlingAgentCode:
-      payload.handlingAgentCode !== undefined
-        ? (payload.handlingAgentCode?.trim().toUpperCase() ?? null)
-        : existing.handling_agent_code,
+    handlingAgentCode: null,
     activeFlag:
       payload.activeFlag !== undefined
         ? payload.activeFlag.toUpperCase()
@@ -421,8 +420,6 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
       pan_number = ?,
       email = ?,
       mobile = ?,
-      global_customer_code = ?,
-      handling_agent_code = ?,
       active = ?,
       code_type = ?,
       operating_division = ?,
@@ -437,8 +434,6 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
       merged.pan?.slice(0, 10) ?? null,
       merged.email?.slice(0, 100) ?? null,
       merged.mobile?.slice(0, 15) ?? null,
-      merged.globalCustomerCode ?? null,
-      merged.handlingAgentCode ?? null,
       (merged.activeFlag ?? 'Y').toUpperCase(),
       merged.codeType?.slice(0, 255) ?? 'Unknown',
       merged.operatingDivision?.slice(0, 255) ?? 'Unknown',
@@ -467,8 +462,6 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
     { field: 'pan_number', existing: existing.pan_number, after: afterRows[0]?.pan_number },
     { field: 'email', existing: existing.email, after: afterRows[0]?.email },
     { field: 'mobile', existing: existing.mobile, after: afterRows[0]?.mobile },
-    { field: 'global_customer_code', existing: existing.global_customer_code, after: afterRows[0]?.global_customer_code },
-    { field: 'handling_agent_code', existing: existing.handling_agent_code, after: afterRows[0]?.handling_agent_code },
     { field: 'active', existing: existing.active, after: afterRows[0]?.active },
     { field: 'code_type', existing: existing.code_type, after: afterRows[0]?.code_type },
     { field: 'operating_division', existing: existing.operating_division, after: afterRows[0]?.operating_division },
@@ -501,8 +494,6 @@ export const updateCustomer = asyncHandler(async (req: Request, res: Response) =
     merged.pan !== undefined ? `pan_number = ${merged.pan ? `'${merged.pan.trim().toUpperCase().slice(0, 10).replace(/'/g, "''")}'` : 'NULL'}` : null,
     merged.email !== undefined ? `email = ${merged.email ? `'${merged.email.trim().toLowerCase().slice(0, 100).replace(/'/g, "''")}'` : 'NULL'}` : null,
     merged.mobile !== undefined ? `mobile = ${merged.mobile ? `'${merged.mobile.trim().slice(0, 15).replace(/'/g, "''")}'` : 'NULL'}` : null,
-    merged.globalCustomerCode !== undefined ? `global_customer_code = ${merged.globalCustomerCode ? `'${merged.globalCustomerCode.trim().toUpperCase().replace(/'/g, "''")}'` : 'NULL'}` : null,
-    merged.handlingAgentCode !== undefined ? `handling_agent_code = ${merged.handlingAgentCode ? `'${merged.handlingAgentCode.trim().toUpperCase().replace(/'/g, "''")}'` : 'NULL'}` : null,
     merged.activeFlag !== undefined ? `active = '${(merged.activeFlag ?? 'Y').toUpperCase()}'` : null,
   ].filter(Boolean).join(', ');
 

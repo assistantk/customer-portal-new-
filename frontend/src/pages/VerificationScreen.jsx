@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Tag, Building2, MapPin, Mail, Phone, FileText, Loader2, CheckCircle2, AlertCircle, ShieldCheck, Search, Users } from 'lucide-react';
-import { lookupOldCustomerJDBC, lookupGlobalCustomerJDBC, lookupHandlingAgentJDBC } from '../services/customerService';
+import { lookupOldCustomerJDBC, lookupCustomerByGstinJDBC } from '../services/customerService';
 
 const GSTIN_STATE_CODES = {
   '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', 
@@ -15,7 +15,7 @@ const GSTIN_STATE_CODES = {
 };
 
 export default function VerificationScreen() {
-    const [verificationType, setVerificationType] = useState('customer'); // 'customer', 'global', 'agent'
+    const [verificationType, setVerificationType] = useState('customer'); // 'customer', 'gstin'
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [customer, setCustomer] = useState(null);
@@ -23,8 +23,13 @@ export default function VerificationScreen() {
 
     const verifyCode = async (e) => {
         e.preventDefault();
-        if (!code.trim()) {
-            setError(`Please enter a ${verificationType === 'global' ? 'Global Customer Code' : verificationType === 'agent' ? 'Agent Handling Code' : 'Customer Code'}.`);
+        const trimmedCode = code.trim();
+        if (!trimmedCode) {
+            setError(`Please enter a ${verificationType === 'gstin' ? 'GSTIN' : 'Customer Code'}.`);
+            return;
+        }
+        if (verificationType === 'gstin' && trimmedCode.length !== 15) {
+            setError('Please enter a valid 15-character GSTIN.');
             return;
         }
 
@@ -34,10 +39,8 @@ export default function VerificationScreen() {
 
         try {
             let data;
-            if (verificationType === 'global') {
-                data = await lookupGlobalCustomerJDBC(code.trim());
-            } else if (verificationType === 'agent') {
-                data = await lookupHandlingAgentJDBC(code.trim());
+            if (verificationType === 'gstin') {
+                data = await lookupCustomerByGstinJDBC(code.trim());
             } else {
                 data = await lookupOldCustomerJDBC(code.trim());
             }
@@ -78,15 +81,9 @@ export default function VerificationScreen() {
                     </button>
                     <button 
                         type="button" 
-                        onClick={() => { setVerificationType('global'); setCode(''); setCustomer(null); setError(''); }}
-                        style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: verificationType === 'global' ? '#2563eb' : '#f8fafc', color: verificationType === 'global' ? 'white' : '#475569', cursor: 'pointer', fontWeight: '500' }}>
-                        Global Customer Code
-                    </button>
-                    <button 
-                        type="button" 
-                        onClick={() => { setVerificationType('agent'); setCode(''); setCustomer(null); setError(''); }}
-                        style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: verificationType === 'agent' ? '#2563eb' : '#f8fafc', color: verificationType === 'agent' ? 'white' : '#475569', cursor: 'pointer', fontWeight: '500' }}>
-                        Agent Handling Code
+                        onClick={() => { setVerificationType('gstin'); setCode(''); setCustomer(null); setError(''); }}
+                        style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: verificationType === 'gstin' ? '#2563eb' : '#f8fafc', color: verificationType === 'gstin' ? 'white' : '#475569', cursor: 'pointer', fontWeight: '500' }}>
+                        GSTIN
                     </button>
                 </div>
 
@@ -101,7 +98,7 @@ export default function VerificationScreen() {
                 <form onSubmit={verifyCode} className="grid">
                     <div className="field full" style={{ maxWidth: '400px', margin: '0 auto 10px', textAlign: 'center' }}>
                         <label htmlFor="customerCode">
-                            {verificationType === 'global' ? 'Global Customer Code' : verificationType === 'agent' ? 'Agent Handling Code' : 'Customer Code'}
+                            {verificationType === 'gstin' ? 'GSTIN' : 'Customer Code'}
                         </label>
                         <div className="control">
                             <Tag size={15} />
@@ -110,7 +107,7 @@ export default function VerificationScreen() {
                                 name="customerCode" 
                                 value={code} 
                                 onChange={(e) => setCode(e.target.value)} 
-                                placeholder={verificationType === 'global' ? 'Enter Global Code' : verificationType === 'agent' ? 'Enter Agent Code' : 'Enter Customer Code'}
+                                placeholder={verificationType === 'gstin' ? 'Enter GSTIN' : 'Enter Customer Code'}
                                 disabled={loading}
                             />
                         </div>
@@ -119,7 +116,7 @@ export default function VerificationScreen() {
                     <div className="full" style={{ textAlign: 'center', marginBottom: '20px' }}>
                         <button type="submit" className="submit" disabled={loading} style={{ padding: '8px 20px', height: 'auto' }}>
                             <Search size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }}/>
-                            {loading ? 'Checking Code...' : verificationType === 'global' ? 'Verify Global Code' : verificationType === 'agent' ? 'Verify Agent Code' : 'Verify Customer Code'}
+                            {loading ? 'Checking...' : verificationType === 'gstin' ? 'Find Customer' : 'Verify Customer Code'}
                         </button>
                         {(customer || error) && (
                             <button type="button" className="reset" onClick={reset} style={{ marginLeft: '10px', padding: '8px 20px', height: 'auto' }}>
@@ -129,51 +126,44 @@ export default function VerificationScreen() {
                     </div>
                 </form>
 
-                {customer && verificationType === 'customer' && (
+                {customer && (
                     <div className="customer-details">
-                        <div className="gstins-header" style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', marginBottom: '16px' }}>
-                            <h3>Customer Information</h3>
-                        </div>
-                        
-                        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '16px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
                                 <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Customer Code</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Company</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>State</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>GSTIN</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Status</th>
+                                    <tr style={{ background: '#2563eb', borderBottom: '1px solid #e2e8f0' }}>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Customer Code</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Company Name</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Address</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>GSTIN</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>PAN</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Date</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Division</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {(!customer.gstinNumbers || customer.gstinNumbers.trim() === '') ? (
                                         <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                            <td style={{ padding: '12px 16px' }}>{customer.customerCode || code}</td>
+                                            <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{customer.customerCode || code}</td>
                                             <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
-                                            <td style={{ padding: '12px 16px' }}>-</td>
-                                            <td style={{ padding: '12px 16px', color: '#64748b', fontStyle: 'italic' }}>No GSTIN registered</td>
-                                            <td style={{ padding: '12px 16px' }}>
-                                                <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>Active</span>
-                                            </td>
+                                            <td style={{ padding: '12px 16px' }}>{customer.address || '-'}</td>
+                                            <td style={{ padding: '12px 16px', color: '#64748b', fontStyle: 'italic' }}>-</td>
+                                            <td style={{ padding: '12px 16px' }}>{customer.panNumber || '-'}</td>
+                                            <td style={{ padding: '12px 16px' }}>{customer.creationDate || '-'}</td>
+                                            <td style={{ padding: '12px 16px' }}>{customer.division || '-'}</td>
                                         </tr>
                                     ) : (
-                                        customer.gstinNumbers.replace(/[\[\]"\s]/g, '').split(',').filter(Boolean).map((gstin, index) => {
-                                            const stateCode = gstin.substring(0, 2);
-                                            const stateName = GSTIN_STATE_CODES[stateCode] || 'Unknown';
-                                            
-                                            return (
-                                                <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                    <td style={{ padding: '12px 16px' }}>{customer.customerCode || code}</td>
-                                                    <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
-                                                    <td style={{ padding: '12px 16px' }}>{stateName}</td>
-                                                    <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{gstin}</td>
-                                                    <td style={{ padding: '12px 16px' }}>
-                                                        <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>Active</span>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
+                                        customer.gstinNumbers.replace(/[\[\]"\s]/g, '').split(',').filter(Boolean).map((gstin, index) => (
+                                            <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{customer.customerCode || code}</td>
+                                                <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{customer.address || '-'}</td>
+                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{gstin}</td>
+                                                <td style={{ padding: '12px 16px' }}>{customer.panNumber || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{customer.creationDate || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{customer.division || '-'}</td>
+                                            </tr>
+                                        ))
                                     )}
                                 </tbody>
                             </table>
@@ -181,42 +171,7 @@ export default function VerificationScreen() {
                     </div>
                 )}
 
-                {customer && (verificationType === 'global' || verificationType === 'agent') && (
-                    <div className="customer-details">
-                        <div className="gstins-header" style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', marginBottom: '16px' }}>
-                            <h3>{verificationType === 'global' ? 'Global Customer Information' : 'Handling Agent Information'}</h3>
-                        </div>
-                        
-                        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Code</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Company</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>City</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Address</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Email</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Mobile</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#475569' }}>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                        <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontWeight: '600' }}>{customer.code || '-'}</td>
-                                        <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
-                                        <td style={{ padding: '12px 16px' }}>{customer.city || '-'}</td>
-                                        <td style={{ padding: '12px 16px', maxWidth: '200px' }}>{customer.address || '-'}</td>
-                                        <td style={{ padding: '12px 16px' }}>{customer.email || '-'}</td>
-                                        <td style={{ padding: '12px 16px' }}>{customer.mobile || '-'}</td>
-                                        <td style={{ padding: '12px 16px' }}>
-                                            <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>{customer.status || 'Active'}</span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
+
             </div>
         </main>
     );

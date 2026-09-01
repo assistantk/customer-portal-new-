@@ -69,6 +69,11 @@ export async function lookupOldCustomerJDBC(code) {
   return request(`${API}/customers/old-lookup?code=${encodeURIComponent(trimmed)}`);
 }
 
+export async function lookupCustomerByGstinJDBC(gstin) {
+  const trimmed = gstin.trim().toUpperCase();
+  return request(`${API}/customers/gstin-lookup?gstin=${encodeURIComponent(trimmed)}`);
+}
+
 export async function lookupCustomer(code) {
   const trimmed = code.trim().toUpperCase();
   const [custResp, gstinResp] = await Promise.all([
@@ -262,10 +267,7 @@ export async function deleteGstin(customerCode, gstinId) {
   });
 }
 
-export async function lookupGlobalCustomerJDBC(code) {
-  if (!code || !code.trim()) throw new Error('Global Code is required.');
-  return request(`${API}/customers/global-lookup?code=${encodeURIComponent(code.trim())}`);
-}
+
 
 export async function lookupHandlingAgentJDBC(code) {
   if (!code || !code.trim()) throw new Error('Handling Agent Code is required.');

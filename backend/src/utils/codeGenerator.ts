@@ -93,8 +93,8 @@ export type CodeType = 'global' | 'handling';
 
 const getTableMeta = (type: CodeType) =>
   type === 'global'
-    ? { table: 'global_customers', codeCol: 'global_code', nameCol: 'company_name' }
-    : { table: 'handling_agents', codeCol: 'handling_agent_code', nameCol: 'handling_agent_name' };
+    ? { table: 'customer_code', codeCol: 'customer_code', nameCol: 'company_name' }
+    : { table: 'handling_agents', codeCol: 'handling_code', nameCol: 'company_name' };
 
 export const fetchExistingCodes = async (type: CodeType): Promise<string[]> => {
   const { table, codeCol } = getTableMeta(type);
@@ -149,10 +149,14 @@ export const reserveUniqueCode = async (
   maxLength: number = env.CODE_MAX_LENGTH
 ): Promise<{ code: string; base: string; variationsTried: number }> => {
   const generated = await generateUniqueCode(companyName, type, maxLength);
+  
+  if (type === 'global') {
+    return generated; // No dummy row reservation for customer_code
+  }
+
   try {
     await insertCodeRow(type, generated.code, companyName.trim().slice(0, 45));
   } catch (dbErr: any) {
-    // MySQL duplicate entry error code
     if (
       dbErr?.code === 'ER_DUP_ENTRY' ||
       dbErr?.errno === 1062 ||
