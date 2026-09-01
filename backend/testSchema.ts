@@ -13,7 +13,7 @@ async function run() {
   });
 
   try {
-    const [rows, fields] = await pool.query("DESCRIBE customer_code");
+    const [rows, fields] = await pool.query<mysql.RowDataPacket[]>("DESCRIBE customer_code");
     console.log("customer_code columns:", rows.map(r => r.Field));
   } catch(e) {
     console.error(e);
