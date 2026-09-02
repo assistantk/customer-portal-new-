@@ -1,329 +1,243 @@
-# Customer Registration Portal
+# Customer Registration Portal - MASTER PROJECT DOCUMENTATION
 
-A complete full-stack web application designed for processing and managing customer registrations, mimicking the behavior of Indian Railways' CRIS FOIS system.
+## 1. Project Overview
+The CRIS Customer Registration Portal is a web application designed to process and manage customer and handling agent registrations for Indian Railways' CRIS FOIS system. It allows users to register as a new entity (generating a unique 4-character Global Customer Code or Handling Agent Code) or look up existing records to update missing information, interacting directly with the CRIS Oracle database schema.
 
-The application allows users to register as a new customer (which generates a unique 4-character Global Customer Code or Handling Agent Code) or look up their existing customer records to update missing information.
+## 2. Technology Stack
+The application uses the following active technologies:
+- **Frontend**: React (built with Vite)
+- **Backend**: Java / Spring Boot
+- **Database Connectivity**: JDBC
+- **Database**: CRIS Oracle Database
+- **Dependencies**: `ojdbc8` (Oracle JDBC Driver), Spring Web, Spring Mail
 
-## System Architecture
+*(Note: Earlier implementations using Node.js, Express, Prisma, or MySQL are deprecated and no longer actively used for Oracle database operations).*
 
-The system follows a classic 3-tier architecture with a complete local development database. All external dependencies (Oracle, Supabase) have been removed in favor of a local MySQL database with local file storage.
+## 3. Project Structure
+- `frontend/`: Contains the React/Vite frontend application (components, pages, services).
+- `src/main/java/com/cris/customerportal/`: The Java Spring Boot backend source code.
+  - `controller/`: REST API controllers (`CustomerController.java`).
+  - `service/`: Business logic and JDBC database operations (`CustomerServiceImpl.java`).
+- `src/main/resources/`: Contains backend configuration files (`application.properties`).
+- `pom.xml`: Maven dependencies, including the Oracle JDBC driver.
 
-```
-React Frontend (Vite, Port 5173)
-       ↓ (HTTP REST via /api/* proxy)
-Backend API (Node.js/Express, Port 4000)
-       ↓ (mysql2 with Connection Pool & Transactions)
-MySQL Database (Port 3306, Database: customer_portal)
-```
+## 4. Application Pages
+- **Login**: User authentication screen.
+- **Home**: Main portal dashboard.
+- **Old User**: Allows existing customers/agents to pull their record via their code, view current data, and submit updates.
+- **New Entry**: Registration form for brand new Global Customers or Handling Agents.
+- **Verification Screen**: 
+  - **Customer Code Verification**: Look up and verify a customer by their 4-character code.
+  - **GSTIN Verification**: Search for a customer using their GSTIN.
 
-**Security constraints enforced:**
-- The React frontend **never** connects directly to MySQL.
-- Database credentials exist **only** on the backend inside `.env`.
-- No sensitive information (passwords) is stored in the frontend codebase.
+## 5. DATABASE — CRIS ORACLE
+**VERY IMPORTANT**: This application uses the existing CRIS Oracle database. No new tables are created. 
 
-## Prerequisites
+The application interacts with the following actual CRIS tables:
+- **`MEMGLBLCUST`** → Stores Customer / Global Customer Code data.
+- **`MEMGLBLHNDGAGNT`** → Stores Handling Agent data.
+- **`MEMWGONOWNRSHIP`** → Wagon Ownership data (currently reserved/future use).
+- **`MEMWGONOWNRPRTY`** → Wagon Ownership Party data (currently reserved/future use).
 
-1. **Node.js** (v18 or newer)
-2. **MySQL Server** (8.0+)
-3. **npm** (comes with Node.js)
+### CRIS Column Definitions
 
-## Database Setup (MySQL)
+**`MEMGLBLCUST`** (Global Customer)
+- `MAVGLBLCUSTCODE` → Customer/Global Code (Primary Identifier)
+- `MAVGLBLCUSTNAME` → Company/Customer Name
+- `MAVGLBLCUSTADDRTEXT` → Address
+- `MAVGNBLCUSTCITYNAME` → City
+- `MAVCENTBLNG` → Central Billing flag
+- `MAVPCOCODE` → PCO Code (Pincode)
+- `MAVEDMNDFLAG` → Amendment flag
+- `MADIMPLDATE` → Implementation date (set to `SYSDATE`)
+- `MAVIMPLREMK` → Implementation remark (used for Operating Division)
+- `MADEDMNDDATE` → End/Amendment date
+- `MAVCUSTGSTINNUMB` → GSTIN Numbers
+- `MAVCUSTPANNUMB` → PAN Number
 
-1. Ensure MySQL is running on your local machine (`localhost:3306`).
-2. Log into MySQL as `root`:
-   ```bash
-   mysql -u root -p
-   ```
-3. Run the schema creation script from the root of the project:
-   ```bash
-   source database/mysql_schema.sql;
-   ```
-4. *(Optional but recommended)* Load the seed/test data:
-   ```bash
-   source database/mysql_seed.sql;
-   ```
+**`MEMGLBLHNDGAGNT`** (Handling Agent)
+- `MAVHNDGAGNTCODE` → Handling Agent Code (Primary Identifier)
+- `MAVHNDGAGNTNAME` → Handling Agent Name
+- `MAVHNDGAGNTADDRTEXT` → Address
+- `MAVHNDGAGNTCITYNAME` → City
+- `MAVCENTBLNG` → Central Billing flag
+- `MAVPCOCODE` → PCO Code (Pincode)
+- `MAVEDMNDFLAG` → Amendment flag
+- `MADIMPLDATE` → Implementation date (set to `SYSDATE`)
+- `MAVIMPLREMK` → Implementation remark (used for Operating Division)
+- `MADEDMNDDATE` → End/Amendment date
 
-### Database Tables
+## 6. FORM → DATABASE MAPPING
 
-- `global_customers`: Master table for Global Customer Codes (max 4 chars, unique).
-- `handling_agents`: Master table for Handling Agent Codes (max 4 chars, unique).
-- `customers`: Main application table for storing customer profile data. Links to either a global code or handling agent code.
-- `customer_gstins`: Stores one-to-many state-wise GSTINs for each customer.
+| Application Form Field | CRIS Table | CRIS Column |
+| :--- | :--- | :--- |
+| Global Customer Code | `MEMGLBLCUST` | `MAVGLBLCUSTCODE` |
+| Handling Agent Code | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTCODE` |
+| Company Name (Global) | `MEMGLBLCUST` | `MAVGLBLCUSTNAME` |
+| Company Name (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTNAME` |
+| Address (Global) | `MEMGLBLCUST` | `MAVGLBLCUSTADDRTEXT` |
+| Address (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTADDRTEXT` |
+| City (Global) | `MEMGLBLCUST` | `MAVGNBLCUSTCITYNAME` |
+| City (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTCITYNAME` |
+| Pincode (Global) | `MEMGLBLCUST` | `MAVPCOCODE` |
+| Pincode (Agent) | `MEMGLBLHNDGAGNT` | `MAVPCOCODE` |
+| PAN | `MEMGLBLCUST` | `MAVCUSTPANNUMB` |
+| GSTIN | `MEMGLBLCUST` | `MAVCUSTGSTINNUMB` |
+| Operating Division (Global)| `MEMGLBLCUST` | `MAVIMPLREMK` |
+| Operating Division (Agent)| `MEMGLBLHNDGAGNT` | `MAVIMPLREMK` |
 
-> Note: PAN and GSTIN PDF documents are saved to the backend local filesystem inside `backend/uploads/` instead of BLOBs to improve database performance. The file paths are stored in the database.
+> **Unmapped Fields**: `Email`, `Mobile`, and `Zone` are collected by the frontend forms but **do not** have corresponding columns in the CRIS Oracle schema. They are deliberately excluded from `INSERT` and `UPDATE` statements to prevent database crashes.
 
-## Backend Setup
+## 7. OLD USER FLOW
+1. **Customer Code entered**: The user enters an existing 4-character code.
+2. **JDBC lookup**: The Java backend executes a `SELECT` query against `MEMGLBLCUST` or `MEMGLBLHNDGAGNT`.
+3. **Existing CRIS record fetched**: The database returns the existing record.
+4. **Form population**: Available data is populated into the React form. Missing/NULL values remain empty.
+5. **User update**: The user modifies the information.
+6. **Submit**: The frontend posts the data to the Java backend.
+7. **Oracle UPDATE**: An Oracle `UPDATE` query modifies the specific record. It **does not** create a new customer record.
+8. **Database verification**: The changes are confirmed, and an audit email is generated.
 
-1. Navigate to the `backend` directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create your environment variables file:
-   ```bash
-   cp .env.example .env
-   ```
-4. Edit `.env` and set your MySQL password:
-   ```
-   DB_PASSWORD=YourMysqlRootPassword
-   ```
-5. Start the backend development server:
-   ```bash
-   npm run dev
-   ```
-   The backend runs on `http://localhost:4000`. It will auto-create the `uploads/` directory on startup.
+## 8. NEW ENTRY FLOW
 
-## Frontend Setup
+**Global Customer Code:**
+1. User enters new company information and selects Global Code.
+2. The Java backend generates a unique 4-character code and verifies it against `MEMGLBLCUST`.
+3. The backend executes an `INSERT INTO MEMGLBLCUST` statement with the exact mapped schema values.
 
-1. Open a new terminal and navigate to the `frontend` directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
-4. The application will be available at **http://localhost:5173**.
+**Handling Agent Code:**
+1. User enters new company information and selects Handling Agent Code.
+2. The Java backend generates a unique 4-character code and verifies it against `MEMGLBLHNDGAGNT`.
+3. The backend executes an `INSERT INTO MEMGLBLHNDGAGNT` statement.
 
-## Application Workflows
+## 9. GSTIN FUNCTIONALITY
+- Multiple GSTINs can be added via the frontend UI.
+- They are concatenated into a string payload and stored directly in the `MAVCUSTGSTINNUMB` column of the `MEMGLBLCUST` table.
+- Handling Agents do not store GSTINs in their respective table based on the current CRIS schema.
+- Verification/search can be performed using the GSTIN string via a `LIKE` SQL query in the Java backend.
 
-### 1. Old User Flow (Update Existing)
-- The user enters an existing **Customer Code** (e.g., `TEST001`).
-- The frontend calls `GET /api/customers/TEST001`.
-- The backend queries MySQL and returns all known data (Company Name, Address, PAN, GSTINs, etc.).
-- The form is auto-populated.
-- The user can add missing data (e.g., upload a missing PAN card PDF) or modify existing fields.
-- Clicking Submit calls `PUT /api/customers/TEST001`.
-- The backend safely updates **only** the modified fields using a safe merge strategy (it will never overwrite an existing MySQL value with `NULL` simply because the frontend field was empty).
+## 10. VERIFICATION SCREEN
+**1. Customer Code:**
+- User searches by code.
+- Java backend performs an exact match `SELECT` against the database.
+- Results are displayed in a clean tabular format.
 
-### 2. New Entry Flow (Create New)
-- The user enters their **Company Name**.
-- They select either "Global Code" or "Handling Agent Code".
-- The frontend debounces the input and calls `POST /api/codes/generate-global` (or handling).
-- The backend generates a 4-character code (e.g., `Rajesh Engineering Works` -> `REWO`).
-- The backend checks MySQL (`global_customers` or `handling_agents`). If `REWO` exists, it applies suffix variations (`REW1`, `REW2`) until a unique code is found.
-- The unique code is displayed on the frontend.
-- When the user fills out the rest of the form (including mandatory PDF uploads) and clicks Submit, it calls `POST /api/customers`.
-- The backend opens a **MySQL Transaction**.
-- It inserts the code into the parent table (`global_customers` / `handling_agents`), then inserts the main record into `customers`, then inserts multiple rows into `customer_gstins`. If any step fails, the entire transaction rolls back.
+**2. GSTIN:**
+- User searches by GSTIN.
+- Java backend performs a wildcard `LIKE` search against `MAVCUSTGSTINNUMB`.
+- The matched customer record is returned and displayed.
 
-## API Endpoints Reference
+## 11. DATABASE OPERATIONS
+The Java backend (`CustomerServiceImpl.java`) executes native Oracle SQL using `PreparedStatement` interfaces to prevent SQL injection.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Backend status check |
-| `GET` | `/api/customers/:code` | Fetch full profile for an existing customer |
-| `POST`| `/api/customers` | Register a new customer (JSON body + transaction) |
-| `PUT` | `/api/customers/:code` | Safely update an existing customer |
-| `PUT` | `/api/customers/:code/pan-file` | Upload PAN PDF (multipart/form-data) |
-| `GET` | `/api/customers/:code/gstins` | Fetch all GSTINs for a customer |
-| `POST`| `/api/customers/:code/gstins` | Add a new GSTIN (with optional PDF) |
-| `PUT` | `/api/customers/:code/gstins/:id` | Update a GSTIN / upload replacement PDF |
-| `DELETE`| `/api/customers/:code/gstins/:id`| Remove a GSTIN |
-| `GET` | `/api/customers/:code/gstins/:id/file`| Download/view a GSTIN PDF |
-| `POST`| `/api/codes/generate-global` | Generate a unique global code |
-| `POST`| `/api/codes/generate-handling` | Generate a unique handling agent code |
+**Transactions & Handling**: Connections are managed by the Spring Datasource pool.
+**Errors**: Exceptions trigger a `RuntimeException`, and duplicate codes automatically trigger regeneration during New Entry.
 
-## Verification Queries
-
-To manually verify that data is persisting in MySQL, use a tool like MySQL Workbench or the CLI, and run:
-
+*Examples for manual verification in Oracle SQL Developer:*
 ```sql
--- As DBA or schema owner
-@database/01_create_tables.sql
-@database/02_constraints.sql
-@database/03_indexes.sql
--- For TEST/DEV only:
-@database/04_sample_data.sql
--- User authentication table:
-@database/06_create_users_table.sql
-COMMIT;
+-- View all global customers
+SELECT * FROM MEMGLBLCUST;
+
+-- View all handling agents
+SELECT * FROM MEMGLBLHNDGAGNT;
+
+-- Search for a specific global customer
+SELECT * FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'ABCD';
+
+-- Search for a specific GSTIN
+SELECT * FROM MEMGLBLCUST WHERE MAVCUSTGSTINNUMB LIKE '%07ABCDE1234F1Z5%';
 ```
 
--- Verify new customers
-SELECT * FROM customers;
+## 12. DBA EMAIL / SQL AUDIT
+When a database operation occurs, the system uses `JavaMailSender` to send an email to the DBA containing a **READY-TO-EXECUTE** Oracle SQL query.
 
-```powershell
-cd backend
-copy .env.example .env
-# Edit .env — fill in Oracle credentials:
-#   DB_HOST, DB_PORT, DB_SERVICE, DB_USERNAME, DB_PASSWORD
-npm install
-npm run dev
-# → http://localhost:4000 (health check: /api/health)
+There are exactly four cases managed:
+1. `MEMGLBLCUST` → `INSERT`
+2. `MEMGLBLCUST` → `UPDATE`
+3. `MEMGLBLHNDGAGNT` → `INSERT`
+4. `MEMGLBLHNDGAGNT` → `UPDATE`
+
+**Crucial Note**: The email body exclusively utilizes exact CRIS table names and column orders. Development table names (e.g., `customer_code`, `handling_agents`) or JavaScript JSON objects are strictly forbidden in these emails.
+
+*Example Email Body:*
+```sql
+Operation: UPDATE
+Table: MEMGLBLCUST
+Code: CUST
+
+SQL QUERY:
+----------------------------------------
+UPDATE MEMGLBLCUST
+SET
+    MAVGLBLCUSTNAME = 'NEW NAME',
+    MAVGLBLCUSTADDRTEXT = 'NEW ADDRESS',
+    MAVGNBLCUSTCITYNAME = 'DELHI',
+    MAVPCOCODE = '110001',
+    MAVCUSTPANNUMB = 'ABCDE1234F',
+    MAVCUSTGSTINNUMB = '07ABCDE1234F1Z5'
+WHERE MAVGLBLCUSTCODE = 'CUST';
+----------------------------------------
 ```
 
-### 3. Frontend
+## 13. DATABASE CONNECTION
+The Java Spring Boot backend connects to the CRIS Oracle database using JDBC. 
+Database configuration is stored in `src/main/resources/application.properties`.
 
-```powershell
-cd frontend
-npm install
-npm run dev
-# → http://localhost:5173
-```
+**Security Note**: Credentials are provided dynamically via environment variables (e.g., `${ORACLE_DB_URL}`, `${ORACLE_DB_USERNAME}`, `${ORACLE_DB_PASSWORD}`). **Actual passwords must never be exposed** in the frontend, React code, GitHub, READMEs, or emails.
 
-Vite automatically proxies `/api/*` to `http://localhost:4000`.
+## 14. IMPORTANT DEVELOPMENT RULES
+**RULES FOR FUTURE AI AGENTS:**
+- READ THIS `README.md` BEFORE modifying the project.
+- Understand the existing architecture before coding.
+- Do not redesign the UI unless explicitly requested.
+- Do not replace Oracle with MySQL/Supabase.
+- Do not create duplicate CRIS tables.
+- Do not rename CRIS tables.
+- Do not rename CRIS columns.
+- Continue using JDBC where currently implemented.
+- Reuse existing database services/connections.
+- Do not break existing functionality.
+- Do not hard-code credentials.
+- Do not make assumptions about the CRIS schema.
+- Verify database changes with SELECT queries.
+- Do not claim a database feature is complete until it has actually been tested.
 
-## Environment Variables (backend/.env)
+## 15. CURRENT STATUS / KNOWN ISSUES
+- **Working**: 
+  - Java Spring Boot JDBC integration with Oracle.
+  - New Entry code generation and `INSERT` logic.
+  - Old User `SELECT` and `UPDATE` logic.
+  - DBA Email notifications generating copy-paste Oracle SQL.
+  - Verification lookups.
+- **Partially working**: 
+  - File uploads (currently designed for local filesystem, pending Oracle BLOB integration if requested).
+- **Not working / Future Work**: 
+  - `MEMWGONOWNRSHIP` and `MEMWGONOWNRPRTY` integration (reserved for future requirements).
 
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `DB_HOST` | localhost | Oracle host |
-| `DB_PORT` | 1521 | Oracle listener port |
-| `DB_SERVICE` | ORCL | PDB / Service name |
-| `DB_USERNAME` | **required** | Schema owner |
-| `DB_PASSWORD` | **required** | Never commit |
-| `DB_POOL_MIN / MAX / INCREMENT` | 4 / 20 / 2 | Connection pool |
-| `PORT` | 4000 | API port |
-| `CORS_ORIGIN` | `http://localhost:5173` | Frontend origin |
-| `CODE_MAX_LENGTH` | **4** | Must stay 4 until FOIS expands VARCHAR2(4) columns |
-| `CODE_MAX_RETRIES` | 50 | Unique code generation fail-safe |
+## 16. HOW A NEW AI AGENT SHOULD WORK
+1. Read `README.md` completely.
+2. Inspect the existing project structure.
+3. Identify the relevant frontend/backend files.
+4. Understand the existing database/JDBC implementation.
+5. Check the CRIS Oracle schema before modifying SQL.
+6. Make the smallest required change.
+7. Do not modify unrelated functionality.
+8. Run/build the application.
+9. Test the affected feature.
+10. Verify database changes directly with SQL.
+11. Update `README.md` if the architecture or functionality changes.
 
-## API Endpoints
+## 17. MANUAL DATABASE MANAGEMENT
+To manage the database manually via **Oracle SQL Developer**:
+1. Open Oracle SQL Developer.
+2. Create a new connection using the host, port, and service name (do NOT use credentials found in source code; request them from the administrator).
+3. Open a SQL Worksheet.
+4. Run `SELECT * FROM MEMGLBLCUST;` to view global customers.
+5. Run `SELECT * FROM MEMGLBLHNDGAGNT;` to view handling agents.
+6. After running `INSERT` or `UPDATE` queries manually, remember to issue a `COMMIT;` statement if autocommit is disabled.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/customers/:code` | Fetch customer by code |
-| `POST` | `/api/customers` | Create new customer |
-| `PUT`  | `/api/customers/:code` | Update existing customer |
-| `GET`  | `/api/customers/:code/gstins` | List all GSTINs |
-| `POST` | `/api/customers/:code/gstins` | Add GSTIN (multipart w/ file) |
-| `PUT`  | `/api/customers/:code/gstins/:id` | Update GSTIN |
-| `DELETE` | `/api/customers/:code/gstins/:id` | Delete GSTIN |
-| `GET`  | `/api/customers/:code/gstins/:id/file` | Download GSTIN file |
-| `POST` | `/api/codes/generate-global` | Generate unique Global Code |
-| `POST` | `/api/codes/generate-handling` | Generate unique Handling Agent Code |
-| `POST` | `/api/auth/register` | Create a new user account |
-| `POST` | `/api/auth/login` | Authenticate and log in |
-
-## FOIS Migration
-
-When moving from TEST to FOIS production:
-
-1. Skip `04_sample_data.sql`.
-2. Run scripts 01 → 02 → 03.
-3. Set `NODE_ENV=production` in `.env`.
-4. Point `DB_HOST/PORT/SERVICE/USERNAME/PASSWORD` at FOIS database.
-5. No code changes required — only `.env` updates.
-
-## Sample Data (Test)
-
-| Table | Count | Notes |
-|-------|-------|-------|
-| `MEMGLBLCUST` | 3 | `NYIL`, `NYI1`, `SCC0`. `NYI2` free for duplicate-code test |
-| `MEMGLBLHNDGAGNT` | 2 | `ATPL`, `RPAL` |
-| `MEMCUSTOMER` | 2 | `CUST001` (1 GSTIN), `CUST002` (4 GSTINs) |
-| `MEMCUSTOMERGSTIN` | 5 | Multi-state GSTINs |
-
-Test Old User flow with `CUST001` or `CUST002`.
-
-## Project Layout
-
-```
-backend/               Node.js Express API (TypeScript + oracledb)
-├── .env.example       Copy → .env, fill Oracle creds
-├── src/
-│   ├── server.ts      Express entry, CORS, error handler
-│   ├── config/        env.ts, database.ts (pool + withTransaction)
-│   ├── controllers/   customerController, gstinController, codeController
-│   ├── routes/        customerRoutes, codeRoutes
-│   ├── middleware/     errorHandler (ORA- mapping, stack masking)
-│   └── utils/         codeGenerator, validators
-
-frontend/              React Vite application
-├── src/
-│   ├── pages/         CustomerRegistration.jsx, Login.jsx, SignUp.jsx
-│   ├── services/      customerService.js, authService.js (API clients)
-│   └── styles/        registration.css, login.css, signup.css, zone-dropdown.css
-
-database/              Oracle SQL scripts (run in order)
-├── 01_create_tables.sql
-├── 02_constraints.sql
-├── 03_indexes.sql
-├── 04_sample_data.sql
-├── 06_create_users_table.sql   (NEW — user authentication)
-└── README.md
-
-src/                   Legacy Spring Boot (MySQL) — not used for Oracle
-```
-
-## Authentication & Sign Up Flow
-
-### Sign Up
-
-1. User clicks **Sign Up** on the Login page → navigated to the Sign Up page.
-2. User fills in **Email ID**, **Username**, **Password**, and **Confirm Password**.
-3. Client-side validation runs (required fields, email format, username format, password strength, password match).
-4. `POST /api/auth/register` is called with the form data.
-5. Backend validates inputs, checks for duplicate email/username, hashes the password with bcrypt, and inserts into `MEMUSERS`.
-6. On success: "Account created successfully. Please sign in." → redirects to Login.
-
-### Login
-
-1. User enters **Username**, **Password**, and **Captcha** on the Login page.
-2. `POST /api/auth/login` is called.
-3. Backend looks up the user by username, verifies the password hash with bcrypt.
-4. On success: user is authenticated and redirected to the Customer Registration portal.
-
-> **Dev-mode bypass:** If `MEMUSERS` table doesn't exist and `NODE_ENV !== 'production'`, login accepts any credentials so the app is usable during development without running the auth migration. In production, real authentication is always required.
-
-### Validation Rules
-
-| Field | Rules |
-|-------|-------|
-| Email ID | Required, valid email format, unique |
-| Username | Required, 3–50 chars, starts with a letter, alphanumeric + `_` `-`, unique |
-| Password | Required, min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character |
-| Confirm Password | Must match Password exactly |
-
-### Database Table
-
-`MEMUSERS` — stores user accounts (passwords are bcrypt-hashed, never plaintext).
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `MAVUSERID` | `NUMBER IDENTITY` | Auto-generated PK |
-| `MAVEMAIL` | `VARCHAR2(255)` | Unique |
-| `MAVUSERNAME` | `VARCHAR2(100)` | Unique |
-| `MAVPASSWORDHASH` | `VARCHAR2(255)` | bcrypt hash |
-| `MACACTIVEFLAG` | `CHAR(1)` | Default `'Y'` |
-| `MADCREATEDDATE` | `DATE` | Default `SYSDATE` |
-
-## Troubleshooting
-
--- Verify GSTIN records attached to customers
-SELECT * FROM customer_gstins;
-```
-
-## Document Scanning and Verification
-
-The active MySQL/Node implementation scans uploaded PDFs through the backend:
-
-```
-PAN PDF -> PDF text extraction -> OCR fallback -> PAN detection -> comparison -> verification
-GST PDF -> PDF text extraction -> OCR fallback -> GSTIN/address detection -> comparison -> verification
-```
-
-The endpoints `POST /api/documents/pan/scan` and `POST /api/documents/gstin/scan` accept a
-5 MB PDF in the `document` field. Text-based PDFs are parsed first; scanned PDFs are rendered
-and OCRed with Tesseract. PAN uses `^[A-Z]{5}[0-9]{4}[A-Z]$`; GSTIN uses the standard
-15-character format. GST addresses are normalized for case, punctuation, whitespace, common
-abbreviations, and PIN code before similarity matching.
-
-The existing PAN and per-customer GSTIN upload endpoints re-scan documents on the backend.
-They reject invalid, unreadable, mismatched, or address-mismatched documents and only mark
-records `VERIFIED` after the comparison succeeds. Each GSTIN retains its own file reference,
-registered address, GSTIN status, and address status. Files remain outside the database and are
-stored under the configured backend upload directory; database credentials and file paths are
-never exposed to the frontend. `database/07_add_document_verification.sql` adds the metadata
-columns to an existing MySQL database.
-
-Both Old User reload/update and New Entry upload flows use the same per-document endpoints.
-Submission validation blocks a pending or failed scan, and the server remains the final authority.
+## 18. CHANGE LOG
+- **2026-09-02**: Replaced local MySQL/Prisma backend with Java/JDBC Oracle backend.
+- **2026-09-02**: Mapped all frontend form fields explicitly to CRIS Oracle tables (`MEMGLBLCUST`, `MEMGLBLHNDGAGNT`).
+- **2026-09-02**: Implemented formatted, copy-pasteable Oracle SQL query generation for DBA notification emails.
+- **2026-09-02**: Updated `README.md` to serve as the master single source of truth for the project.
