@@ -250,25 +250,47 @@ public class CustomerServiceImpl implements CustomerService {
             String timestamp = sdf.format(new java.util.Date());
             String table = "global".equals(finalTypeForEmail) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
             String col = "global".equals(finalTypeForEmail) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-            String nCol = "global".equals(finalTypeForEmail) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-            String aCol = "global".equals(finalTypeForEmail) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-            String cCol = "global".equals(finalTypeForEmail) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
 
             String sqlQuery = "";
             if ("global".equals(finalTypeForEmail)) {
-                sqlQuery = "INSERT INTO " + table + "\n(\n    " + col + ",\n    " + nCol + ",\n    " + aCol + ",\n    " + cCol + ",\n    " + pinCol + ",\n    MAVCUSTPANNUMB\n)\nVALUES\n(\n" +
-                    "    '" + finalCodeForEmail + "',\n    '" + formData.get("customerName") + "',\n    '" + formData.get("address") + "',\n    '" + formData.get("city") + "',\n    '" + formData.get("pincode") + "',\n    '" + formData.get("pan") + "'\n);";
+                sqlQuery = "INSERT INTO MEMGLBLCUST\nVALUES (\n" +
+                    formatSqlValue(finalCodeForEmail) + ",\n" +
+                    formatSqlValue(formData.get("customerName")) + ",\n" +
+                    formatSqlValue(formData.get("address")) + ",\n" +
+                    formatSqlValue(formData.get("city")) + ",\n" +
+                    "NULL,\n" +
+                    formatSqlValue(formData.get("pincode")) + ",\n" +
+                    "NULL,\n" +
+                    "SYSDATE,\n" +
+                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
+                    "NULL,\n" +
+                    formatSqlValue(formData.get("gstinNumbers")) + ",\n" +
+                    formatSqlValue(formData.get("pan")) + "\n" +
+                    ");";
             } else {
-                sqlQuery = "INSERT INTO " + table + "\n(\n    " + col + ",\n    " + nCol + ",\n    " + aCol + ",\n    " + cCol + ",\n    " + pinCol + "\n)\nVALUES\n(\n" +
-                    "    '" + finalCodeForEmail + "',\n    '" + formData.get("customerName") + "',\n    '" + formData.get("address") + "',\n    '" + formData.get("city") + "',\n    '" + formData.get("pincode") + "'\n);";
+                sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT\nVALUES (\n" +
+                    formatSqlValue(finalCodeForEmail) + ",\n" +
+                    formatSqlValue(formData.get("customerName")) + ",\n" +
+                    formatSqlValue(formData.get("address")) + ",\n" +
+                    formatSqlValue(formData.get("city")) + ",\n" +
+                    "NULL,\n" +
+                    formatSqlValue(formData.get("pincode")) + ",\n" +
+                    "NULL,\n" +
+                    "SYSDATE,\n" +
+                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
+                    "NULL\n" +
+                    ");";
             }
+
+
                     
             String text = "Operation: INSERT\n" +
-                    "Table: " + table + "\n\n" +
-                    sqlQuery + "\n\n" +
-                    "Date/Time: " + timestamp + "\n" +
-                    "Generated Code: " + finalCodeForEmail + "\n" +
-                    "Company Name: " + formData.get("customerName");
+                    "Table: " + table + "\n" +
+                    "Code: " + finalCodeForEmail + "\n\n" +
+                    "SQL QUERY:\n" +
+                    "----------------------------------------\n" +
+                    sqlQuery + "\n" +
+                    "----------------------------------------";
                     
             message.setText(text);
             mailSender.send(message);
@@ -291,14 +313,29 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
-  String sql = "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTINNUMB = ? WHERE MAVGLBLCUSTCODE = ?";
+  String type = formData.get("codeType");
+  if (type != null) type = type.toLowerCase();
+  if ("handling_agent".equals(type)) type = "handling";
+  boolean isGlobal = !"handling".equals(type); // default to global
+
+  String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+  String sql = isGlobal
+      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVPCOCODE = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTINNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
+      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ?, MAVPCOCODE = ? WHERE MAVHNDGAGNTCODE = ?";
+      
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, formData.get("companyName"));
    ps.setString(2, formData.get("address"));
-   ps.setString(3, formData.get("panNumber"));
-   ps.setString(4, formData.get("gstinNumbers"));
-   ps.setString(5, formData.get("customerCode"));
+   ps.setString(3, formData.get("city"));
+   ps.setString(4, formData.get("pincode"));
+   if (isGlobal) {
+       ps.setString(5, formData.get("panNumber"));
+       ps.setString(6, formData.get("gstinNumbers"));
+       ps.setString(7, formData.get("customerCode"));
+   } else {
+       ps.setString(5, formData.get("customerCode"));
+   }
    
    ps.executeUpdate();
    
@@ -312,18 +349,32 @@ public class CustomerServiceImpl implements CustomerService {
            
            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
            String timestamp = sdf.format(new java.util.Date());
-            String sqlQuery = "UPDATE MEMGLBLCUST\nSET\n" +
-                    "    MAVGLBLCUSTNAME = '" + formData.get("companyName") + "',\n" +
-                    "    MAVGLBLCUSTADDRTEXT = '" + formData.get("address") + "',\n" +
-                    "    MAVCUSTPANNUMB = '" + formData.get("panNumber") + "',\n" +
-                    "    MAVCUSTGSTINNUMB = '" + formData.get("gstinNumbers") + "'\n" +
-                    "WHERE MAVGLBLCUSTCODE = '" + formData.get("customerCode") + "';";
+            String sqlQuery = "";
+            if (isGlobal) {
+                sqlQuery = "UPDATE MEMGLBLCUST\nSET\n" +
+                    "    MAVGLBLCUSTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
+                    "    MAVGLBLCUSTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
+                    "    MAVGNBLCUSTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
+                    "    MAVPCOCODE = " + formatSqlValue(formData.get("pincode")) + ",\n" +
+                    "    MAVCUSTPANNUMB = " + formatSqlValue(formData.get("panNumber")) + ",\n" +
+                    "    MAVCUSTGSTINNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
+                    "WHERE MAVGLBLCUSTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
+            } else {
+                sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
+                    "    MAVHNDGAGNTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
+                    "    MAVHNDGAGNTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
+                    "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
+                    "    MAVPCOCODE = " + formatSqlValue(formData.get("pincode")) + "\n" +
+                    "WHERE MAVHNDGAGNTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
+            }
                     
             String text = "Operation: UPDATE\n" +
-                    "Table: MEMGLBLCUST\n" +
-                   "Customer Code: " + formData.get("customerCode") + "\n\n" +
-                   sqlQuery + "\n\n" +
-                   "Date/Time: " + timestamp;
+                    "Table: " + table + "\n" +
+                    "Code: " + formData.get("customerCode") + "\n\n" +
+                    "SQL QUERY:\n" +
+                    "----------------------------------------\n" +
+                    sqlQuery + "\n" +
+                    "----------------------------------------";
                    
            message.setText(text);
            mailSender.send(message);
@@ -361,5 +412,12 @@ public class CustomerServiceImpl implements CustomerService {
   } catch (SQLException e) {
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
+ }
+
+ private String formatSqlValue(String value) {
+  if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) {
+   return "NULL";
+  }
+  return "'" + value.replace("'", "''") + "'";
  }
 }
