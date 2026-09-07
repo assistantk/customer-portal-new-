@@ -91,7 +91,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-   String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTINNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode);
@@ -101,8 +101,6 @@ public class CustomerServiceImpl implements CustomerService {
      response.setCustomerCode(rs.getString("customer_code"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
-     response.setPanNumber(rs.getString("pan_number"));
-     response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
      response.setPincode(rs.getString("pincode"));
      
@@ -117,6 +115,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
+     System.err.printf("[DB ERROR] lookupOldCustomerByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
    throw new RuntimeException("Database error occurred while fetching old customer data: " + e.getMessage(), e);
   }
  }

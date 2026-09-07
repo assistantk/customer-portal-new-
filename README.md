@@ -185,6 +185,16 @@ Database configuration is stored in `src/main/resources/application.properties`.
 
 **Security Note**: Credentials are provided dynamically via environment variables (e.g., `${ORACLE_DB_URL}`, `${ORACLE_DB_USERNAME}`, `${ORACLE_DB_PASSWORD}`). **Actual passwords must never be exposed** in the frontend, React code, GitHub, READMEs, or emails.
 
+**PowerShell startup:** Set all three variables in the same terminal used to start Spring Boot. The URL must use the SQL Developer connection's service name:
+```powershell
+$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//tndexaccvm-scan.crisexacc.org:1521/test.crisexacc.org"
+$env:ORACLE_DB_USERNAME = "tms3t"
+$env:ORACLE_DB_PASSWORD = Read-Host "Oracle database password"
+Get-ChildItem Env:ORACLE_DB_URL,Env:ORACLE_DB_USERNAME,Env:ORACLE_DB_PASSWORD
+./mvnw.cmd spring-boot:run
+```
+If a log says `Driver oracle.jdbc.OracleDriver claims to not accept jdbcUrl, ${ORACLE_DB_URL}`, the variables were not set in the process that launched Maven. Do not replace the placeholders in `application.properties` with credentials.
+
 ## 14. IMPORTANT DEVELOPMENT RULES
 **RULES FOR FUTURE AI AGENTS:**
 - READ THIS `README.md` BEFORE modifying the project.
