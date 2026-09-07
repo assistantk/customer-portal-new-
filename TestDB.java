@@ -14,7 +14,7 @@ public class TestDB {
             Class.forName("oracle.jdbc.OracleDriver");
             try (Connection conn = DriverManager.getConnection(url, user, pass)) {
                 System.out.println("Connected to Database!");
-                String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTINNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+                String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setString(1, "ABME");
                     try (ResultSet rs = ps.executeQuery()) {

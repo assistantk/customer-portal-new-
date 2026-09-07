@@ -103,6 +103,7 @@ export default function CustomerRegistration() {
     const panFileRef = useRef(null);
     const codeTimerRef = useRef(null);
     const lookupTimerRef = useRef(null);
+    const lookupRequestRef = useRef(0);
 
     useEffect(() => { getMasterData().then(setData).catch(() => { }) }, []);
 
@@ -120,14 +121,25 @@ export default function CustomerRegistration() {
 
     /* ===== Old User: lookup by customer code ===== */
     const handleOldCodeChange = (code) => {
-        setForm(prev => ({ ...prev, customerCode: code }));
+        setForm(prev => ({
+            ...prev,
+            customerCode: code,
+            companyName: '',
+            address: '',
+            panNumber: '',
+            email: '',
+            mobile: '',
+        }));
+        setGstins([{ ...blankGstin }]);
         setLookupDone(false); setLookupError('');
+        const requestId = ++lookupRequestRef.current;
         if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
-        if (code.trim().length >= 2) {
+        if (code.trim().length === 4) {
             setLookupLoading(true);
             lookupTimerRef.current = setTimeout(async () => {
                 try {
                     const customer = await lookupOldCustomerJDBC(code.trim());
+                    if (requestId !== lookupRequestRef.current) return;
                     setForm({
                         companyName: customer.companyName || '',
                         customerCode: code,
@@ -161,6 +173,7 @@ export default function CustomerRegistration() {
                     setRemovedGstinIds([]);
                     setLookupDone(true); setLookupError('');
                 } catch (err) {
+                    if (requestId !== lookupRequestRef.current) return;
                     console.error("Lookup error:", err);
                     setLookupDone(false); 
                     setLookupError(err.message || 'Error occurred while fetching customer data');
@@ -180,11 +193,20 @@ export default function CustomerRegistration() {
                     });
                     setGstins([{ ...blankGstin }]);
                 } finally {
-                    setLookupLoading(false);
+                    if (requestId === lookupRequestRef.current) setLookupLoading(false);
                 }
             }, 800);
         } else {
             setLookupLoading(false);
+            setGstins([{ ...blankGstin }]);
+            setForm(prev => ({
+                ...prev,
+                companyName: '',
+                address: '',
+                panNumber: '',
+                email: '',
+                mobile: '',
+            }));
         }
     };
 
