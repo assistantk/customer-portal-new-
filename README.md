@@ -52,7 +52,7 @@ The application interacts with the following actual CRIS tables:
 - `MADIMPLDATE` → Implementation date (set to `SYSDATE`)
 - `MAVIMPLREMK` → Implementation remark (used for Operating Division)
 - `MADEDMNDDATE` → End/Amendment date
-- `MAVCUSTGSTINNUMB` → GSTIN Numbers
+- `MAVCUSTGSTNUMB` → GSTIN Numbers
 - `MAVCUSTPANNUMB` → PAN Number
 
 **`MEMGLBLHNDGAGNT`** (Handling Agent)
@@ -82,7 +82,7 @@ The application interacts with the following actual CRIS tables:
 | Pincode (Global) | `MEMGLBLCUST` | `MAVPCOCODE` |
 | Pincode (Agent) | `MEMGLBLHNDGAGNT` | `MAVPCOCODE` |
 | PAN | `MEMGLBLCUST` | `MAVCUSTPANNUMB` |
-| GSTIN | `MEMGLBLCUST` | `MAVCUSTGSTINNUMB` |
+| GSTIN | `MEMGLBLCUST` | `MAVCUSTGSTNUMB` |
 | Operating Division (Global)| `MEMGLBLCUST` | `MAVIMPLREMK` |
 | Operating Division (Agent)| `MEMGLBLHNDGAGNT` | `MAVIMPLREMK` |
 
@@ -112,7 +112,7 @@ The application interacts with the following actual CRIS tables:
 
 ## 9. GSTIN FUNCTIONALITY
 - Multiple GSTINs can be added via the frontend UI.
-- They are concatenated into a string payload and stored directly in the `MAVCUSTGSTINNUMB` column of the `MEMGLBLCUST` table.
+- They are concatenated into a string payload and stored directly in the `MAVCUSTGSTNUMB` column of the `MEMGLBLCUST` table.
 - Handling Agents do not store GSTINs in their respective table based on the current CRIS schema.
 - Verification/search can be performed using the GSTIN string via a `LIKE` SQL query in the Java backend.
 
@@ -124,7 +124,7 @@ The application interacts with the following actual CRIS tables:
 
 **2. GSTIN:**
 - User searches by GSTIN.
-- Java backend performs a wildcard `LIKE` search against `MAVCUSTGSTINNUMB`.
+- Java backend performs a wildcard `LIKE` search against `MAVCUSTGSTNUMB`.
 - The matched customer record is returned and displayed.
 
 ## 11. DATABASE OPERATIONS
@@ -145,7 +145,7 @@ SELECT * FROM MEMGLBLHNDGAGNT;
 SELECT * FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'ABCD';
 
 -- Search for a specific GSTIN
-SELECT * FROM MEMGLBLCUST WHERE MAVCUSTGSTINNUMB LIKE '%07ABCDE1234F1Z5%';
+SELECT * FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE '%07ABCDE1234F1Z5%';
 ```
 
 ## 12. DBA EMAIL / SQL AUDIT
@@ -174,7 +174,7 @@ SET
     MAVGNBLCUSTCITYNAME = 'DELHI',
     MAVPCOCODE = '110001',
     MAVCUSTPANNUMB = 'ABCDE1234F',
-    MAVCUSTGSTINNUMB = '07ABCDE1234F1Z5'
+    MAVCUSTGSTNUMB = '07ABCDE1234F1Z5'
 WHERE MAVGLBLCUSTCODE = 'CUST';
 ----------------------------------------
 ```

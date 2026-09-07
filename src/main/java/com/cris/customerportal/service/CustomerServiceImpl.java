@@ -91,16 +91,18 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, customerCode);
+   ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("customer_code"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
+    response.setPanNumber(rs.getString("pan_number"));
+    response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
      response.setPincode(rs.getString("pincode"));
      
@@ -121,7 +123,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByGstin(String gstin) {
-   String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTINNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTINNUMB LIKE ?";
+    String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -319,7 +321,7 @@ public class CustomerServiceImpl implements CustomerService {
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
   String sql = isGlobal
-      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVPCOCODE = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTINNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
+    ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVPCOCODE = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
       : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ?, MAVPCOCODE = ? WHERE MAVHNDGAGNTCODE = ?";
       
   try (Connection conn = dataSource.getConnection();
@@ -356,7 +358,7 @@ public class CustomerServiceImpl implements CustomerService {
                     "    MAVGNBLCUSTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
                     "    MAVPCOCODE = " + formatSqlValue(formData.get("pincode")) + ",\n" +
                     "    MAVCUSTPANNUMB = " + formatSqlValue(formData.get("panNumber")) + ",\n" +
-                    "    MAVCUSTGSTINNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
+                    "    MAVCUSTGSTNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
                     "WHERE MAVGLBLCUSTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
             } else {
                 sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
