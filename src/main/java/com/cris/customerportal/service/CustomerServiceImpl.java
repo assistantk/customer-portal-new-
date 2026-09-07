@@ -117,7 +117,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-   throw new RuntimeException("Database error occurred while fetching old customer data", e);
+   throw new RuntimeException("Database error occurred while fetching old customer data: " + e.getMessage(), e);
   }
  }
 
