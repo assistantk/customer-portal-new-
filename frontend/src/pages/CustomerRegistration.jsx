@@ -366,9 +366,7 @@ export default function CustomerRegistration() {
         setGstins(gstins.filter((_, i) => i !== index));
     };
     const handleGstinChange = (index, updates) => {
-        const newGstins = [...gstins];
-        newGstins[index] = { ...newGstins[index], ...updates };
-        setGstins(newGstins);
+        setGstins(prev => prev.map((gstin, currentIndex) => currentIndex === index ? { ...gstin, ...updates } : gstin));
         if (Object.prototype.hasOwnProperty.call(updates, 'gstin')) {
             const status = getGstinPanStatus(updates.gstin, form.panNumber);
             setErrors(prev => {
