@@ -6,6 +6,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const PAN_REGEX = /[A-Z]{5}[0-9]{4}[A-Z]/;
 const GSTIN_REGEX = /[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]/;
+const PIN_PATTERN = /\b[1-9][0-9]{5}\b/;
 
 export const STATE_CODE_MAP = {
     '01': 'Jammu and Kashmir',
@@ -123,6 +124,70 @@ async function callBackendOcrApi(endpoint, file) {
     }
 }
 
+function extractAddressFromText(text) {
+    const labels = ['registered address', 'principal place of business', 'business address', 'address'];
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const labelIndex = lines.findIndex(line => labels.some(label => line.toLowerCase().includes(label.toLowerCase())));
+    if (labelIndex < 0) return null;
+    
+    const sameLine = lines[labelIndex].split(/[:]/).slice(1).join(':').trim();
+    const value = sameLine || lines[labelIndex + 1];
+    if (!value) return null;
+    
+    const start = lines.findIndex(line => line.toLowerCase().includes(value.toLowerCase()));
+    const selected = start >= 0 ? lines.slice(start, start + 5) : [value];
+    let address = selected.join(', ').replace(/\s+/g, ' ').replace(/,\s*,/g, ',').trim();
+    return PIN_PATTERN.test(address) ? address : null;
+}
+
+const extractValueForLabelFromLines = (lines, label) => {
+    const lowerLabel = label.toLowerCase();
+    for (const line of lines) {
+        const lowerLine = line.toLowerCase();
+        if (lowerLine.includes(lowerLabel)) {
+            const index = lowerLine.indexOf(lowerLabel);
+            const remaining = line.slice(index + label.length).trim();
+            if (remaining.startsWith(':')) {
+                return remaining.slice(1).trim() || null;
+            }
+            return remaining || null;
+        }
+    }
+    return null;
+}
+
+const extractStructuredAddress = (text) => {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    
+    const building = extractValueForLabelFromLines(lines, 'Building No./Flat No');
+    const premises = extractValueForLabelFromLines(lines, 'Name Of Premises/Building');
+    const road = extractValueForLabelFromLines(lines, 'Road/Street');
+    const landmark = extractValueForLabelFromLines(lines, 'Nearby Landmark');
+    const locality = extractValueForLabelFromLines(lines, 'Locality/Sub Locality');
+    
+    const city = extractValueForLabelFromLines(lines, 'City/Town/Village');
+    const pincode = extractValueForLabelFromLines(lines, 'PIN Code') || extractValueForLabelFromLines(lines, 'Pincode');
+    const state = extractValueForLabelFromLines(lines, 'State');
+
+    const addressParts = [building, premises, road, landmark, locality].filter(Boolean);
+    const address = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+    return { address, city, pincode, state };
+}
+
+function extractCityFromAddress(address) {
+    if (!address) return null;
+    const parts = address.split(/[,]/).map(p => p.trim()).filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+        if (PIN_PATTERN.test(parts[i])) {
+            let words = parts[i].replace(PIN_PATTERN, '').replace(/[-_]/g, '').trim();
+            if (words.length > 2) return words;
+            if (i > 0 && parts[i - 1].length > 2) return parts[i - 1];
+        }
+    }
+    return null;
+}
+
 /**
  * Scans a PAN card file (PDF or image) with OCR and returns the detected 10-character PAN number.
  * @param {File} file
@@ -193,10 +258,15 @@ export async function extractGstinFromFile(file) {
                 }
             }
 
+            const structured = extractStructuredAddress(text);
+            let address = structured.address || extractAddressFromText(text);
+            let pincode = structured.pincode || (address ? address.match(PIN_PATTERN)?.[0] || null : null);
+            let city = structured.city || extractCityFromAddress(address);
+
             if (gstin) {
                 const stateCode = gstin.slice(0, 2);
-                const stateName = getStateNameFromGstinCode(stateCode);
-                return { gstin, stateCode, stateName };
+                const stateName = structured.state || getStateNameFromGstinCode(stateCode);
+                return { gstin, stateCode, stateName, address, city, pincode };
             }
         } finally {
             await worker.terminate();
@@ -210,8 +280,15 @@ export async function extractGstinFromFile(file) {
     if (apiRes && apiRes.success && apiRes.extractedNumber) {
         const stateCode = apiRes.stateCode || apiRes.extractedNumber.slice(0, 2);
         const stateName = apiRes.state || getStateNameFromGstinCode(stateCode);
-        return { gstin: apiRes.extractedNumber, stateCode, stateName };
+        return { 
+            gstin: apiRes.extractedNumber, 
+            stateCode, 
+            stateName,
+            address: apiRes.address || null,
+            city: apiRes.city || null,
+            pincode: apiRes.pincode || null
+        };
     }
 
-    return { gstin: null, stateCode: null, stateName: null };
+    return { gstin: null, stateCode: null, stateName: null, address: null, city: null, pincode: null };
 }

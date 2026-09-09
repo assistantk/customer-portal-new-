@@ -10,6 +10,8 @@ export interface ScanResult {
   pan: string | null;
   gstin: string | null;
   address: string | null;
+  city: string | null;
+  pincode: string | null;
   legalName: string | null;
   stateCode: string | null;
   state: string | null;
@@ -92,8 +94,56 @@ const extractAddress = (text: string): string | null => {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const start = lines.findIndex(line => line.toLowerCase().includes(value.toLowerCase()));
   const selected = start >= 0 ? lines.slice(start, start + 5) : [value];
-  const address = selected.join(', ');
+  let address = selected.join(', ').replace(/\s+/g, ' ').replace(/,\s*,/g, ',').trim();
   return PIN_PATTERN.test(address) ? address : null;
+};
+
+const extractValueForLabelFromLines = (lines: string[], label: string): string | null => {
+  const lowerLabel = label.toLowerCase();
+  for (const line of lines) {
+    const lowerLine = line.toLowerCase();
+    if (lowerLine.includes(lowerLabel)) {
+      const index = lowerLine.indexOf(lowerLabel);
+      const remaining = line.slice(index + label.length).trim();
+      if (remaining.startsWith(':')) {
+        return remaining.slice(1).trim() || null;
+      }
+      return remaining || null;
+    }
+  }
+  return null;
+}
+
+const extractStructuredAddress = (text: string) => {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  
+  const building = extractValueForLabelFromLines(lines, 'Building No./Flat No');
+  const premises = extractValueForLabelFromLines(lines, 'Name Of Premises/Building');
+  const road = extractValueForLabelFromLines(lines, 'Road/Street');
+  const landmark = extractValueForLabelFromLines(lines, 'Nearby Landmark');
+  const locality = extractValueForLabelFromLines(lines, 'Locality/Sub Locality');
+  
+  const city = extractValueForLabelFromLines(lines, 'City/Town/Village');
+  const pincode = extractValueForLabelFromLines(lines, 'PIN Code') || extractValueForLabelFromLines(lines, 'Pincode');
+  const state = extractValueForLabelFromLines(lines, 'State');
+
+  const addressParts = [building, premises, road, landmark, locality].filter(Boolean);
+  const address = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+  return { address, city, pincode, state };
+}
+
+const extractCity = (address: string | null): string | null => {
+  if (!address) return null;
+  const parts = address.split(/[,]/).map(p => p.trim()).filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    if (PIN_PATTERN.test(parts[i])) {
+      let words = parts[i].replace(PIN_PATTERN, '').replace(/[-_]/g, '').trim();
+      if (words.length > 2) return words;
+      if (i > 0 && parts[i - 1].length > 2) return parts[i - 1];
+    }
+  }
+  return null;
 };
 
 async function ocrImage(buffer: Buffer): Promise<{ text: string; confidence: number }> {
@@ -163,10 +213,15 @@ export async function scanDocument(kind: DocumentKind, buffer: Buffer): Promise<
   const compact = normalizeText(text);
   const pan = kind === 'pan' ? findPan(compact) : null;
   const gstin = kind === 'gstin' ? findGstin(compact) : null;
-  const address = kind === 'gstin' ? extractAddress(text) : null;
+  
+  const structured = kind === 'gstin' ? extractStructuredAddress(text) : { address: null, city: null, pincode: null, state: null };
+  const address = structured.address || (kind === 'gstin' ? extractAddress(text) : null);
+  const pincode = structured.pincode || (address ? address.match(PIN_PATTERN)?.[0] || null : null);
+  const city = structured.city || extractCity(address);
+  
   const legalName = kind === 'gstin' ? labelledValue(text, ['legal name', 'trade name']) : null;
   const stateCode = gstin ? gstin.slice(0, 2) : null;
-  const state = stateCode ? getStateNameFromCode(stateCode) : null;
+  const state = structured.state || (stateCode ? getStateNameFromCode(stateCode) : null);
 
-  return { pan, gstin, address, legalName, stateCode, state, confidence, text: compact };
+  return { pan, gstin, address, city, pincode, legalName, stateCode, state, confidence, text: compact };
 }

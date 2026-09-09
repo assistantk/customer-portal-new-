@@ -46,6 +46,21 @@ const getGstinPanStatus = (gstin, pan) => {
 const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
 
+const addressesMatch = (left, right) => {
+    const a = normalizeAddress(left || '');
+    const b = normalizeAddress(right || '');
+    if (!a || !b) return false;
+    const pinPattern = /\b[1-9][0-9]{5}\b/g;
+    const leftPin = a.match(pinPattern)?.[0];
+    const rightPin = b.match(pinPattern)?.[0];
+    if (leftPin && rightPin && leftPin !== rightPin) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const aTokens = new Set(a.split(' ').filter(token => token.length > 2));
+    const bTokens = new Set(b.split(' ').filter(token => token.length > 2));
+    const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
+    return overlap / Math.max(aTokens.size, bTokens.size) >= 0.5;
+};
+
 function generateCodeFromName(name) {
     if (!name || !name.trim()) return '';
     const words = name.trim().split(/\s+/);
@@ -97,6 +112,7 @@ export default function CustomerRegistration() {
     const [lookupError, setLookupError] = useState('');
     const [codeChecking, setCodeChecking] = useState(false);
     const [codeConfirmed, setCodeConfirmed] = useState(false);
+    const [addressStatus, setAddressStatus] = useState('');
     // Track GSTINs that were removed during an Old User edit session
     const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
@@ -111,6 +127,7 @@ export default function CustomerRegistration() {
         setForm(blank); setGstins([{ ...blankGstin }]); setErrors({}); setNotice('');
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
+        setAddressStatus('');
         setRemovedGstinIds([]);
         setPanFile(null); setExistingPanFileName('');
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
@@ -132,6 +149,7 @@ export default function CustomerRegistration() {
         }));
         setGstins([{ ...blankGstin }]);
         setLookupDone(false); setLookupError('');
+        setAddressStatus('');
         const requestId = ++lookupRequestRef.current;
         if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
         if (code.trim().length === 4) {
@@ -409,7 +427,7 @@ export default function CustomerRegistration() {
         setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: '' }));
 
         try {
-            const { gstin, stateName } = await extractGstinFromFile(selected);
+            const { gstin, stateName, address, city, pincode } = await extractGstinFromFile(selected);
             if (gstin) {
                 const updates = { gstin, scanning: false, scanStatus: 'success', scanError: '' };
                 if (stateName && (!gstins[index]?.state || gstins[index]?.state === '')) {
@@ -422,6 +440,38 @@ export default function CustomerRegistration() {
                     delete next[`gstin_${index}_state`];
                     return next;
                 });
+
+                if (index === 0) {
+                    if (address) {
+                        let shouldUpdate = true;
+                        let isMatch = false;
+
+                        if (form.address || form.city || form.pincode) {
+                            isMatch = form.address ? addressesMatch(form.address, address) : false;
+                            if (isMatch) {
+                                shouldUpdate = false;
+                                setAddressStatus('verified');
+                            } else {
+                                shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
+                            }
+                        }
+
+                        if (shouldUpdate) {
+                            setAddressStatus(!form.address ? 'auto-filled' : 'auto-corrected');
+                            setForm(prev => {
+                                let nextForm = { ...prev, address: address };
+                                if (pincode) nextForm.pincode = pincode;
+                                if (city) nextForm.city = city;
+                                return nextForm;
+                            });
+                        } else if (!isMatch && form.address) {
+                            // User chose not to auto-fill and it didn't match
+                            setAddressStatus('');
+                        }
+                    } else {
+                        setAddressStatus('extraction-failed');
+                    }
+                }
             } else {
                 handleGstinChange(index, { scanning: false, scanStatus: 'notfound', scanError: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.' });
                 setErrors(prev => ({
@@ -564,9 +614,23 @@ export default function CustomerRegistration() {
                 </div>
 
                 {/* Row 2: Address | City | Pincode */}
-                <Field label="Address" name="address" icon={MapPin} placeholder="Enter complete business address" form={form} setForm={setForm} error={errors.address} />
-                <Select label="City" name="city" icon={MapPin} options={cities} form={form} setForm={setForm} onValueChange={city => setForm(prev => ({ ...prev, city, pincode: '' }))} error={errors.city} />
-                <Select label="Pincode" name="pincode" icon={Mail} options={pins} form={form} setForm={setForm} error={errors.pincode} disabled={!form.city} />
+                <div className="field">
+                    <label htmlFor="address">Address <b>*</b></label>
+                    <div className={'control ' + (errors.address ? 'invalid' : '')}>
+                        <MapPin size={15} />
+                        <input id="address" name="address" value={form.address} placeholder="Enter complete business address" onChange={e => {
+                            setForm({ ...form, address: e.target.value });
+                            if (addressStatus) setAddressStatus('');
+                        }} />
+                    </div>
+                    {errors.address && <small className="error">{errors.address}</small>}
+                    {!errors.address && addressStatus === 'verified' && <small className="address-status success" style={{color: 'var(--success, #16a34a)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px'}}><CheckCircle2 size={12} /> Verified against GSTIN document</small>}
+                    {!errors.address && addressStatus === 'auto-filled' && <small className="address-status success" style={{color: 'var(--success, #16a34a)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px'}}><CheckCircle2 size={12} /> Auto-filled from GSTIN document</small>}
+                    {!errors.address && addressStatus === 'auto-corrected' && <small className="address-status warn" style={{color: 'var(--warning, #ca8a04)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px'}}><AlertCircle size={12} /> Auto-corrected based on GSTIN document</small>}
+                    {!errors.address && addressStatus === 'extraction-failed' && <small className="address-status error" style={{color: 'var(--danger, #dc2626)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px'}}><AlertCircle size={12} /> Unable to extract address from GSTIN PDF. Please verify manually.</small>}
+                </div>
+                <Field label="City" name="city" icon={MapPin} placeholder="Enter city" form={form} setForm={setForm} error={errors.city} />
+                <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} />
 
                 {/* Row 3: Zone | Division | Email */}
                 <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} />

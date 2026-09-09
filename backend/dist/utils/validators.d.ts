@@ -11,6 +11,10 @@ export declare const isValidPCO: (pco: string) => boolean;
 export declare const isValidEmail: (email: string) => boolean;
 export declare const isValidCustomerCode: (code: string) => boolean;
 export declare const ALLOWED_GSTIN_FILE_TYPES: string[];
+export declare const STATE_CODE_MAP: Record<string, string>;
+export declare const getStateNameFromCode: (code: string) => string | null;
+export declare const correctPanOcr: (candidate: string) => string | null;
+export declare const correctGstinOcr: (candidate: string) => string | null;
 export declare const MAX_GSTIN_FILE_SIZE: number;
 export interface CustomerPayload {
     customerCode?: string;

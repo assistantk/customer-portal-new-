@@ -40,6 +40,8 @@ export const scanGstinDocument = asyncHandler(async (req: Request, res: Response
     stateCode: result.stateCode,
     state: result.state,
     address: result.address,
+    city: result.city,
+    pincode: result.pincode,
     legalName: result.legalName,
     confidence: Number(result.confidence.toFixed(2)),
   });
