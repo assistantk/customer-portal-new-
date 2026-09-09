@@ -91,8 +91,8 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
-  try (Connection conn = dataSource.getConnection();
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode);
    try (ResultSet rs = ps.executeQuery()) {
@@ -102,7 +102,6 @@ public class CustomerServiceImpl implements CustomerService {
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
      response.setCity(rs.getString("city"));
-     response.setPincode(rs.getString("pincode"));
      
      java.sql.Timestamp ts = rs.getTimestamp("creation_date");
      if (ts != null) {
@@ -121,7 +120,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByGstin(String gstin) {
-   String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTINNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTINNUMB LIKE ?";
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -136,7 +135,6 @@ public class CustomerServiceImpl implements CustomerService {
      response.setPanNumber(rs.getString("pan_number"));
      response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
-     response.setPincode(rs.getString("pincode"));
      response.setZone(rs.getString("zone"));
      response.setDivision(rs.getString("division"));
      
@@ -202,6 +200,14 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
+ private String firstValue(java.util.Map<String, String> values, String... keys) {
+  for (String key : keys) {
+   String value = values.get(key);
+   if (value != null && !value.isBlank()) return value;
+  }
+  return null;
+ }
+
  public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
   String type = formData.get("codeType");
   if (type != null) type = type.toLowerCase();
@@ -213,25 +219,25 @@ public class CustomerServiceImpl implements CustomerService {
   String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
   String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
   String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
-  String pinCol = "MAVPCOCODE";
   String panCol = "global".equals(type) ? "MAVCUSTPANNUMB" : null;
   String sql = "global".equals(type) 
-      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + pinCol + ", " + panCol + ") VALUES (?, ?, ?, ?, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + pinCol + ") VALUES (?, ?, ?, ?, ?)";
+      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ") VALUES (?, ?, ?, ?, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ") VALUES (?, ?, ?, ?)";
 
-  String providedCode = "global".equals(type) ? formData.get("globalCustomerCode") : formData.get("handlingAgentCode");
+    String companyName = firstValue(formData, "companyName", "customerName");
+    String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
   while (true) {
-   String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode : generateUniqueCodeJDBC(formData.get("customerName"), type);
+    String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, finalCode);
-    ps.setString(2, formData.get("customerName"));
+    ps.setString(2, companyName);
     ps.setString(3, formData.get("address"));
     ps.setString(4, formData.get("city"));
-    ps.setString(5, formData.get("pincode"));
     if ("global".equals(type)) {
-        ps.setString(6, formData.get("pan"));
+        ps.setString(5, formData.get("gstinNumbers"));
+        ps.setString(6, formData.get("panNumber"));
     }
     ps.executeUpdate();
     
@@ -254,26 +260,24 @@ public class CustomerServiceImpl implements CustomerService {
             if ("global".equals(finalTypeForEmail)) {
                 sqlQuery = "INSERT INTO MEMGLBLCUST\nVALUES (\n" +
                     formatSqlValue(finalCodeForEmail) + ",\n" +
-                    formatSqlValue(formData.get("customerName")) + ",\n" +
+                    formatSqlValue(companyName) + ",\n" +
                     formatSqlValue(formData.get("address")) + ",\n" +
                     formatSqlValue(formData.get("city")) + ",\n" +
                     "NULL,\n" +
-                    formatSqlValue(formData.get("pincode")) + ",\n" +
                     "NULL,\n" +
                     "SYSDATE,\n" +
                     formatSqlValue(formData.get("operatingDivision")) + ",\n" +
                     "NULL,\n" +
                     formatSqlValue(formData.get("gstinNumbers")) + ",\n" +
-                    formatSqlValue(formData.get("pan")) + "\n" +
+                    formatSqlValue(formData.get("panNumber")) + "\n" +
                     ");";
             } else {
                 sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT\nVALUES (\n" +
                     formatSqlValue(finalCodeForEmail) + ",\n" +
-                    formatSqlValue(formData.get("customerName")) + ",\n" +
+                    formatSqlValue(companyName) + ",\n" +
                     formatSqlValue(formData.get("address")) + ",\n" +
                     formatSqlValue(formData.get("city")) + ",\n" +
                     "NULL,\n" +
-                    formatSqlValue(formData.get("pincode")) + ",\n" +
                     "NULL,\n" +
                     "SYSDATE,\n" +
                     formatSqlValue(formData.get("operatingDivision")) + ",\n" +
@@ -318,22 +322,21 @@ public class CustomerServiceImpl implements CustomerService {
   boolean isGlobal = !"handling".equals(type); // default to global
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String sql = isGlobal
-      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVPCOCODE = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTINNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ?, MAVPCOCODE = ? WHERE MAVHNDGAGNTCODE = ?";
+    String sql = isGlobal
+        ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
+            : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
       
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, formData.get("companyName"));
    ps.setString(2, formData.get("address"));
    ps.setString(3, formData.get("city"));
-   ps.setString(4, formData.get("pincode"));
    if (isGlobal) {
-       ps.setString(5, formData.get("panNumber"));
-       ps.setString(6, formData.get("gstinNumbers"));
-       ps.setString(7, formData.get("customerCode"));
+       ps.setString(4, formData.get("panNumber"));
+       ps.setString(5, formData.get("gstinNumbers"));
+       ps.setString(6, formData.get("customerCode"));
    } else {
-       ps.setString(5, formData.get("customerCode"));
+       ps.setString(4, formData.get("customerCode"));
    }
    
    ps.executeUpdate();
@@ -354,16 +357,14 @@ public class CustomerServiceImpl implements CustomerService {
                     "    MAVGLBLCUSTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
                     "    MAVGLBLCUSTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
                     "    MAVGNBLCUSTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
-                    "    MAVPCOCODE = " + formatSqlValue(formData.get("pincode")) + ",\n" +
                     "    MAVCUSTPANNUMB = " + formatSqlValue(formData.get("panNumber")) + ",\n" +
-                    "    MAVCUSTGSTINNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
+                    "    MAVCUSTGSTNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
                     "WHERE MAVGLBLCUSTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
             } else {
                 sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
                     "    MAVHNDGAGNTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
                     "    MAVHNDGAGNTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
                     "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
-                    "    MAVPCOCODE = " + formatSqlValue(formData.get("pincode")) + "\n" +
                     "WHERE MAVHNDGAGNTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
             }
                     
@@ -389,8 +390,8 @@ public class CustomerServiceImpl implements CustomerService {
 
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
-  String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city, MAVPCOCODE as pincode FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
-  try (Connection conn = dataSource.getConnection();
+    String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
+    try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, handlingCode);
    try (ResultSet rs = ps.executeQuery()) {
@@ -403,7 +404,7 @@ public class CustomerServiceImpl implements CustomerService {
      response.setEmail(rs.getString("email"));
      response.setMobile(rs.getString("mobile"));
      response.setStatus("Active");
-     return response;
+     return response; // Handling agent lookup without Pincode
     } else {
      throw new ResourceNotFoundException("Agent Handling Code not found.");
     }

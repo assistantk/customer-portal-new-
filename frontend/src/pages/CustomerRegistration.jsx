@@ -284,8 +284,10 @@ export default function CustomerRegistration() {
                     { ...form, codeType, panFile },
                     gstins
                 );
-                setNotice(result.message || 'Customer registration submitted successfully');
                 reset();
+                setNotice(result.customerCode
+                    ? `Customer registration submitted successfully. Customer Code: ${result.customerCode}`
+                    : (result.message || 'Customer registration submitted successfully'));
             } else {
                 /* --- Old User: update customer via JDBC --- */
                 const result = await updateOldCustomerJDBC(

@@ -24,15 +24,8 @@ public class CustomerController { private final CustomerService service; public 
  @GetMapping("/generate-code") public Map<String,String> generateCode(@RequestParam String base){return Map.of("code",service.generateUniqueCode(base));}
 
  @PostMapping("/new-generate-code")
- public Map<String,String> newGenerateCode(@RequestParam String type, @RequestBody Map<String, String> payload) {
-  try {
-   String companyName = payload.get("companyName");
-   return Map.of("code", service.generateUniqueCodeJDBC(companyName, type));
-  } catch (Exception e) {
-   java.io.StringWriter sw = new java.io.StringWriter();
-   e.printStackTrace(new java.io.PrintWriter(sw));
-   return Map.of("code", "ERR: " + e.getMessage() + " | " + sw.toString());
-  }
+ public Map<String,Object> newGenerateCode(@RequestParam String type, @RequestBody Map<String, String> payload) {
+  return Map.of("code", service.generateUniqueCodeJDBC(payload.get("companyName"), type), "available", true);
  }
 
  @PostMapping(value="/new-register", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
