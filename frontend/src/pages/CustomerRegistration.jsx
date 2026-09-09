@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
 import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin } from '../services/customerService';
-import { extractPanFromFile } from '../utils/panOcr';
+import { extractPanFromFile, extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
 const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '' };
-const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (f.type !== 'application/pdf') return 'Only PDF files are allowed'; return '' };
-const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '' };
+const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) return 'Only PDF, JPG, JPEG, and PNG files are allowed'; return '' };
+const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '', scanning: false, scanStatus: 'idle', scanError: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
 const INDIAN_STATES = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
@@ -246,7 +246,7 @@ export default function CustomerRegistration() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [codeType]);
 
-    const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (f.type !== 'application/pdf') return 'Only PDF files are allowed'; return '' };
+    const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) return 'Only PDF, JPG, JPEG, and PNG files are allowed'; return '' };
 
     const validate = () => {
         let e = {};
@@ -388,7 +388,7 @@ export default function CustomerRegistration() {
             else if (next.panNumber === 'Enter a valid 10-character PAN.') delete next.panNumber;
             gstins.forEach((gstin, index) => {
                 const status = getGstinPanStatus(gstin.gstin, value);
-                if (status?.startsWith('✕')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
+                    if (status?.startsWith('✕')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[`gstin_${index}_gstin`] = status;
                 else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[`gstin_${index}_gstin`])) delete next[`gstin_${index}_gstin`];
             });
@@ -399,30 +399,74 @@ export default function CustomerRegistration() {
         const selected = e.target.files[0];
         if (!selected) return;
         const error = checkFile(selected);
-        handleGstinChange(index, { file: error ? null : selected });
-        setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: error }));
+        if (error) {
+            handleGstinChange(index, { file: null, scanning: false, scanStatus: 'error', scanError: error });
+            setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: error }));
+            return;
+        }
+
+        handleGstinChange(index, { file: selected, scanning: true, scanStatus: 'processing', scanError: '' });
+        setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: '' }));
+
+        try {
+            const { gstin, stateName } = await extractGstinFromFile(selected);
+            if (gstin) {
+                const updates = { gstin, scanning: false, scanStatus: 'success', scanError: '' };
+                if (stateName && (!gstins[index]?.state || gstins[index]?.state === '')) {
+                    updates.state = stateName;
+                }
+                handleGstinChange(index, updates);
+                setErrors(prev => {
+                    const next = { ...prev };
+                    delete next[`gstin_${index}_gstin`];
+                    delete next[`gstin_${index}_state`];
+                    return next;
+                });
+            } else {
+                handleGstinChange(index, { scanning: false, scanStatus: 'notfound', scanError: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.' });
+                setErrors(prev => ({
+                    ...prev,
+                    [`gstin_${index}_gstin`]: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.'
+                }));
+            }
+        } catch (err) {
+            console.error('GSTIN OCR scan failed:', err);
+            handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.' });
+            setErrors(prev => ({
+                ...prev,
+                [`gstin_${index}_gstin`]: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.'
+            }));
+        }
     };
     const handlePanFileChange = async (e) => {
         const selected = e.target.files[0];
+        if (!selected) return;
         const error = checkPanFile(selected);
         setPanFile(error ? null : selected);
         setErrors(prev => ({ ...prev, panFile: error }));
         setPanScanStatus('idle');
-        if (error || !selected) return;
+        if (error) return;
 
         setPanScanning(true);
         try {
             const extracted = await extractPanFromFile(selected);
             if (extracted) {
-                setForm(prev => ({ ...prev, panNumber: extracted }));
-                setErrors(prev => ({ ...prev, panNumber: '' }));
+                handlePanChange(extracted);
                 setPanScanStatus('success');
             } else {
                 setPanScanStatus('notfound');
+                setErrors(prev => ({
+                    ...prev,
+                    panNumber: 'PAN number could not be detected. Please upload a clearer document or enter the PAN manually.'
+                }));
             }
         } catch (err) {
             console.error('PAN OCR scan failed:', err);
             setPanScanStatus('error');
+            setErrors(prev => ({
+                ...prev,
+                panNumber: 'PAN number could not be detected. Please upload a clearer document or enter the PAN manually.'
+            }));
         } finally {
             setPanScanning(false);
         }
@@ -505,18 +549,17 @@ export default function CustomerRegistration() {
                     <label htmlFor="panNumber">PAN No. <b>*</b></label>
                     <div className={'control pan-control ' + (errors.panNumber || errors.panFile ? 'invalid' : '')}>
                         <FileText size={15} />
-                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => handlePanChange(e.target.value)} />
-                        <button type="button" className={'pan-upload-btn' + (panFile || existingPanFileName ? ' has-file' : '')} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card PDF')}>
+                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder={panScanning ? 'Extracting PAN...' : 'Enter 10-character PAN No.'} onChange={e => handlePanChange(e.target.value)} />
+                        <button type="button" className={'pan-upload-btn' + (panScanStatus === 'success' || panFile || existingPanFileName ? ' has-file' : '')} disabled={panScanning} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card Document')}>
                             <UploadCloud size={14} />
-                            <span className="pan-upload-label">{panFile ? panFile.name : (existingPanFileName || 'Upload PDF')}</span>
+                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? '✓ Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
                         </button>
                     </div>
-                    <input ref={panFileRef} className="hidden" type="file" accept=".pdf" onChange={handlePanFileChange} />
-                    {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Scanning PAN card…</small>}
-                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> PAN No. auto-filled from document</small>}
-                    {!panScanning && panScanStatus === 'notfound' && <small className="pan-scan-status warn"><AlertCircle size={12} /> Couldn't detect PAN — please enter it manually</small>}
-                    {!panScanning && panScanStatus === 'error' && <small className="pan-scan-status warn"><AlertCircle size={12} /> Scan failed — please enter PAN manually</small>}
-                    {errors.panNumber && <small className="error">{errors.panNumber}</small>}
+                    <input ref={panFileRef} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePanFileChange} />
+                    {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting PAN...</small>}
+                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> ✓ Uploaded — PAN auto-filled from document</small>}
+                    {!panScanning && (panScanStatus === 'notfound' || panScanStatus === 'error') && <small className="pan-scan-status warn"><AlertCircle size={12} /> PAN number could not be detected. Please upload a clearer document or enter the PAN manually.</small>}
+                    {errors.panNumber && !['notfound', 'error'].includes(panScanStatus) && <small className="error">{errors.panNumber}</small>}
                     {errors.panFile && <small className="error">{errors.panFile}</small>}
                 </div>
 
@@ -553,17 +596,20 @@ export default function CustomerRegistration() {
                                     <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
                                     <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
                                         <FileText size={15} />
-                                        <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder="Enter GSTIN Number" onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
-                                        <button type="button" className={'gstin-upload-btn' + (g.file || g.existingFileName ? ' has-file' : '')} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN PDF')} aria-label={`Upload GSTIN PDF for GSTIN ${index + 1}`}>
+                                        <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
+                                        <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
                                             <Paperclip size={13} />
-                                            <span className="gstin-upload-text">Upload GSTIN</span>
+                                            <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? '✓ Uploaded' : 'Upload GSTIN')}</span>
                                             {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                         </button>
                                     </div>
-                                    <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf" onChange={e => handleGstinFileChange(index, e)} />
-                                    {errors[`gstin_${index}_gstin`] && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
+                                    <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
+                                    {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
+                                    {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> ✓ Uploaded — GSTIN auto-filled from document</small>}
+                                    {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
+                                    {errors[`gstin_${index}_gstin`] && !['notfound', 'error'].includes(g.scanStatus) && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
                                     {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✓') && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
-                                    {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✕') && <small className="error">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
+                                    {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✕') && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
                                     {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                 </div>
                             </div>
