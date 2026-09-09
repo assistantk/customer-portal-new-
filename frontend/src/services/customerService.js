@@ -10,7 +10,12 @@ const API = '/api';
 /* ---------- helpers ---------- */
 
 async function request(url, options = {}) {
-  const res = await fetch(url, options);
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (networkErr) {
+    throw new Error('Cannot connect to the customer API. Start the Spring Boot backend and check the Oracle network/VPN connection.');
+  }
   // For file downloads, return raw response
   if (options.rawResponse) return res;
 
@@ -26,6 +31,9 @@ async function request(url, options = {}) {
   } catch (parseErr) {
     // If response is not OK and we have a parsing error, it's likely an error from the server
     if (!res.ok) {
+      if ([502, 503, 504].includes(res.status)) {
+        throw new Error('Customer API is unavailable. Start the Spring Boot backend and check the Oracle network/VPN connection.');
+      }
       throw new Error(`Server error (${res.status}). Response: ${text.substring(0, 50)}...`);
     }
     // For successful responses with invalid JSON, this is still an error
@@ -34,6 +42,9 @@ async function request(url, options = {}) {
   }
 
   if (!res.ok) {
+    if ([502, 503, 504].includes(res.status)) {
+      throw new Error('Customer API is unavailable. Start the Spring Boot backend and check the Oracle network/VPN connection.');
+    }
     const msg =
       body?.message ||
       body?.error ||

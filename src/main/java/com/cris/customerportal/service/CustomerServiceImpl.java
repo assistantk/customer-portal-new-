@@ -20,10 +20,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.cris.customerportal.audit.DatabaseOperationAudit;
+import com.cris.customerportal.service.DbaEmailService;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
  @Autowired private org.springframework.mail.javamail.JavaMailSender mailSender;
+ @Autowired private DbaEmailService dbaEmailService;
  private final CustomerRepository repo;
  private final CustomerGstinRepository gstinRepo;
  private final Path uploadPath;
@@ -91,16 +94,18 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, customerCode);
+   ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("customer_code"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
+    response.setPanNumber(rs.getString("pan_number"));
+    response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
      
      java.sql.Timestamp ts = rs.getTimestamp("creation_date");
@@ -128,15 +133,11 @@ public class CustomerServiceImpl implements CustomerService {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("customer_code"));
-     response.setPhoneNumber(rs.getString("phone_number"));
-     response.setEmailId(rs.getString("email_id"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
      response.setPanNumber(rs.getString("pan_number"));
      response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
-     response.setZone(rs.getString("zone"));
-     response.setDivision(rs.getString("division"));
      
      java.sql.Timestamp ts = rs.getTimestamp("creation_date");
      if (ts != null) {
@@ -156,31 +157,32 @@ public class CustomerServiceImpl implements CustomerService {
  private void validateFile(MultipartFile f) { if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required"); if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB"); String type=Optional.ofNullable(f.getContentType()).orElse(""); if(!Set.of("application/pdf").contains(type))throw new IllegalArgumentException("Only PDF files are allowed"); }
 
  public String generateUniqueCodeJDBC(String companyName, String type) {
-  int maxLength = 4;
-  String cleaned = (companyName != null ? companyName.replaceAll("[^A-Za-z0-9]", " ").replaceAll("\\s+", " ").trim().toUpperCase() : "");
-  String[] words = cleaned.split(" ");
-  String base = "";
-  if (words.length >= maxLength) {
-   for(int i = 0; i < maxLength; i++) base += words[i].charAt(0);
-  } else if (words.length == 1) {
-   base = words[0].length() > maxLength ? words[0].substring(0, maxLength) : words[0];
-  } else if (words.length > 0) {
-   for (String w : words) base += w.charAt(0);
-   int remaining = maxLength - base.length();
-   String lastWord = words[words.length - 1];
-   if (remaining > 0 && lastWord.length() > 1) {
-    base += lastWord.substring(1, Math.min(1 + remaining, lastWord.length()));
-   }
+  String cleaned = (companyName != null ? companyName.replaceAll("[^A-Za-z]", "").toUpperCase() : "");
+  if (cleaned.isEmpty()) cleaned = "CUST";
+  
+  StringBuilder baseCode = new StringBuilder();
+  String[] words = (companyName != null ? companyName.replaceAll("[^A-Za-z ]", " ").trim().split("\\s+") : new String[0]);
+  
+  if (words.length >= 4) {
+      for (int i = 0; i < 4; i++) {
+          if (words[i].length() > 0) baseCode.append(Character.toUpperCase(words[i].charAt(0)));
+      }
+  } else {
+      baseCode.append(cleaned);
   }
-  if (base.length() > maxLength) base = base.substring(0, maxLength);
-  if (base.isEmpty()) base = "TEMP";
+  
+  String base = baseCode.toString();
+  if (base.length() > 4) base = base.substring(0, 4);
+  while (base.length() < 4) base += "X";
 
   String tableName = type.equals("global") ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
   String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
   String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
 
   String candidate = base;
-  int suffix = 1;
+  char[] chars = candidate.toCharArray();
+  
+  int attempts = 0;
   while (true) {
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -191,12 +193,19 @@ public class CustomerServiceImpl implements CustomerService {
    } catch (SQLException e) {
     throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
    }
-   candidate = base + suffix;
-   if (candidate.length() > maxLength) {
-       String num = String.valueOf(suffix);
-       candidate = base.substring(0, Math.max(1, maxLength - num.length())) + num;
+   
+   attempts++;
+   if (attempts < 26) {
+       chars[3] = (char) ('A' + (attempts % 26));
+   } else if (attempts < 26 * 26) {
+       chars[2] = (char) ('A' + ((attempts / 26) % 26));
+       chars[3] = (char) ('A' + (attempts % 26));
+   } else {
+       chars[1] = (char) ('A' + ((attempts / (26 * 26)) % 26));
+       chars[2] = (char) ('A' + ((attempts / 26) % 26));
+       chars[3] = (char) ('A' + (attempts % 26));
    }
-   suffix++;
+    candidate = new String(chars);
   }
  }
 
@@ -319,7 +328,7 @@ public class CustomerServiceImpl implements CustomerService {
   String type = formData.get("codeType");
   if (type != null) type = type.toLowerCase();
   if ("handling_agent".equals(type)) type = "handling";
-  boolean isGlobal = !"handling".equals(type); // default to global
+  boolean isGlobal = !"handling".equals(type); 
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
     String sql = isGlobal
@@ -364,7 +373,7 @@ public class CustomerServiceImpl implements CustomerService {
                 sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
                     "    MAVHNDGAGNTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
                     "    MAVHNDGAGNTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
-                    "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
+                    "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + "\n" +
                     "WHERE MAVHNDGAGNTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
             }
                     
@@ -384,10 +393,9 @@ public class CustomerServiceImpl implements CustomerService {
        }
    });
   } catch (SQLException e) {
-   throw new RuntimeException("Database error in updateOldCustomerJDBC: " + e.getMessage(), e);
+   throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
   }
  }
-
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
     String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
@@ -415,9 +423,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String formatSqlValue(String value) {
-  if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) {
-   return "NULL";
-  }
+  if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
   return "'" + value.replace("'", "''") + "'";
  }
 }
