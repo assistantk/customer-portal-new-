@@ -94,8 +94,8 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-    String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
-  try (Connection conn = dataSource.getConnection();
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
@@ -107,7 +107,6 @@ public class CustomerServiceImpl implements CustomerService {
     response.setPanNumber(rs.getString("pan_number"));
     response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
-     response.setPincode(rs.getString("pincode"));
      
      java.sql.Timestamp ts = rs.getTimestamp("creation_date");
      if (ts != null) {
@@ -126,7 +125,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByGstin(String gstin) {
-    String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MAVPCOCODE as pincode, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -134,16 +133,11 @@ public class CustomerServiceImpl implements CustomerService {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("customer_code"));
-     response.setPhoneNumber(rs.getString("phone_number"));
-     response.setEmailId(rs.getString("email_id"));
      response.setCompanyName(rs.getString("company_name"));
      response.setAddress(rs.getString("address"));
      response.setPanNumber(rs.getString("pan_number"));
      response.setGstinNumbers(rs.getString("gstin_numbers"));
      response.setCity(rs.getString("city"));
-     response.setPincode(rs.getString("pincode"));
-     response.setZone(rs.getString("zone"));
-     response.setDivision(rs.getString("division"));
      
      java.sql.Timestamp ts = rs.getTimestamp("creation_date");
      if (ts != null) {
@@ -211,8 +205,16 @@ public class CustomerServiceImpl implements CustomerService {
        chars[2] = (char) ('A' + ((attempts / 26) % 26));
        chars[3] = (char) ('A' + (attempts % 26));
    }
-   candidate = new String(chars);
+    candidate = new String(chars);
   }
+ }
+
+ private String firstValue(java.util.Map<String, String> values, String... keys) {
+  for (String key : keys) {
+   String value = values.get(key);
+   if (value != null && !value.isBlank()) return value;
+  }
+  return null;
  }
 
  public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
@@ -221,74 +223,103 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  boolean isGlobal = "global".equals(type);
-  String tableName = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = isGlobal ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-  String nameCol = isGlobal ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-  String addrCol = isGlobal ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-  String cityCol = isGlobal ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
-  String pinCol = "MAVPCOCODE";
-  String panCol = isGlobal ? "MAVCUSTPANNUMB" : null;
-  
-  String sql = isGlobal 
-      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + pinCol + ", " + panCol + ", MADIMPLDATE) VALUES (?, ?, ?, ?, ?, ?, SYSDATE)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + pinCol + ", MADIMPLDATE) VALUES (?, ?, ?, ?, ?, SYSDATE)";
+  String tableName = "global".equals(type) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
+  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
+  String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
+  String panCol = "global".equals(type) ? "MAVCUSTPANNUMB" : null;
+  String sql = "global".equals(type) 
+      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ") VALUES (?, ?, ?, ?, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ") VALUES (?, ?, ?, ?)";
 
-  String providedCode = isGlobal ? formData.get("globalCustomerCode") : formData.get("handlingAgentCode");
+    String companyName = firstValue(formData, "companyName", "customerName");
+    String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
   while (true) {
-   String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode : generateUniqueCodeJDBC(formData.get("customerName"), type);
-   
-   try (Connection conn = dataSource.getConnection()) {
-    conn.setAutoCommit(false);
-    try (PreparedStatement ps = conn.prepareStatement(sql)) {
-     ps.setString(1, finalCode);
-     ps.setString(2, formData.get("customerName"));
-     ps.setString(3, formData.get("address"));
-     ps.setString(4, formData.get("city"));
-     ps.setString(5, formData.get("pincode"));
-     if (isGlobal) {
-         ps.setString(6, formData.get("pan"));
-     }
-     
-     int rowsAffected = ps.executeUpdate();
-     conn.commit();
-     
-     if (rowsAffected > 0) {
-         DatabaseOperationAudit audit = new DatabaseOperationAudit();
-         audit.setOperationType("INSERT");
-         audit.setPageName("New Entry");
-         audit.setTableName(tableName);
-         audit.setCustomerCode(finalCode);
-         audit.setCompanyName(formData.get("customerName"));
-         audit.setSqlStatement(sql);
-         audit.setRowsAffected(rowsAffected);
-         audit.setStatus("SUCCESS");
-         
-         audit.addParameter(1, "customerCode", finalCode);
-         audit.addParameter(2, "companyName", formData.get("customerName"));
-         audit.addParameter(3, "address", formData.get("address"));
-         audit.addParameter(4, "city", formData.get("city"));
-         audit.addParameter(5, "pincode", formData.get("pincode"));
-         if (isGlobal) {
-             audit.addParameter(6, "pan", formData.get("pan"));
-         }
-         
-         dbaEmailService.sendDbaAuditEmail(audit);
-     }
-     
-     return finalCode;
-    } catch (SQLException e) {
-     conn.rollback();
-     if (e.getErrorCode() == 1062 || e.getMessage().contains("Unique") || e.getMessage().contains("UNIQUE")) {
-      providedCode = null;
-      continue;
-     } else {
-      throw new RuntimeException("Database error in registerNewEntryJDBC: " + e.getMessage(), e);
-     }
+    String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, finalCode);
+    ps.setString(2, companyName);
+    ps.setString(3, formData.get("address"));
+    ps.setString(4, formData.get("city"));
+    if ("global".equals(type)) {
+        ps.setString(5, formData.get("gstinNumbers"));
+        ps.setString(6, formData.get("panNumber"));
     }
+    ps.executeUpdate();
+    
+    // Send INSERT audit email asynchronously
+    final String finalCodeForEmail = finalCode;
+    final String finalTypeForEmail = type;
+    java.util.concurrent.CompletableFuture.runAsync(() -> {
+        try {
+            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+            message.setFrom("shurak949@gmail.com");
+            message.setTo("shurak949@gmail.com");
+            message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
+            
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String timestamp = sdf.format(new java.util.Date());
+            String table = "global".equals(finalTypeForEmail) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+            String col = "global".equals(finalTypeForEmail) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+
+            String sqlQuery = "";
+            if ("global".equals(finalTypeForEmail)) {
+                sqlQuery = "INSERT INTO MEMGLBLCUST\nVALUES (\n" +
+                    formatSqlValue(finalCodeForEmail) + ",\n" +
+                    formatSqlValue(companyName) + ",\n" +
+                    formatSqlValue(formData.get("address")) + ",\n" +
+                    formatSqlValue(formData.get("city")) + ",\n" +
+                    "NULL,\n" +
+                    "NULL,\n" +
+                    "SYSDATE,\n" +
+                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
+                    "NULL,\n" +
+                    formatSqlValue(formData.get("gstinNumbers")) + ",\n" +
+                    formatSqlValue(formData.get("panNumber")) + "\n" +
+                    ");";
+            } else {
+                sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT\nVALUES (\n" +
+                    formatSqlValue(finalCodeForEmail) + ",\n" +
+                    formatSqlValue(companyName) + ",\n" +
+                    formatSqlValue(formData.get("address")) + ",\n" +
+                    formatSqlValue(formData.get("city")) + ",\n" +
+                    "NULL,\n" +
+                    "NULL,\n" +
+                    "SYSDATE,\n" +
+                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
+                    "NULL\n" +
+                    ");";
+            }
+
+
+                    
+            String text = "Operation: INSERT\n" +
+                    "Table: " + table + "\n" +
+                    "Code: " + finalCodeForEmail + "\n\n" +
+                    "SQL QUERY:\n" +
+                    "----------------------------------------\n" +
+                    sqlQuery + "\n" +
+                    "----------------------------------------";
+                    
+            message.setText(text);
+            mailSender.send(message);
+            System.out.println("[EMAIL AUDIT] Real email sent successfully to shurak949@gmail.com for INSERT " + finalCodeForEmail);
+        } catch (Exception ex) {
+            System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+        }
+    });
+    
+    return finalCode;
    } catch (SQLException e) {
-    throw new RuntimeException("Database error connecting or committing in registerNewEntryJDBC", e);
+    // MySQL Duplicate Entry Code
+    if (e.getErrorCode() == 1062) {
+     providedCode = null; // Regenerate code
+    } else {
+     throw new RuntimeException("Database error in registerNewEntryJDBC: " + e.getMessage(), e);
+    }
    }
   }
  }
@@ -300,69 +331,75 @@ public class CustomerServiceImpl implements CustomerService {
   boolean isGlobal = !"handling".equals(type); 
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String sql = isGlobal
-    ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVPCOCODE = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-    : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ?, MAVPCOCODE = ? WHERE MAVHNDGAGNTCODE = ?";
+    String sql = isGlobal
+        ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
+            : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
       
-  try (Connection conn = dataSource.getConnection()) {
-   conn.setAutoCommit(false);
-   try (PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, formData.get("companyName"));
-    ps.setString(2, formData.get("address"));
-    ps.setString(3, formData.get("city"));
-    ps.setString(4, formData.get("pincode"));
-    
-    if (isGlobal) {
-        ps.setString(5, formData.get("panNumber"));
-        ps.setString(6, formData.get("gstinNumbers"));
-        ps.setString(7, formData.get("customerCode"));
-    } else {
-        ps.setString(5, formData.get("customerCode"));
-    }
-    
-    int rowsAffected = ps.executeUpdate();
-    
-    if (rowsAffected > 0) {
-        conn.commit();
-        DatabaseOperationAudit audit = new DatabaseOperationAudit();
-        audit.setOperationType("UPDATE");
-        audit.setPageName("Old User");
-        audit.setTableName(table);
-        audit.setCustomerCode(formData.get("customerCode"));
-        audit.setCompanyName(formData.get("companyName"));
-        audit.setSqlStatement(sql);
-        audit.setRowsAffected(rowsAffected);
-        audit.setStatus("SUCCESS");
-        
-        audit.addParameter(1, "companyName", formData.get("companyName"));
-        audit.addParameter(2, "address", formData.get("address"));
-        audit.addParameter(3, "city", formData.get("city"));
-        audit.addParameter(4, "pincode", formData.get("pincode"));
-        if (isGlobal) {
-            audit.addParameter(5, "panNumber", formData.get("panNumber"));
-            audit.addParameter(6, "gstinNumbers", formData.get("gstinNumbers"));
-            audit.addParameter(7, "customerCode", formData.get("customerCode"));
-        } else {
-            audit.addParameter(5, "customerCode", formData.get("customerCode"));
-        }
-        
-        dbaEmailService.sendDbaAuditEmail(audit);
-    } else {
-        conn.rollback();
-        throw new ResourceNotFoundException("Customer not found or update failed.");
-    }
-   } catch (SQLException e) {
-    conn.rollback();
-    throw new RuntimeException("Database error in updateOldCustomerJDBC executing query: " + e.getMessage(), e);
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, formData.get("companyName"));
+   ps.setString(2, formData.get("address"));
+   ps.setString(3, formData.get("city"));
+   if (isGlobal) {
+       ps.setString(4, formData.get("panNumber"));
+       ps.setString(5, formData.get("gstinNumbers"));
+       ps.setString(6, formData.get("customerCode"));
+   } else {
+       ps.setString(4, formData.get("customerCode"));
    }
+   
+   ps.executeUpdate();
+   
+   // Send UPDATE audit email asynchronously
+   java.util.concurrent.CompletableFuture.runAsync(() -> {
+       try {
+           org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+           message.setFrom("sura767848@gmail.com");
+           message.setTo("sura767848@gmail.com");
+           message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
+           
+           java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+           String timestamp = sdf.format(new java.util.Date());
+            String sqlQuery = "";
+            if (isGlobal) {
+                sqlQuery = "UPDATE MEMGLBLCUST\nSET\n" +
+                    "    MAVGLBLCUSTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
+                    "    MAVGLBLCUSTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
+                    "    MAVGNBLCUSTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
+                    "    MAVCUSTPANNUMB = " + formatSqlValue(formData.get("panNumber")) + ",\n" +
+                    "    MAVCUSTGSTNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
+                    "WHERE MAVGLBLCUSTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
+            } else {
+                sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
+                    "    MAVHNDGAGNTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
+                    "    MAVHNDGAGNTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
+                    "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + "\n" +
+                    "WHERE MAVHNDGAGNTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
+            }
+                    
+            String text = "Operation: UPDATE\n" +
+                    "Table: " + table + "\n" +
+                    "Code: " + formData.get("customerCode") + "\n\n" +
+                    "SQL QUERY:\n" +
+                    "----------------------------------------\n" +
+                    sqlQuery + "\n" +
+                    "----------------------------------------";
+                   
+           message.setText(text);
+           mailSender.send(message);
+           System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com for UPDATE " + formData.get("customerCode"));
+       } catch (Exception ex) {
+           System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+       }
+   });
   } catch (SQLException e) {
    throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
   }
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
-  String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city, MAVPCOCODE as pincode FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
-  try (Connection conn = dataSource.getConnection();
+    String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
+    try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, handlingCode);
    try (ResultSet rs = ps.executeQuery()) {
@@ -375,7 +412,7 @@ public class CustomerServiceImpl implements CustomerService {
      response.setEmail(rs.getString("email"));
      response.setMobile(rs.getString("mobile"));
      response.setStatus("Active");
-     return response;
+     return response; // Handling agent lookup without Pincode
     } else {
      throw new ResourceNotFoundException("Agent Handling Code not found.");
     }
@@ -383,5 +420,10 @@ public class CustomerServiceImpl implements CustomerService {
   } catch (SQLException e) {
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
+ }
+
+ private String formatSqlValue(String value) {
+  if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
+  return "'" + value.replace("'", "''") + "'";
  }
 }

@@ -130,7 +130,7 @@ export async function lookupCustomer(code) {
 
 export async function generateUniqueCode(companyName, codeType = 'GLOBAL') {
   const type = codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
-  const endpoint = `${API}/codes/generate-${type}`;
+  const endpoint = `${API}/customers/new-generate-code?type=${type}`;
 
   const resp = await request(endpoint, {
     method: 'POST',
@@ -144,54 +144,23 @@ export async function generateUniqueCode(companyName, codeType = 'GLOBAL') {
 /* ---------- New Customer Registration ---------- */
 
 export async function registerCustomer(payload, gstinEntries) {
-  // Step 1: Create customer + reserve code + insert GSTIN metadata (no files)
   const codeType = payload.codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
-
-  const customerBody = {
-    customerName: payload.companyName,
-    customerCode: payload.customerCode || undefined,
-    address: payload.address,
-    city: payload.city,
-    pincode: payload.pincode,
-    pcoCode: payload.pcoCode || undefined,
-    pan: payload.panNumber,
-    panFileName: payload.panFile ? payload.panFile.name : '',
-    panFileType: payload.panFile ? payload.panFile.type : '',
-    email: payload.email,
-    mobile: payload.mobile,
-    zone: payload.zone,
-    operatingDivision: payload.operatingDivision,
-    globalCustomerCode:
-      codeType === 'global' ? payload.customerCode : undefined,
-    handlingAgentCode:
-      codeType === 'handling' ? payload.customerCode : undefined,
-    activeFlag: 'Y',
-    codeType,
-    gstins: gstinEntries.map((g) => ({
-      state: g.state,
-      stateCode: g.stateCode || '',
-      gstinNumber: g.gstin,
-      fileName: g.file ? g.file.name : '',
-      fileType: g.file ? g.file.type : '',
-    })),
-  };
-
   const formData = new FormData();
-  Object.entries(customerBody).forEach(([key, value]) => {
-    if (key !== 'gstins') formData.append(key, value == null ? '' : String(value));
-  });
-  formData.set('gstins', JSON.stringify(customerBody.gstins));
+  formData.append('codeType', codeType);
+  formData.append('customerCode', payload.customerCode || '');
+  formData.append('companyName', payload.companyName || '');
+  formData.append('address', payload.address || '');
+  formData.append('city', payload.city || '');
+  formData.append('pincode', payload.pincode || '');
+  formData.append('panNumber', payload.panNumber || '');
+  formData.append('email', payload.email || '');
+  formData.append('mobile', payload.mobile || '');
+  formData.append('operatingDivision', payload.operatingDivision || '');
+  formData.append('zone', payload.zone || '');
+  formData.append('gstinNumbers', gstinEntries.map(g => g.gstin).filter(Boolean).join(','));
   if (payload.panFile) formData.append('panFile', payload.panFile);
   gstinEntries.forEach(entry => { if (entry.file) formData.append('gstinFiles', entry.file); });
-  const createResp = await request(`${API}/customers`, { method: 'POST', body: formData });
-
-  const savedCode = createResp.data?.customerCode;
-
-  return {
-    success: true,
-    message: 'Customer registration submitted successfully',
-    customerCode: savedCode,
-  };
+  return request(`${API}/customers/new-register`, { method: 'POST', body: formData });
 }
 
 /* ---------- Update Existing Customer (Old User) ---------- */
