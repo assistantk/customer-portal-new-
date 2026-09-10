@@ -2,9 +2,9 @@ import { PDFParse } from 'pdf-parse';
 import { createCanvas } from '@napi-rs/canvas';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createWorker } from 'tesseract.js';
-import { isValidGSTIN, isValidPAN } from './validators.js';
-const PAN_PATTERN = /\b[A-Z]{5}[0-9]{4}[A-Z]\b/gi;
-const GSTIN_PATTERN = /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b/gi;
+import { isValidGSTIN, isValidPAN, correctPanOcr, correctGstinOcr, getStateNameFromCode } from './validators.js';
+const PAN_PATTERN = /[A-Z0-9]{10}/gi;
+const GSTIN_PATTERN = /[A-Z0-9]{15}/gi;
 const PIN_PATTERN = /\b[1-9][0-9]{5}\b/g;
 export const normalizeAddress = (value) => value
     .toUpperCase()
@@ -30,12 +30,40 @@ export const addressesMatch = (left, right) => {
 };
 const normalizeText = (value) => value.replace(/[|]/g, 'I').replace(/\s+/g, ' ').trim();
 const findPan = (text) => {
-    const value = text.toUpperCase().replace(/\s+/g, '');
-    return value.match(PAN_PATTERN)?.map(v => v.toUpperCase()).find(isValidPAN) ?? null;
+    const clean = text.toUpperCase().replace(/[\s:-]+/g, '');
+    // 1. Direct valid match
+    const directMatch = clean.match(/[A-Z]{5}[0-9]{4}[A-Z]/g);
+    if (directMatch) {
+        const valid = directMatch.find(isValidPAN);
+        if (valid)
+            return valid;
+    }
+    // 2. Candidate match with position-aware OCR correction
+    const candidates = clean.match(PAN_PATTERN) || [];
+    for (const cand of candidates) {
+        const corrected = correctPanOcr(cand);
+        if (corrected)
+            return corrected;
+    }
+    return null;
 };
 const findGstin = (text) => {
-    const value = text.toUpperCase().replace(/[\s-]+/g, '');
-    return value.match(GSTIN_PATTERN)?.map(v => v.toUpperCase()).find(isValidGSTIN) ?? null;
+    const clean = text.toUpperCase().replace(/[\s:-]+/g, '');
+    // 1. Direct valid match
+    const directMatch = clean.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]/g);
+    if (directMatch) {
+        const valid = directMatch.find(isValidGSTIN);
+        if (valid)
+            return valid;
+    }
+    // 2. Candidate match with position-aware OCR correction
+    const candidates = clean.match(GSTIN_PATTERN) || [];
+    for (const cand of candidates) {
+        const corrected = correctGstinOcr(cand);
+        if (corrected)
+            return corrected;
+    }
+    return null;
 };
 const labelledValue = (text, labels) => {
     const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -52,14 +80,42 @@ const extractAddress = (text) => {
     const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const start = lines.findIndex(line => line.toLowerCase().includes(value.toLowerCase()));
     const selected = start >= 0 ? lines.slice(start, start + 5) : [value];
-    const address = selected.join(', ');
+    let address = selected.join(', ').replace(/\s+/g, ' ').replace(/,\s*,/g, ',').trim();
     return PIN_PATTERN.test(address) ? address : null;
 };
+const extractCity = (address) => {
+    if (!address)
+        return null;
+    const parts = address.split(/[,]/).map(p => p.trim()).filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+        if (PIN_PATTERN.test(parts[i])) {
+            let words = parts[i].replace(PIN_PATTERN, '').replace(/[-_]/g, '').trim();
+            if (words.length > 2)
+                return words;
+            if (i > 0 && parts[i - 1].length > 2)
+                return parts[i - 1];
+        }
+    }
+    return null;
+};
+async function ocrImage(buffer) {
+    const worker = await createWorker('eng');
+    try {
+        const result = await worker.recognize(buffer);
+        const confidence = (result.data.confidence || 90) / 100;
+        return { text: result.data.text, confidence };
+    }
+    finally {
+        await worker.terminate();
+    }
+}
 async function ocrPdf(buffer) {
     const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
     const worker = await createWorker('eng');
     try {
         const pages = [];
+        let totalConf = 0;
+        let count = 0;
         for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, 3); pageNumber++) {
             const page = await pdf.getPage(pageNumber);
             const viewport = page.getViewport({ scale: 2 });
@@ -67,8 +123,11 @@ async function ocrPdf(buffer) {
             await page.render({ canvas: canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
             const result = await worker.recognize(canvas.toBuffer('image/png'));
             pages.push(result.data.text);
+            totalConf += result.data.confidence || 90;
+            count++;
         }
-        return pages.join('\n');
+        const confidence = count > 0 ? (totalConf / count) / 100 : 0.9;
+        return { text: pages.join('\n'), confidence };
     }
     finally {
         await worker.terminate();
@@ -76,22 +135,41 @@ async function ocrPdf(buffer) {
 }
 export async function scanDocument(kind, buffer) {
     let text = '';
-    try {
-        const parser = new PDFParse({ data: buffer });
-        const parsed = await parser.getText();
-        text = parsed.text || '';
-        await parser.destroy();
+    let confidence = 0.95;
+    // Check magic bytes to determine if PDF or Image
+    const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46; // %PDF
+    if (isPdf) {
+        try {
+            const parser = new PDFParse({ data: buffer });
+            const parsed = await parser.getText();
+            text = parsed.text || '';
+            await parser.destroy();
+            confidence = 0.98;
+        }
+        catch {
+            text = '';
+        }
+        if (!text.trim()) {
+            const res = await ocrPdf(buffer);
+            text = res.text;
+            confidence = res.confidence;
+        }
     }
-    catch {
-        text = '';
+    else {
+        // Image file (JPG/JPEG/PNG)
+        const res = await ocrImage(buffer);
+        text = res.text;
+        confidence = res.confidence;
     }
-    if (!text.trim())
-        text = await ocrPdf(buffer);
     const compact = normalizeText(text);
     const pan = kind === 'pan' ? findPan(compact) : null;
     const gstin = kind === 'gstin' ? findGstin(compact) : null;
     const address = kind === 'gstin' ? extractAddress(text) : null;
+    const pincode = address ? address.match(PIN_PATTERN)?.[0] || null : null;
+    const city = extractCity(address);
     const legalName = kind === 'gstin' ? labelledValue(text, ['legal name', 'trade name']) : null;
-    return { pan, gstin, address, legalName, state: null, text: compact };
+    const stateCode = gstin ? gstin.slice(0, 2) : null;
+    const state = stateCode ? getStateNameFromCode(stateCode) : null;
+    return { pan, gstin, address, city, pincode, legalName, stateCode, state, confidence, text: compact };
 }
 //# sourceMappingURL=documentScanner.js.map

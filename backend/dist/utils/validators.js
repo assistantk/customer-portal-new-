@@ -26,7 +26,136 @@ export const isValidCustomerCode = (code) => {
 };
 export const ALLOWED_GSTIN_FILE_TYPES = [
     'application/pdf',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
 ];
+export const STATE_CODE_MAP = {
+    '01': 'Jammu and Kashmir',
+    '02': 'Himachal Pradesh',
+    '03': 'Punjab',
+    '04': 'Chandigarh',
+    '05': 'Uttarakhand',
+    '06': 'Haryana',
+    '07': 'Delhi',
+    '08': 'Rajasthan',
+    '09': 'Uttar Pradesh',
+    '10': 'Bihar',
+    '11': 'Sikkim',
+    '12': 'Arunachal Pradesh',
+    '13': 'Nagaland',
+    '14': 'Manipur',
+    '15': 'Mizoram',
+    '16': 'Tripura',
+    '17': 'Meghalaya',
+    '18': 'Assam',
+    '19': 'West Bengal',
+    '20': 'Jharkhand',
+    '21': 'Odisha',
+    '22': 'Chhattisgarh',
+    '23': 'Madhya Pradesh',
+    '24': 'Gujarat',
+    '25': 'Daman and Diu',
+    '26': 'Dadra and Nagar Haveli',
+    '27': 'Maharashtra',
+    '28': 'Andhra Pradesh',
+    '29': 'Karnataka',
+    '30': 'Goa',
+    '31': 'Lakshadweep',
+    '32': 'Kerala',
+    '33': 'Tamil Nadu',
+    '34': 'Puducherry',
+    '35': 'Andaman and Nicobar Islands',
+    '36': 'Telangana',
+    '37': 'Andhra Pradesh',
+    '38': 'Ladakh',
+};
+export const getStateNameFromCode = (code) => {
+    if (!code)
+        return null;
+    const cleanCode = code.padStart(2, '0');
+    return STATE_CODE_MAP[cleanCode] || null;
+};
+const digitToLetter = {
+    '0': 'O',
+    '1': 'I',
+    '2': 'Z',
+    '5': 'S',
+    '6': 'G',
+    '8': 'B',
+};
+const letterToDigit = {
+    'O': '0', 'Q': '0', 'D': '0',
+    'I': '1', 'L': '1',
+    'Z': '2',
+    'S': '5',
+    'G': '6',
+    'B': '8',
+};
+export const correctPanOcr = (candidate) => {
+    if (!candidate)
+        return null;
+    const clean = candidate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean.length !== 10)
+        return null;
+    const chars = clean.split('');
+    // Pos 0-4: must be uppercase letters
+    for (let i = 0; i < 5; i++) {
+        if (/\d/.test(chars[i])) {
+            chars[i] = digitToLetter[chars[i]] || chars[i];
+        }
+    }
+    // Pos 5-8: must be digits
+    for (let i = 5; i < 9; i++) {
+        if (/[A-Z]/.test(chars[i])) {
+            chars[i] = letterToDigit[chars[i]] || chars[i];
+        }
+    }
+    // Pos 9: must be uppercase letter
+    if (/\d/.test(chars[9])) {
+        chars[9] = digitToLetter[chars[9]] || chars[9];
+    }
+    const result = chars.join('');
+    return isValidPAN(result) ? result : null;
+};
+export const correctGstinOcr = (candidate) => {
+    if (!candidate)
+        return null;
+    const clean = candidate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean.length !== 15)
+        return null;
+    const chars = clean.split('');
+    // Pos 0-1: state code (digits)
+    for (let i = 0; i < 2; i++) {
+        if (/[A-Z]/.test(chars[i])) {
+            chars[i] = letterToDigit[chars[i]] || chars[i];
+        }
+    }
+    // Pos 2-11: embedded PAN (5 letters + 4 digits + 1 letter)
+    for (let i = 2; i < 7; i++) {
+        if (/\d/.test(chars[i])) {
+            chars[i] = digitToLetter[chars[i]] || chars[i];
+        }
+    }
+    for (let i = 7; i < 11; i++) {
+        if (/[A-Z]/.test(chars[i])) {
+            chars[i] = letterToDigit[chars[i]] || chars[i];
+        }
+    }
+    if (/\d/.test(chars[11])) {
+        chars[11] = digitToLetter[chars[11]] || chars[11];
+    }
+    // Pos 12: entity number [1-9A-Z]
+    // Pos 13: default 'Z'
+    if (chars[13] !== 'Z') {
+        if (['2', '7', 'S'].includes(chars[13])) {
+            chars[13] = 'Z';
+        }
+    }
+    // Pos 14: checksum [0-9A-Z]
+    const result = chars.join('');
+    return isValidGSTIN(result) ? result : null;
+};
 export const MAX_GSTIN_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 export const validateCustomer = (payload, forCreate = true) => {
     const errors = [];
