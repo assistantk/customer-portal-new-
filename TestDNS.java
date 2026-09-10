@@ -1,1 +1,0 @@
-import java.net.InetAddress; public class TestDNS { public static void main(String[] args) { try { System.out.println(InetAddress.getByName("smtp.gmail.com")); } catch(Exception e) { e.printStackTrace(); } } }

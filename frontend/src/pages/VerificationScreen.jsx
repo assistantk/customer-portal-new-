@@ -18,7 +18,7 @@ export default function VerificationScreen() {
     const [verificationType, setVerificationType] = useState('customer'); // 'customer', 'gstin'
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
-    const [customer, setCustomer] = useState(null);
+    const [customers, setCustomers] = useState(null);
     const [error, setError] = useState('');
 
     const verifyCode = async (e) => {
@@ -28,26 +28,27 @@ export default function VerificationScreen() {
             setError(`Please enter a ${verificationType === 'gstin' ? 'GSTIN' : 'Customer Code'}.`);
             return;
         }
-        if (verificationType === 'gstin' && trimmedCode.length !== 15) {
-            setError('Please enter a valid 15-character GSTIN.');
-            return;
-        }
 
         setLoading(true);
         setError('');
-        setCustomer(null);
+        setCustomers(null);
 
         try {
             let data;
             if (verificationType === 'gstin') {
-                data = await lookupCustomerByGstinJDBC(code.trim());
+                data = await lookupCustomerByGstinJDBC(trimmedCode);
+                // The API returns an array for GSTIN
+                setCustomers(Array.isArray(data) ? data : [data]);
             } else {
-                data = await lookupOldCustomerJDBC(code.trim());
+                data = await lookupOldCustomerJDBC(trimmedCode);
+                // The API returns a single object for Customer Code
+                setCustomers([data]);
             }
-            setCustomer(data);
         } catch (err) {
             console.error("Lookup error:", err);
-            setError(err.message || 'Code not found.');
+            // Default to exact requested error messages
+            const msg = err.message || 'Code not found.';
+            setError(msg);
         } finally {
             setLoading(false);
         }
@@ -55,7 +56,7 @@ export default function VerificationScreen() {
 
     const reset = () => {
         setCode('');
-        setCustomer(null);
+        setCustomers(null);
         setError('');
     };
 
@@ -75,13 +76,13 @@ export default function VerificationScreen() {
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '24px' }}>
                     <button 
                         type="button" 
-                        onClick={() => { setVerificationType('customer'); setCode(''); setCustomer(null); setError(''); }}
+                        onClick={() => { setVerificationType('customer'); setCode(''); setCustomers(null); setError(''); }}
                         style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: verificationType === 'customer' ? '#2563eb' : '#f8fafc', color: verificationType === 'customer' ? 'white' : '#475569', cursor: 'pointer', fontWeight: '500' }}>
                         Customer Code
                     </button>
                     <button 
                         type="button" 
-                        onClick={() => { setVerificationType('gstin'); setCode(''); setCustomer(null); setError(''); }}
+                        onClick={() => { setVerificationType('gstin'); setCode(''); setCustomers(null); setError(''); }}
                         style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: verificationType === 'gstin' ? '#2563eb' : '#f8fafc', color: verificationType === 'gstin' ? 'white' : '#475569', cursor: 'pointer', fontWeight: '500' }}>
                         GSTIN
                     </button>
@@ -89,16 +90,16 @@ export default function VerificationScreen() {
 
                 {error && <div className="lookup-error"><AlertCircle size={14} /> {error}</div>}
                 
-                {customer && !loading && (
+                {customers && customers.length > 0 && !loading && (
                     <div className="info-banner" style={{ background: '#e7f7ed', color: '#126c38', borderColor: '#16a34a' }}>
-                        <CheckCircle2 size={16} /> Code verified successfully
+                        <CheckCircle2 size={16} /> Code verified successfully. Found {customers.length} record(s).
                     </div>
                 )}
 
                 <form onSubmit={verifyCode} className="grid">
                     <div className="field full" style={{ maxWidth: '400px', margin: '0 auto 10px', textAlign: 'center' }}>
                         <label htmlFor="customerCode">
-                            {verificationType === 'gstin' ? 'GSTIN' : 'Customer Code'}
+                            {verificationType === 'gstin' ? 'Enter GSTIN' : 'Enter Customer Code'}
                         </label>
                         <div className="control">
                             <Tag size={15} />
@@ -116,9 +117,9 @@ export default function VerificationScreen() {
                     <div className="full" style={{ textAlign: 'center', marginBottom: '20px' }}>
                         <button type="submit" className="submit" disabled={loading} style={{ padding: '8px 20px', height: 'auto' }}>
                             <Search size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }}/>
-                            {loading ? 'Checking...' : verificationType === 'gstin' ? 'Find Customer' : 'Verify Customer Code'}
+                            {loading ? 'Searching...' : verificationType === 'gstin' ? 'Verify GSTIN' : 'Verify Customer Code'}
                         </button>
-                        {(customer || error) && (
+                        {(customers || error) && (
                             <button type="button" className="reset" onClick={reset} style={{ marginLeft: '10px', padding: '8px 20px', height: 'auto' }}>
                                 Reset
                             </button>
@@ -126,52 +127,45 @@ export default function VerificationScreen() {
                     </div>
                 </form>
 
-                {customer && (
+                {customers && customers.length > 0 && (
                     <div className="customer-details">
-                        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '16px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+                        <h3 style={{ marginBottom: '10px', color: '#1e293b' }}>Search Results</h3>
+                        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px', whiteSpace: 'nowrap' }}>
                                 <thead>
                                     <tr style={{ background: '#2563eb', borderBottom: '1px solid #e2e8f0' }}>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Customer Code</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Global Customer Code</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>GSTIN</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Company Name</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Address</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>GSTIN</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>PAN</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>City</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Date</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Division</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(!customer.gstinNumbers || customer.gstinNumbers.trim() === '') ? (
-                                        <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                            <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{customer.customerCode || code}</td>
-                                            <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
-                                            <td style={{ padding: '12px 16px' }}>{customer.address || '-'}</td>
-                                            <td style={{ padding: '12px 16px', color: '#64748b', fontStyle: 'italic' }}>-</td>
-                                            <td style={{ padding: '12px 16px' }}>{customer.panNumber || '-'}</td>
-                                            <td style={{ padding: '12px 16px' }}>{customer.creationDate || '-'}</td>
-                                            <td style={{ padding: '12px 16px' }}>{customer.division || '-'}</td>
-                                        </tr>
-                                    ) : (
-                                        customer.gstinNumbers.replace(/[\[\]"\s]/g, '').split(',').filter(Boolean).map((gstin, index) => (
-                                            <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{customer.customerCode || code}</td>
-                                                <td style={{ padding: '12px 16px' }}>{customer.companyName || '-'}</td>
-                                                <td style={{ padding: '12px 16px' }}>{customer.address || '-'}</td>
-                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{gstin}</td>
-                                                <td style={{ padding: '12px 16px' }}>{customer.panNumber || '-'}</td>
-                                                <td style={{ padding: '12px 16px' }}>{customer.creationDate || '-'}</td>
-                                                <td style={{ padding: '12px 16px' }}>{customer.division || '-'}</td>
+                                    {customers.map((c, i) => {
+                                        // If a customer record has multiple comma-separated GSTINs, render each as a sub-row to match the requested UI
+                                        const gstinList = (!c.gstinNumbers || c.gstinNumbers.trim() === '') ? ['-'] : c.gstinNumbers.replace(/[\[\]"\s]/g, '').split(',').filter(Boolean);
+                                        return gstinList.map((g, gIdx) => (
+                                            <tr key={`${i}-${gIdx}`} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{c.customerCode || code}</td>
+                                                <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: g === '-' ? '#64748b' : 'inherit' }}>{g}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.companyName || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.address || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.panNumber || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.city || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.creationDate || '-'}</td>
+                                                <td style={{ padding: '12px 16px' }}>{c.division || '-'}</td>
                                             </tr>
-                                        ))
-                                    )}
+                                        ));
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 )}
-
-
             </div>
         </main>
     );
