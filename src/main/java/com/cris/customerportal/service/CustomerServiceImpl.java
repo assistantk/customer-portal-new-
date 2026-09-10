@@ -115,7 +115,7 @@ public class CustomerServiceImpl implements CustomerService {
      
      return response;
     } else {
-     throw new ResourceNotFoundException("Customer Code not found.");
+     throw new ResourceNotFoundException("No record found for this Global Customer Code.");
     }
    }
   } catch (SQLException e) {
@@ -124,13 +124,14 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
-  public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByGstin(String gstin) {
+  public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
      String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
    try (ResultSet rs = ps.executeQuery()) {
-    if (rs.next()) {
+    java.util.List<com.cris.customerportal.dto.OldCustomerResponse> responses = new java.util.ArrayList<>();
+    while (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("customer_code"));
      response.setCompanyName(rs.getString("company_name"));
@@ -144,10 +145,13 @@ public class CustomerServiceImpl implements CustomerService {
          response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
      }
      
-     return response;
-    } else {
-     throw new ResourceNotFoundException("No customer found for this GSTIN.");
+     responses.add(response);
     }
+    
+    if (responses.isEmpty()) {
+     throw new ResourceNotFoundException("No record found for this GSTIN.");
+    }
+    return responses;
    }
   } catch (SQLException e) {
    throw new RuntimeException("Database error occurred while fetching customer by GSTIN", e);
