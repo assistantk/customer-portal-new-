@@ -94,21 +94,21 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
-     response.setCustomerCode(rs.getString("customer_code"));
-     response.setCompanyName(rs.getString("company_name"));
-     response.setAddress(rs.getString("address"));
-    response.setPanNumber(rs.getString("pan_number"));
-    response.setGstinNumbers(rs.getString("gstin_numbers"));
-     response.setCity(rs.getString("city"));
+     response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
+     response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
+     response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("creation_date");
+     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
      if (ts != null) {
          response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
      }
@@ -125,7 +125,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
-     String sql = "SELECT MAVGLBLCUSTCODE as customer_code, MAVGLBLCUSTNAME as company_name, MAVGLBLCUSTADDRTEXT as address, MAVCUSTPANNUMB as pan_number, MAVCUSTGSTNUMB as gstin_numbers, MAVGNBLCUSTCITYNAME as city, MADIMPLDATE as creation_date FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -133,14 +133,14 @@ public class CustomerServiceImpl implements CustomerService {
     java.util.List<com.cris.customerportal.dto.OldCustomerResponse> responses = new java.util.ArrayList<>();
     while (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
-     response.setCustomerCode(rs.getString("customer_code"));
-     response.setCompanyName(rs.getString("company_name"));
-     response.setAddress(rs.getString("address"));
-     response.setPanNumber(rs.getString("pan_number"));
-     response.setGstinNumbers(rs.getString("gstin_numbers"));
-     response.setCity(rs.getString("city"));
+     response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
+     response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
+     response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("creation_date");
+     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
      if (ts != null) {
          response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
      }
