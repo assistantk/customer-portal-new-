@@ -3,6 +3,7 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -17,8 +18,8 @@ public class DbaEmailService {
     @Autowired
     public DbaEmailService(
             JavaMailSender mailSender,
-            @Value("${spring.mail.username:shurak949@gmail.com}") String fromEmail,
-            @Value("${app.dba-email:shurak949@gmail.com}") String dbaEmail) {
+            @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
+            @Value("${app.dba-email:dba.team@cris.org.in}") String dbaEmail) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
@@ -71,8 +72,19 @@ public class DbaEmailService {
             message.setText(sb.toString());
             mailSender.send(message);
             System.out.println("[DBA EMAIL AUDIT] Sent DBA notification for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+        } catch (MailException e) {
+            Throwable cause = e.getCause();
+            if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
+                System.err.println("[DBA EMAIL AUDIT ERROR] SendFailedException: Failed to send DBA notification email: " + e.getMessage());
+            } else if (cause != null && cause.getClass().getName().contains("MessagingException")) {
+                System.err.println("[DBA EMAIL AUDIT ERROR] MessagingException: Failed to send DBA notification email: " + e.getMessage());
+            } else {
+                System.err.println("[DBA EMAIL AUDIT ERROR] MailException: Failed to send DBA notification email: " + e.getMessage());
+            }
+            // Log without stopping the calling process (core Oracle transaction will continue)
+            e.printStackTrace();
         } catch (Exception e) {
-            System.err.println("[DBA EMAIL AUDIT ERROR] Failed to send DBA notification email: " + e.getMessage());
+            System.err.println("[DBA EMAIL AUDIT ERROR] Unexpected error while sending DBA notification email: " + e.getMessage());
             e.printStackTrace();
         }
     }
