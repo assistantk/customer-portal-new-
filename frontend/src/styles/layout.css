@@ -4,12 +4,61 @@
     flex-direction: column;
     min-height: 100vh;
     background: radial-gradient(circle at 50% 5%, #fff 0, #edf7ff 48%, #dbeeff 100%);
+    position: relative; /* Establish stacking context for watermark */
+}
+
+/* ===== Indian Railways Watermark Background ===== */
+/*
+ * Fixed, full-viewport layer that tiles the IR logo with generous gaps.
+ * The tile is larger than the logo itself, creating visible spacing between
+ * each logo — matching the reference design where logos are clearly
+ * separated with breathing room.
+ *
+ * pointer-events: none  → never blocks any interaction
+ * z-index: 0            → always behind all content
+ * The solid white .card background fully covers logos beneath the form.
+ */
+.ir-watermark {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-repeat: repeat;
+    /*
+     * background-size controls the TILE size (logo + surrounding gap).
+     * The actual logo renders at roughly 60% of the tile width by default
+     * since the PNG has transparent padding. Setting the tile to ~160px
+     * gives each logo ~95px of rendered size and ~65px gap around it —
+     * matching the reference image.
+     */
+    background-size: 160px 160px;
+    background-position: center center;
+    opacity: 0.15;   /* ~15 % — visible yet non-distracting, per reference */
+    /* No grayscale — keep the original blue IR logo colour */
+    filter: none;
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+    .ir-watermark {
+        background-size: 130px 130px;
+    }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+    .ir-watermark {
+        background-size: 100px 100px;
+        opacity: 0.12;  /* slightly softer on small screens */
+    }
 }
 
 .layout-body {
     display: flex;
     flex: 1;
     overflow: hidden; /* To allow drawer to stick and main to scroll independently if needed */
+    position: relative;
+    z-index: 1;        /* Sits above the z-index:0 watermark layer */
 }
 
 /* Sidebar / Drawer */
