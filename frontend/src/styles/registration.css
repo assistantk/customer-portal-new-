@@ -24,7 +24,9 @@ header {
     padding: 0 34px;
     background: linear-gradient(110deg, #123a93, #3179ed);
     color: #fff;
-    box-shadow: 0 2px 8px #7094c555
+    box-shadow: 0 2px 8px #7094c555;
+    position: relative;  /* Ensure header stacks above the watermark */
+    z-index: 1;
 }
 
 .brand {
