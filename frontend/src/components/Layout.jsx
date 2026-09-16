@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Home, CheckSquare, Menu } from 'lucide-react';
-import crisLogo from '../assets/cris-logo.png';
+import crisLogo from '../assets/cris-logo.png';  /* Header CRIS branding */
+import irLogo from '../assets/rail.png';          /* Watermark background */
 import '../styles/layout.css';
 
 export default function Layout({ currentScreen, onNavigate, children }) {
@@ -12,10 +13,16 @@ export default function Layout({ currentScreen, onNavigate, children }) {
 
     return (
         <div className="app-layout">
+            {/* ── Global watermark layer: sits behind everything ── */}
+            <div
+                className="ir-watermark"
+                style={{ backgroundImage: `url(${irLogo})` }}
+                aria-hidden="true"
+            />
             <header>
                 <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <button 
-                        className="drawer-toggle-btn" 
+                    <button
+                        className="drawer-toggle-btn"
                         onClick={toggleDrawer}
                         aria-label="Toggle Navigation"
                     >
@@ -30,13 +37,13 @@ export default function Layout({ currentScreen, onNavigate, children }) {
             <div className="layout-body">
                 <aside className={`drawer ${isDrawerOpen ? 'open' : 'collapsed'}`}>
                     <div className="drawer-nav">
-                        <button 
+                        <button
                             className={`drawer-item ${currentScreen === 'home' ? 'active' : ''}`}
                             onClick={() => onNavigate('home')}
                         >
                             <Home size={18} /> Home
                         </button>
-                        <button 
+                        <button
                             className={`drawer-item ${currentScreen === 'verification' ? 'active' : ''}`}
                             onClick={() => onNavigate('verification')}
                         >
