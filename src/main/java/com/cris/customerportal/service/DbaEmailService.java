@@ -46,7 +46,11 @@ public class DbaEmailService {
             sb.append("Execution Date/Time:\n").append(audit.getFormattedExecutionTime()).append("\n\n");
             sb.append("Rows Affected:\n").append(audit.getRowsAffected()).append("\n\n");
             sb.append("Status:\n").append(audit.getStatus()).append("\n\n");
-            sb.append("SQL Executed:\n").append(audit.getSqlStatement()).append("\n\n");
+            String sqlStatement = audit.getSqlStatement();
+            if ("INSERT".equalsIgnoreCase(audit.getOperationType()) && sqlStatement != null) {
+                sqlStatement = sqlStatement.replaceAll("\\R+", " ").trim();
+            }
+            sb.append("SQL Executed:\n").append(sqlStatement).append("\n\n");
 
             sb.append("Parameters:\n");
             if (audit.getParameters() != null && !audit.getParameters().isEmpty()) {

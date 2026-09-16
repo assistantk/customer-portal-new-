@@ -274,31 +274,23 @@ public class CustomerServiceImpl implements CustomerService {
 
             String sqlQuery = "";
             if ("global".equals(finalTypeForEmail)) {
-                sqlQuery = "INSERT INTO MEMGLBLCUST\nVALUES (\n" +
-                    formatSqlValue(finalCodeForEmail) + ",\n" +
-                    formatSqlValue(companyName) + ",\n" +
-                    formatSqlValue(formData.get("address")) + ",\n" +
-                    formatSqlValue(formData.get("city")) + ",\n" +
-                    "NULL,\n" +
-                    "NULL,\n" +
-                    "SYSDATE,\n" +
-                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
-                    "NULL,\n" +
-                    formatSqlValue(formData.get("gstinNumbers")) + ",\n" +
-                    formatSqlValue(formData.get("panNumber")) + "\n" +
-                    ");";
+                sqlQuery = "INSERT INTO MEMGLBLCUST VALUES (" +
+                    formatSqlValue(finalCodeForEmail) + ", " +
+                    formatSqlValue(companyName) + ", " +
+                    formatSqlValue(formData.get("address")) + ", " +
+                    formatSqlValue(formData.get("city")) + ", " +
+                    "NULL, NULL, SYSDATE, " +
+                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, " +
+                    formatSqlValue(formData.get("gstinNumbers")) + ", " +
+                    formatSqlValue(formData.get("panNumber")) + ");";
             } else {
-                sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT\nVALUES (\n" +
-                    formatSqlValue(finalCodeForEmail) + ",\n" +
-                    formatSqlValue(companyName) + ",\n" +
-                    formatSqlValue(formData.get("address")) + ",\n" +
-                    formatSqlValue(formData.get("city")) + ",\n" +
-                    "NULL,\n" +
-                    "NULL,\n" +
-                    "SYSDATE,\n" +
-                    formatSqlValue(formData.get("operatingDivision")) + ",\n" +
-                    "NULL\n" +
-                    ");";
+                sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT VALUES (" +
+                    formatSqlValue(finalCodeForEmail) + ", " +
+                    formatSqlValue(companyName) + ", " +
+                    formatSqlValue(formData.get("address")) + ", " +
+                    formatSqlValue(formData.get("city")) + ", " +
+                    "NULL, NULL, SYSDATE, " +
+                    formatSqlValue(formData.get("operatingDivision")) + ", NULL);";
             }
 
 
