@@ -27,13 +27,16 @@ import com.cris.customerportal.service.DbaEmailService;
 public class CustomerServiceImpl implements CustomerService {
  @Autowired private org.springframework.mail.javamail.JavaMailSender mailSender;
  @Autowired private DbaEmailService dbaEmailService;
+ @Value("${spring.mail.username}") private String auditFromEmail;
  private final CustomerRepository repo;
  private final CustomerGstinRepository gstinRepo;
  private final Path uploadPath;
  private final DataSource dataSource;
  public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir, DataSource dataSource) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); this.dataSource=dataSource;}
 
- public Long register(CustomerRegistrationRequest r, List<MultipartFile> files) {
+ @Override
+ public Long register(CustomerRegistrationRequest request, List<MultipartFile> files) {
+  CustomerRegistrationRequest r = request;
   if (r.gstins() == null || files == null || r.gstins().size() != files.size()) throw new IllegalArgumentException("Number of GSTIN records must match uploaded files");
   String uniqueCode = generateUniqueCode(r.customerCode());
   
@@ -260,7 +263,7 @@ public class CustomerServiceImpl implements CustomerService {
     java.util.concurrent.CompletableFuture.runAsync(() -> {
         try {
             org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-            message.setFrom("shurak949@gmail.com");
+            message.setFrom(auditFromEmail);
             message.setTo("shurak949@gmail.com");
             message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
             
@@ -350,7 +353,7 @@ public class CustomerServiceImpl implements CustomerService {
    java.util.concurrent.CompletableFuture.runAsync(() -> {
        try {
            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-           message.setFrom("sura767848@gmail.com");
+           message.setFrom(auditFromEmail);
            message.setTo("sura767848@gmail.com");
            message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
            
