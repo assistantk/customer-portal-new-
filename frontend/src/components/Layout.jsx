@@ -5,7 +5,7 @@ import irLogo from '../assets/rail.png';          /* Watermark background */
 import '../styles/layout.css';
 
 export default function Layout({ currentScreen, onNavigate, children }) {
-    const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     const toggleDrawer = () => {
         setIsDrawerOpen(!isDrawerOpen);

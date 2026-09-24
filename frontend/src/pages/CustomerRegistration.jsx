@@ -739,10 +739,12 @@ export default function CustomerRegistration() {
 
             {/* === State-wise GSTINs OR Ownership Fields === */}
             {mode === 'ownership' ? (
-                <div className="gstins-container">
-                    <div className="gstins-header">
-                        <h3>Ownership Details</h3>
-                    </div>
+                <>
+                    <div className="ownership-divider" />
+                    <div className="gstins-container ownership-mode">
+                        <div className="gstins-header">
+                            <h3>Ownership Details</h3>
+                        </div>
                     <div className="grid">
                         <div className="field">
                             <label htmlFor="ownershipCode_bottom">Ownership Code <b>*</b></label>
@@ -757,6 +759,7 @@ export default function CustomerRegistration() {
                         <Field id="ownershipAddress_bottom" label="Ownership Address" name="ownershipAddress" icon={Building2} placeholder="Enter ownership address" form={form} setForm={setForm} error={errors.ownershipAddress} />
                     </div>
                 </div>
+                </>
             ) : (
                 <div className="gstins-container">
                     <div className="gstins-header">
