@@ -12,4 +12,6 @@ public interface CustomerService {
   String registerNewEntryJDBC(java.util.Map<String, String> formData);
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);
   com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode);
+  com.cris.customerportal.dto.OldCustomerResponse lookupOwnershipCustomerByCode(String customerCode);
+  void updateOwnershipCustomerJDBC(java.util.Map<String, String> formData);
 }

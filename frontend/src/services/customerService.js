@@ -278,3 +278,27 @@ export async function updateOldCustomerJDBC(payload, gstinEntries) {
 
   return resp;
 }
+
+export async function lookupOwnershipCustomerJDBC(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/ownership-lookup?code=${encodeURIComponent(trimmed)}`);
+}
+
+export async function updateOwnershipCustomerJDBC(payload, gstinEntries) {
+  const updateBody = {
+    customerCode: payload.ownershipCode,
+    companyName: payload.ownershipAddress,
+    address: payload.address,
+    email: payload.email,
+    mobile: payload.mobile,
+    panNumber: payload.panNumber
+  };
+
+  const resp = await request(`${API}/customers/ownership-update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateBody),
+  });
+
+  return resp;
+}

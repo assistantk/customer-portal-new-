@@ -45,4 +45,17 @@ public class CustomerController { private final CustomerService service; public 
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
   }
  }
+
+ @GetMapping("/ownership-lookup")
+ public com.cris.customerportal.dto.OldCustomerResponse lookupOwnership(@RequestParam String code){return service.lookupOwnershipCustomerByCode(code);}
+
+ @PostMapping("/ownership-update")
+ public ResponseEntity<?> ownershipUpdate(@RequestBody Map<String, String> payload) {
+  try {
+   service.updateOwnershipCustomerJDBC(payload);
+   return ResponseEntity.ok(Map.of("success", true, "message", "Ownership updated successfully"));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
+  }
+ }
 }
