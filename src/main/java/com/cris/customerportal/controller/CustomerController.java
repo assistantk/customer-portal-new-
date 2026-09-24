@@ -45,4 +45,71 @@ public class CustomerController { private final CustomerService service; public 
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
   }
  }
+
+ // ===== Ownership Section 1: MEMWGONOWNRSHIP =====
+
+ @GetMapping("/ownership-lookup")
+ public ResponseEntity<?> ownershipLookup(@RequestParam String code) {
+  try {
+   java.util.Map<String, String> result = service.lookupOwnershipJDBC(code);
+   if (result != null) {
+    return ResponseEntity.ok(Map.of("success", true, "found", true, "data", result));
+   } else {
+    return ResponseEntity.ok(Map.of("success", true, "found", false));
+   }
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    .body(Map.of("success", false, "message", e.getMessage()));
+  }
+ }
+
+ @PostMapping("/ownership-save")
+ public ResponseEntity<?> ownershipSave(@RequestBody Map<String, String> payload) {
+  try {
+   String code = payload.get("ownershipCode");
+   String desc = payload.get("ownershipDesc");
+   if (code == null || code.trim().isEmpty()) {
+    return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Ownership Code is required"));
+   }
+   service.saveOwnershipJDBC(code.trim(), desc);
+   return ResponseEntity.ok(Map.of("success", true, "message", "Ownership record saved successfully"));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    .body(Map.of("success", false, "message", e.getMessage()));
+  }
+ }
+
+ // ===== Ownership Section 2: MEMWGONOWNRPRTY =====
+
+ @GetMapping("/ownership-party-lookup")
+ public ResponseEntity<?> ownershipPartyLookup(@RequestParam String code) {
+  try {
+   java.util.Map<String, String> result = service.lookupOwnershipPartyJDBC(code);
+   if (result != null) {
+    return ResponseEntity.ok(Map.of("success", true, "found", true, "data", result));
+   } else {
+    return ResponseEntity.ok(Map.of("success", true, "found", false));
+   }
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    .body(Map.of("success", false, "message", e.getMessage()));
+  }
+ }
+
+ @PostMapping("/ownership-party-save")
+ public ResponseEntity<?> ownershipPartySave(@RequestBody Map<String, String> payload) {
+  try {
+   String code = payload.get("partyCode");
+   String desc = payload.get("partyDesc");
+   if (code == null || code.trim().isEmpty()) {
+    return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Ownership Party Code is required"));
+   }
+   service.saveOwnershipPartyJDBC(code.trim(), desc);
+   return ResponseEntity.ok(Map.of("success", true, "message", "Ownership Party record saved successfully"));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    .body(Map.of("success", false, "message", e.getMessage()));
+  }
+ }
 }
+

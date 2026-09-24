@@ -421,6 +421,115 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
+
+ // ===== Ownership: MEMWGONOWNRSHIP =====
+
+ public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
+  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("ownershipCode", rs.getString("MAVWGONOWNRSHIPCODE"));
+     result.put("ownershipDesc", rs.getString("MAVWGONOWNRSHIPDESC"));
+     return result;
+    } else {
+     return null; // Code not found — caller handles null as "new record"
+    }
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupOwnershipJDBC SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up ownership code: " + e.getMessage(), e);
+  }
+ }
+
+ public void saveOwnershipJDBC(String ownershipCode, String ownershipDesc) {
+  String normalizedCode = ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT);
+  // Check existence first
+  java.util.Map<String, String> existing = lookupOwnershipJDBC(normalizedCode);
+  if (existing != null) {
+   // UPDATE
+   String sql = "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = ? WHERE MAVWGONOWNRSHIPCODE = ?";
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, ownershipDesc);
+    ps.setString(2, normalizedCode);
+    ps.executeUpdate();
+   } catch (SQLException e) {
+    System.err.printf("[DB ERROR] saveOwnershipJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+    throw new RuntimeException("Database error while updating ownership record: " + e.getMessage(), e);
+   }
+  } else {
+   // INSERT
+   String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC) VALUES (?, ?)";
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, normalizedCode);
+    ps.setString(2, ownershipDesc);
+    ps.executeUpdate();
+   } catch (SQLException e) {
+    System.err.printf("[DB ERROR] saveOwnershipJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+    throw new RuntimeException("Database error while inserting ownership record: " + e.getMessage(), e);
+   }
+  }
+ }
+
+ // ===== Ownership Party: MEMWGONOWNRPRTY =====
+
+ public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
+  String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("partyCode", rs.getString("MAVWGONOWNRPRTYCODE"));
+     result.put("partyDesc", rs.getString("MAVWGONOWNRPRTYDESC"));
+     return result;
+    } else {
+     return null; // Code not found — caller handles null as "new record"
+    }
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupOwnershipPartyJDBC SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up ownership party code: " + e.getMessage(), e);
+  }
+ }
+
+ public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
+  String normalizedCode = partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT);
+  // Check existence first
+  java.util.Map<String, String> existing = lookupOwnershipPartyJDBC(normalizedCode);
+  if (existing != null) {
+   // UPDATE
+   String sql = "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = ? WHERE MAVWGONOWNRPRTYCODE = ?";
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, partyDesc);
+    ps.setString(2, normalizedCode);
+    ps.executeUpdate();
+   } catch (SQLException e) {
+    System.err.printf("[DB ERROR] saveOwnershipPartyJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+    throw new RuntimeException("Database error while updating ownership party record: " + e.getMessage(), e);
+   }
+  } else {
+   // INSERT
+   String sql = "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES (?, ?)";
+   try (Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.setString(1, normalizedCode);
+    ps.setString(2, partyDesc);
+    ps.executeUpdate();
+   } catch (SQLException e) {
+    System.err.printf("[DB ERROR] saveOwnershipPartyJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+    throw new RuntimeException("Database error while inserting ownership party record: " + e.getMessage(), e);
+   }
+  }
+ }
+
  private String formatSqlValue(String value) {
   if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
   return "'" + value.replace("'", "''") + "'";
