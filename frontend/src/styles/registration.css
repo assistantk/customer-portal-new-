@@ -73,24 +73,23 @@ header {
 main {
   display: flex;
   justify-content: center;   /* horizontal centering */
-  align-items: flex-start;   /* keeps it top-aligned vertically, not stretched */
+  align-items: center;       /* vertical centering */
   min-height: 100vh;
   padding: 24px;
   box-sizing: border-box;
 }
 
 .card {
-    /* width: min(1340px, 93%); */
     background: #ffffff;
     border: 3px solid #3b82f6;
     border-top: 4px solid #3b82f6;
-    border-radius: 50px;
-    padding: 16px 28px 14px;
-    box-shadow: 0 6px 18px -4px rgb(0 0 0 / 0.07), 0 4px 8px -4px rgb(0 0 0 / 0.05);
-    align-self: flex-start;
-    width: 100%;
-    max-width: 1200px;         /* cap the form's width so it doesn't stretch full-screen */
-    margin: 0 auto; 
+    border-radius: 24px;
+    padding: 24px 32px 20px;
+    box-shadow: 0 8px 30px -6px rgb(0 0 0 / 0.12), 0 4px 12px -4px rgb(0 0 0 / 0.08);
+    margin: auto;
+    width: min(95vw, 1500px);
+    display: flex;
+    flex-direction: column;
 }
 
 .card-head,
@@ -107,8 +106,8 @@ main {
   justify-content: space-between;
   gap: 0px;
   flex-wrap: wrap;
-  min-height: 64px;             /* at least as tall as the logo needs */
-  padding-bottom: 0px;          /* breathing room before the rule line */
+  min-height: 80px;
+  padding-bottom: 8px;
 }
 
 .card-head .railways-banner {
@@ -212,7 +211,7 @@ p {
 .grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px 18px
+    gap: 16px 24px;
 }
 
 .full {
@@ -230,8 +229,8 @@ p {
 label {
     display: block;
     font-weight: 600;
-    font-size: 12px;
-    margin-bottom: 4px;
+    font-size: 13px;
+    margin-bottom: 6px;
     color: #1e293b;
 }
 
@@ -240,12 +239,12 @@ label b {
 }
 
 .control {
-    height: 36px;
+    height: 44px;
     border: 1px solid #e2e8f0;
-    border-radius: 6px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
-    padding: 0 8px 0 5px;
+    padding: 0 12px 0 8px;
     color: #94a3b8;
     background: #fff;
 }
@@ -253,17 +252,19 @@ label b {
 .control>svg:first-child {
     background: #eff6ff;
     color: #3b82f6;
-    padding: 4px;
-    border-radius: 4px;
+    width: 18px;
+    height: 18px;
+    padding: 6px;
+    border-radius: 6px;
     box-sizing: content-box;
-    margin-right: 6px;
-    margin-left: 2px;
+    margin-right: 8px;
+    margin-left: 4px;
     flex-shrink: 0;
 }
 
 .control input,
 .control select {
-    font: 12px 'Inter', Arial, sans-serif;
+    font: 14px 'Inter', Arial, sans-serif;
     width: 100%;
     border: 0;
     outline: 0;
@@ -387,8 +388,8 @@ label b {
 /* ===== Actions / Footer ===== */
 .actions {
     justify-content: space-between;
-    margin-top: 14px;
-    padding-top: 10px;
+    margin-top: 24px;
+    padding-top: 16px;
     border-top: 1px dotted #dce4eb;
 }
 
@@ -406,31 +407,40 @@ label b {
 }
 
 .actions button {
-    height: 32px;
-    border-radius: 6px;
-    padding: 0 14px;
-    font: bold 12px Arial;
-    cursor: pointer
+    height: 40px;
+    border-radius: 8px;
+    padding: 0 20px;
+    font: bold 14px Arial;
+    cursor: pointer;
+    transition: background 0.2s;
 }
 
 .reset {
     background: #fff;
     border: 1px solid #e2e8f0;
     color: #334155;
-    margin-right: 8px
+    margin-right: 8px;
+}
+
+.reset:hover {
+    background: #f1f5f9;
 }
 
 .reset svg,
 .submit svg {
     width: 14px;
     vertical-align: middle;
-    margin-right: 4px
+    margin-right: 4px;
 }
 
 .submit {
     border: 0;
     background: #2563eb;
     color: white;
+}
+
+.submit:hover {
+    background: #1d4ed8;
 }
 
 .submit:disabled {
@@ -603,11 +613,28 @@ footer {
     animation: spin 0.8s linear infinite;
 }
 
+/* ===== Ownership Divider ===== */
+.ownership-divider {
+    height: 3px;
+    background-color: #3b82f6;
+    margin: 24px -32px 16px -32px;
+}
+
+.gstins-container.ownership-mode {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+}
+
 /* ===== GSTIN Section ===== */
 .gstins-container {
-    margin-top: 12px;
-    padding-top: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
     border-top: 1px dotted #dce4eb;
+}
+
+.gstins-container > .grid {
+    grid-template-columns: 1fr 1fr;
 }
 
 .gstins-header {
@@ -787,6 +814,10 @@ footer {
         grid-template-columns: 1fr 1fr;
     }
 
+    .gstins-container > .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
     .span-2 {
         grid-column: 1 / -1;
     }
@@ -796,8 +827,51 @@ footer {
     }
 
     .card {
-        width: min(960px, 96%);
-        padding: 16px 22px 14px;
+        width: min(95vw, 1000px);
+        padding: 20px 24px 18px;
+    }
+
+    .ownership-divider {
+        margin-left: -24px;
+        margin-right: -24px;
+    }
+}
+
+/* ===== Responsive: Mobile (1 column) ===== */
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gstins-container > .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card-head {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .card-head .railways-banner {
+        position: static;
+        transform: none;
+    }
+
+    .card {
+        width: 100%;
+        padding: 16px 16px 12px;
+        border-radius: 16px;
+        min-height: auto;
+    }
+
+    .ownership-divider {
+        margin-left: -16px;
+        margin-right: -16px;
     }
 }
 
@@ -827,6 +901,11 @@ footer {
         width: 100%;
         padding: 14px 14px 12px;
         border-radius: 10px;
+    }
+
+    .ownership-divider {
+        margin-left: -14px;
+        margin-right: -14px;
     }
 
     .grid {
