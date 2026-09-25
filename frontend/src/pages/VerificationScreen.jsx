@@ -139,9 +139,8 @@ export default function VerificationScreen() {
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Company Name</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Address</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>PAN</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>City</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Date</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Division</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Date</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -157,7 +156,6 @@ export default function VerificationScreen() {
                                                 <td style={{ padding: '12px 16px' }}>{c.panNumber || '-'}</td>
                                                 <td style={{ padding: '12px 16px' }}>{c.city || '-'}</td>
                                                 <td style={{ padding: '12px 16px' }}>{c.creationDate || '-'}</td>
-                                                <td style={{ padding: '12px 16px' }}>{c.division || '-'}</td>
                                             </tr>
                                         ));
                                     })}

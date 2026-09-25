@@ -670,7 +670,7 @@ export default function CustomerRegistration() {
     const cities = Object.keys(data?.cities || {}), pins = form.city ? (data?.cities?.[form.city] || []) : [], zones = Object.keys(divisionsByZone), divisions = form.zone ? (divisionsByZone[form.zone] || []) : [];
 
     return (
-        <main><form className="card" onSubmit={submit}>
+        <main><form className={'card mode-' + mode} onSubmit={submit}>
             <div className="card-head">
                 <div className="title-icon"><UserRound /><div>
                     <h1>Customer Registration</h1>

@@ -97,7 +97,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
@@ -109,11 +109,12 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
-     if (ts != null) {
-         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
+     if (amendmentDate != null && !amendmentDate.isBlank()) {
+         response.setCreationDate(amendmentDate);
      }
      
      return response;
@@ -128,7 +129,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
-     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -141,11 +142,12 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
-     if (ts != null) {
-         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
+     if (amendmentDate != null && !amendmentDate.isBlank()) {
+         response.setCreationDate(amendmentDate);
      }
      
      responses.add(response);
@@ -237,8 +239,8 @@ public class CustomerServiceImpl implements CustomerService {
   String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
   String panCol = "global".equals(type) ? "MAVCUSTPANNUMB" : null;
   String sql = "global".equals(type) 
-      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ") VALUES (?, ?, ?, ?, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ") VALUES (?, ?, ?, ?)";
+      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, ?, ?, SYSDATE)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
 
     String companyName = firstValue(formData, "companyName", "customerName");
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
@@ -282,7 +284,7 @@ public class CustomerServiceImpl implements CustomerService {
                     "NULL, NULL, SYSDATE, " +
                     formatSqlValue(formData.get("operatingDivision")) + ", NULL, " +
                     formatSqlValue(formData.get("gstinNumbers")) + ", " +
-                    formatSqlValue(formData.get("panNumber")) + ");";
+                    formatSqlValue(formData.get("panNumber")) + ", SYSDATE);";
             } else {
                 sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT VALUES (" +
                     formatSqlValue(finalCodeForEmail) + ", " +
@@ -290,7 +292,7 @@ public class CustomerServiceImpl implements CustomerService {
                     formatSqlValue(formData.get("address")) + ", " +
                     formatSqlValue(formData.get("city")) + ", " +
                     "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(formData.get("operatingDivision")) + ", NULL);";
+                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, SYSDATE);";
             }
 
 

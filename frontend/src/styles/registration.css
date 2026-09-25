@@ -92,6 +92,45 @@ main {
     flex-direction: column;
 }
 
+.card.mode-old,
+.card.mode-new {
+    padding-top: 14px;
+    padding-bottom: 12px;
+}
+
+.card.mode-old .card-head,
+.card.mode-new .card-head {
+    min-height: 64px;
+    padding-bottom: 4px;
+}
+
+.card.mode-old .rule,
+.card.mode-new .rule {
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+
+.card.mode-old .grid,
+.card.mode-new .grid {
+    row-gap: 10px;
+}
+
+.card.mode-old label,
+.card.mode-new label {
+    margin-bottom: 4px;
+}
+
+.card.mode-old .control,
+.card.mode-new .control {
+    height: 40px;
+}
+
+.card.mode-old .actions,
+.card.mode-new .actions {
+    margin-top: 14px;
+    padding-top: 10px;
+}
+
 .card-head,
 .title-icon,
 .actions {
