@@ -534,4 +534,68 @@ public class CustomerServiceImpl implements CustomerService {
   if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
   return "'" + value.replace("'", "''") + "'";
  }
+
+  public com.cris.customerportal.dto.OldCustomerResponse lookupOwnershipCustomerByCode(String customerCode) {
+     // TODO: exact mapping not provided, using MEMWGONOWNRSHIP and placeholder columns to deliberately throw a mapping error
+     // as requested: "Keep the database mapping isolated and clearly identify what needs to be mapped."
+     String sql = "SELECT TODO_MAP_OWNERSHIP_CODE AS MAVGLBLCUSTCODE, TODO_MAP_OWNERSHIP_ADDR AS MAVGLBLCUSTNAME, 'N/A' AS MAVGLBLCUSTADDRTEXT, 'N/A' AS MAVCUSTPANNUMB, 'N/A' AS MAVCUSTGSTNUMB, 'N/A' AS MAVGNBLCUSTCITYNAME, NULL AS MADIMPLDATE FROM MEMWGONOWNRSHIP WHERE TODO_MAP_OWNERSHIP_CODE = ?";
+    try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+     response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
+     response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
+     return response;
+    } else {
+     throw new ResourceNotFoundException("No record found for this Ownership Code.");
+    }
+   }
+  } catch (SQLException e) {
+     System.err.printf("[DB ERROR] lookupOwnershipCustomerByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this function can execute.", e);
+  }
+ }
+
+ public void updateOwnershipCustomerJDBC(java.util.Map<String, String> formData) {
+     // TODO: exact mapping not provided, using placeholder columns to deliberately throw a mapping error
+     String sql = "UPDATE MEMWGONOWNRSHIP SET TODO_MAP_OWNERSHIP_ADDR = ? WHERE TODO_MAP_OWNERSHIP_CODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, formData.get("companyName")); // Ownership address
+   ps.setString(2, formData.get("customerCode"));
+   ps.executeUpdate();
+   
+   // Send UPDATE audit email asynchronously
+   java.util.concurrent.CompletableFuture.runAsync(() -> {
+       try {
+           org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+           message.setFrom(auditFromEmail);
+           message.setTo("sura767848@gmail.com");
+           message.setSubject("Ownership Database UPDATE - " + formData.get("customerCode"));
+           
+           String sqlQuery = "UPDATE MEMWGONOWNRSHIP\nSET\n" +
+               "    TODO_MAP_OWNERSHIP_ADDR = " + formatSqlValue(formData.get("companyName")) + "\n" +
+               "WHERE TODO_MAP_OWNERSHIP_CODE = " + formatSqlValue(formData.get("customerCode")) + ";";
+                   
+           String text = "Operation: UPDATE\n" +
+                   "Table: MEMWGONOWNRSHIP\n" +
+                   "Code: " + formData.get("customerCode") + "\n\n" +
+                   "SQL QUERY:\n" +
+                   "----------------------------------------\n" +
+                   sqlQuery + "\n" +
+                   "----------------------------------------";
+                  
+           message.setText(text);
+           mailSender.send(message);
+           System.out.println("[EMAIL AUDIT] Email sent successfully for UPDATE " + formData.get("customerCode"));
+       } catch (Exception ex) {
+           System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
+       }
+   });
+  } catch (SQLException e) {
+   throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this update can execute.", e);
+  }
+ }
 }
