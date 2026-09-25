@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC } from '../services/customerService';
+import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
 import { extractPanFromFile, extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
-const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '', ownershipCode: '', ownershipAddress: '' };
+const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '', ownershipCode: '', ownershipAddress: '', ownershipPartyCode: '', ownershipPartyAddress: '' };
 const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) return 'Only PDF, JPG, JPEG, and PNG files are allowed'; return '' };
 const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '', scanning: false, scanStatus: 'idle', scanError: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
@@ -41,7 +41,7 @@ const getGstinPanStatus = (gstin, pan) => {
     if (!normalizedGstin) return null;
     if (normalizedGstin.length !== 15) return 'Enter a valid 15-character GSTIN.';
     if (normalizedPan.length !== 10 || !panRe.test(normalizedPan)) return null;
-    return normalizedGstin.slice(2, 12) === normalizedPan ? '✓ GSTIN matches PAN' : '✕ GSTIN does not match the PAN number.';
+    return normalizedGstin.slice(2, 12) === normalizedPan ? 'âœ“ GSTIN matches PAN' : 'âœ• GSTIN does not match the PAN number.';
 };
 const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
@@ -121,6 +121,18 @@ export default function CustomerRegistration() {
     const lookupTimerRef = useRef(null);
     const lookupRequestRef = useRef(0);
 
+    // ===== Ownership Section 1: MEMWGONOWNRSHIP (top form fields) =====
+    const [ownSection1Loading, setOwnSection1Loading] = useState(false);
+    const [ownSection1Found, setOwnSection1Found] = useState(null);
+    const ownSection1TimerRef = useRef(null);
+    const ownSection1ReqRef = useRef(0);
+
+    // ===== Ownership Section 2: MEMWGONOWNRPRTY (bottom "Ownership Details" panel) =====
+    const [ownSection2Loading, setOwnSection2Loading] = useState(false);
+    const [ownSection2Found, setOwnSection2Found] = useState(null);
+    const ownSection2TimerRef = useRef(null);
+    const ownSection2ReqRef = useRef(0);
+
     useEffect(() => { getMasterData().then(setData).catch(() => { }) }, []);
 
     const reset = () => {
@@ -132,9 +144,80 @@ export default function CustomerRegistration() {
         setPanFile(null); setExistingPanFileName('');
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
         if (panFileRef.current) panFileRef.current.value = '';
+        // Reset ownership section states
+        setOwnSection1Loading(false); setOwnSection1Found(null);
+        setOwnSection2Loading(false); setOwnSection2Found(null);
     };
 
     const switchMode = (newMode) => { reset(); setMode(newMode); };
+
+    /* ===== Ownership Section 1: lookup in MEMWGONOWNRSHIP ===== */
+    const handleOwnershipCodeChange = (code) => {
+        setForm(prev => ({ ...prev, ownershipCode: code, ownershipAddress: '' }));
+        setOwnSection1Found(null);
+        const reqId = ++ownSection1ReqRef.current;
+        if (ownSection1TimerRef.current) clearTimeout(ownSection1TimerRef.current);
+        if (code.trim().length > 0) {
+            setOwnSection1Loading(true);
+            ownSection1TimerRef.current = setTimeout(async () => {
+                try {
+                    const resp = await lookupOwnershipJDBC(code.trim());
+                    if (reqId !== ownSection1ReqRef.current) return;
+                    if (resp && resp.found && resp.data) {
+                        setForm(prev => ({
+                            ...prev,
+                            ownershipCode: code,
+                            ownershipAddress: resp.data.ownershipDesc || '',
+                        }));
+                        setOwnSection1Found(true);
+                    } else {
+                        setOwnSection1Found(false);
+                    }
+                } catch (err) {
+                    if (reqId !== ownSection1ReqRef.current) return;
+                    setOwnSection1Found(false);
+                } finally {
+                    if (reqId === ownSection1ReqRef.current) setOwnSection1Loading(false);
+                }
+            }, 600);
+        } else {
+            setOwnSection1Loading(false);
+        }
+    };
+
+    /* ===== Ownership Section 2: lookup in MEMWGONOWNRPRTY ===== */
+    const handleOwnershipPartyCodeChange = (code) => {
+        setForm(prev => ({ ...prev, ownershipPartyCode: code, ownershipPartyAddress: '' }));
+        setOwnSection2Found(null);
+        const reqId = ++ownSection2ReqRef.current;
+        if (ownSection2TimerRef.current) clearTimeout(ownSection2TimerRef.current);
+        if (code.trim().length > 0) {
+            setOwnSection2Loading(true);
+            ownSection2TimerRef.current = setTimeout(async () => {
+                try {
+                    const resp = await lookupOwnershipPartyJDBC(code.trim());
+                    if (reqId !== ownSection2ReqRef.current) return;
+                    if (resp && resp.found && resp.data) {
+                        setForm(prev => ({
+                            ...prev,
+                            ownershipPartyCode: code,
+                            ownershipPartyAddress: resp.data.partyDesc || '',
+                        }));
+                        setOwnSection2Found(true);
+                    } else {
+                        setOwnSection2Found(false);
+                    }
+                } catch (err) {
+                    if (reqId !== ownSection2ReqRef.current) return;
+                    setOwnSection2Found(false);
+                } finally {
+                    if (reqId === ownSection2ReqRef.current) setOwnSection2Loading(false);
+                }
+            }, 600);
+        } else {
+            setOwnSection2Loading(false);
+        }
+    };
 
     /* ===== Old User: lookup by customer code ===== */
     const handleOldCodeChange = (code) => {
@@ -325,10 +408,15 @@ export default function CustomerRegistration() {
 
     const validate = () => {
         let e = {};
-        // Required field checks — exclude globalCustomerCode/handlingAgentCode from required
-        const requiredFields = mode === 'ownership'
-            ? ['ownershipCode', 'ownershipAddress', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile']
-            : ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile'];
+        if (mode === 'ownership') {
+            // For ownership mode: only validate the two code fields
+            if (!form.ownershipCode?.trim()) e.ownershipCode = 'Ownership Code is required';
+            if (!form.ownershipAddress?.trim()) e.ownershipAddress = 'Ownership Address is required';
+            setErrors(e);
+            return !Object.keys(e).length;
+        }
+        // Required field checks â€” exclude globalCustomerCode/handlingAgentCode from required
+        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile'];
         requiredFields.forEach(k => { if (!form[k]) e[k] = 'This field is required' });
         if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
         if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
@@ -364,7 +452,7 @@ export default function CustomerRegistration() {
 
         if (mode === 'new' && !codeConfirmed && form.companyName) {
             if (codeChecking) {
-                e.customerCode = 'Please wait — code is being verified';
+                e.customerCode = 'Please wait â€” code is being verified';
             } else {
                 e.customerCode = 'Failed to verify code. Make sure the Java backend is running with the latest code.';
             }
@@ -379,7 +467,48 @@ export default function CustomerRegistration() {
         if (!validate()) return;
         setLoading(true);
         try {
-            if (mode === 'new') {
+            if (mode === 'ownership') {
+                /* --- Ownership mode: save Section 1 (MEMWGONOWNRSHIP) and Section 2 (MEMWGONOWNRPRTY) --- */
+                const results = [];
+                // Section 1
+                if (form.ownershipCode?.trim()) {
+                    const r1 = await saveOwnershipJDBC(
+                        form.ownershipCode.trim().toUpperCase(),
+                        form.ownershipAddress?.trim() || ''
+                    );
+                    results.push(r1.message || 'Ownership saved');
+                }
+                // Section 2
+                if (form.ownershipPartyCode?.trim()) {
+                    const r2 = await saveOwnershipPartyJDBC(
+                        form.ownershipPartyCode.trim().toUpperCase(),
+                        form.ownershipPartyAddress?.trim() || ''
+                    );
+                    results.push(r2.message || 'Ownership Party saved');
+                }
+                setNotice(results.length > 0
+                    ? 'âœ“ ' + results.join(' | ')
+                    : 'Nothing to save â€” enter at least one code.');
+                // Refresh lookups
+                if (form.ownershipCode?.trim()) {
+                    try {
+                        const ref1 = await lookupOwnershipJDBC(form.ownershipCode.trim());
+                        if (ref1?.found && ref1.data) {
+                            setForm(prev => ({ ...prev, ownershipAddress: ref1.data.ownershipDesc || prev.ownershipAddress }));
+                            setOwnSection1Found(true);
+                        }
+                    } catch (_) {}
+                }
+                if (form.ownershipPartyCode?.trim()) {
+                    try {
+                        const ref2 = await lookupOwnershipPartyJDBC(form.ownershipPartyCode.trim());
+                        if (ref2?.found && ref2.data) {
+                            setForm(prev => ({ ...prev, ownershipPartyAddress: ref2.data.partyDesc || prev.ownershipPartyAddress }));
+                            setOwnSection2Found(true);
+                        }
+                    } catch (_) {}
+                }
+            } else if (mode === 'new') {
                 /* --- New Entry: create customer + GSTINs --- */
                 const result = await registerCustomer(
                     { ...form, codeType, panFile },
@@ -462,7 +591,7 @@ export default function CustomerRegistration() {
             setErrors(prev => {
                 const next = { ...prev };
                 const field = `gstin_${index}_gstin`;
-                if (status?.startsWith('✕')) next[field] = 'GSTIN does not match the PAN number.';
+                if (status?.startsWith('âœ•')) next[field] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[field] = status;
                 else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[field])) delete next[field];
                 return next;
@@ -478,7 +607,7 @@ export default function CustomerRegistration() {
             else if (next.panNumber === 'Enter a valid 10-character PAN.') delete next.panNumber;
             gstins.forEach((gstin, index) => {
                 const status = getGstinPanStatus(gstin.gstin, value);
-                if (status?.startsWith('✕')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
+                    if (status?.startsWith('âœ•')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[`gstin_${index}_gstin`] = status;
                 else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[`gstin_${index}_gstin`])) delete next[`gstin_${index}_gstin`];
             });
@@ -618,31 +747,38 @@ export default function CustomerRegistration() {
             </div>
             <div className="rule" />
 
-            {notice && <div className={notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
-            {mode !== 'new' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
-            {mode !== 'new' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
+            {notice && <div className={notice.startsWith('âœ“') || notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
+            {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
+            {mode === 'old' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
 
             {/* === Main Form: 3-column grid === */}
             <div className="grid">
-                {/* Row 1: Customer Code | Company Name | PAN No. */}
+                {/* Row 1: Code | Address/Name | PAN */}
                 {(mode === 'old' || mode === 'ownership') && (
                     <div className="field">
-                        <label htmlFor={mode === 'ownership' ? "ownershipCode_top" : "customerCode"}>
+                        <label htmlFor={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}>
                             {mode === 'ownership' ? 'Ownership Code' : 'Customer Code'} <b>*</b>
                         </label>
                         <div className={'control ' + ((mode === 'ownership' ? errors.ownershipCode : errors.customerCode) ? 'invalid' : '')}>
                             <Tag size={15} />
                             <input
-                                id={mode === 'ownership' ? "ownershipCode_top" : "customerCode"}
-                                name={mode === 'ownership' ? "ownershipCode" : "customerCode"}
-                                value={mode === 'ownership' ? form.ownershipCode : form.customerCode}
-                                placeholder={mode === 'ownership' ? "Enter ownership code" : "Enter customer code"}
+                                id={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}
+                                name={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}
+                                value={mode === 'ownership' ? (form.ownershipCode || '') : form.customerCode}
+                                placeholder={mode === 'ownership' ? 'Enter ownership code' : 'Enter customer code'}
                                 onChange={e => mode === 'ownership' ? handleOwnershipCodeChange(e.target.value) : handleOldCodeChange(e.target.value)}
+                                style={mode === 'ownership' ? { textTransform: 'uppercase' } : {}}
                             />
-                            {lookupLoading && <Loader2 size={14} className="spin field-status" />}
-                            {lookupDone && !lookupLoading && <CheckCircle2 size={14} className="field-status code-ok" />}
+                            {mode === 'ownership' && ownSection1Loading && <Loader2 size={14} className="spin field-status" />}
+                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRSHIP" />}
+                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code â€” will INSERT" />}
+                            {mode !== 'ownership' && lookupLoading && <Loader2 size={14} className="spin field-status" />}
+                            {mode !== 'ownership' && lookupDone && !lookupLoading && <CheckCircle2 size={14} className="field-status code-ok" />}
                         </div>
-                        {(mode === 'ownership' ? errors.ownershipCode : errors.customerCode) && <small className="error">{mode === 'ownership' ? errors.ownershipCode : errors.customerCode}</small>}
+                        {mode === 'ownership' && errors.ownershipCode && <small className="error">{errors.ownershipCode}</small>}
+                        {mode !== 'ownership' && errors.customerCode && <small className="error">{errors.customerCode}</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>âœ“ Record found in MEMWGONOWNRSHIP â€” address auto-filled.</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code â€” will INSERT on submit.</small>}
                     </div>
                 )}
 
@@ -661,25 +797,31 @@ export default function CustomerRegistration() {
                                 {codeConfirmed && !codeChecking && <CheckCircle2 size={14} className="code-ok" />}
                             </span>
                         </div>
-                        {codeConfirmed && <small className="code-confirmed">✓ {codeType === 'GLOBAL' ? 'Global' : 'Handling Agent'} Code "{form.customerCode}" is available</small>}
+                        {codeConfirmed && <small className="code-confirmed">âœ“ {codeType === 'GLOBAL' ? 'Global' : 'Handling Agent'} Code "{form.customerCode}" is available</small>}
                         {lookupError && !codeConfirmed && mode === 'new' && <small className="error lookup-error"><AlertCircle size={13} /> {lookupError}</small>}
                         {errors.customerCode && <small className="error">{errors.customerCode}</small>}
                     </div>
                 )}
 
-                {(mode === 'old' || mode === 'ownership') && (
-                    <Field
-                        label={mode === 'ownership' ? "Ownership Address" : "Company Name"}
-                        name={mode === 'ownership' ? "ownershipAddress" : "companyName"}
-                        id={mode === 'ownership' ? "ownershipAddress_top" : "companyName"}
-                        icon={Building2}
-                        placeholder={mode === 'ownership' ? "Enter ownership address" : "Enter company name"}
-                        form={form}
-                        setForm={setForm}
-                        error={mode === 'ownership' ? errors.ownershipAddress : errors.companyName}
-                    />
+                {mode === 'old' && (
+                    <Field label="Company Name" name="companyName" icon={Building2} placeholder="Enter company name" form={form} setForm={setForm} error={errors.companyName} />
                 )}
-
+                {mode === 'ownership' && (
+                    <div className="field">
+                        <label htmlFor="ownershipAddress">Ownership Address <b>*</b></label>
+                        <div className={'control ' + (errors.ownershipAddress ? 'invalid' : '')}>
+                            <Building2 size={15} />
+                            <input
+                                id="ownershipAddress"
+                                name="ownershipAddress"
+                                value={form.ownershipAddress || ''}
+                                placeholder="Enter ownership address"
+                                onChange={e => setForm(prev => ({ ...prev, ownershipAddress: e.target.value }))}
+                            />
+                        </div>
+                        {errors.ownershipAddress && <small className="error">{errors.ownershipAddress}</small>}
+                    </div>
+                )}
                 {mode === 'new' && (
                     <div className="field">
                         <label htmlFor="companyName">Company Name <b>*</b></label>
@@ -698,12 +840,12 @@ export default function CustomerRegistration() {
                         <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder={panScanning ? 'Extracting PAN...' : 'Enter 10-character PAN No.'} onChange={e => handlePanChange(e.target.value)} />
                         <button type="button" className={'pan-upload-btn' + (panScanStatus === 'success' || panFile || existingPanFileName ? ' has-file' : '')} disabled={panScanning} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card Document')}>
                             <UploadCloud size={14} />
-                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? '✓ Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
+                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? 'âœ“ Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
                         </button>
                     </div>
                     <input ref={panFileRef} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePanFileChange} />
                     {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting PAN...</small>}
-                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> ✓ Uploaded — PAN auto-filled from document</small>}
+                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> âœ“ Uploaded â€” PAN auto-filled from document</small>}
                     {!panScanning && (panScanStatus === 'notfound' || panScanStatus === 'error') && <small className="pan-scan-status warn"><AlertCircle size={12} /> PAN number could not be detected. Please upload a clearer document or enter the PAN manually.</small>}
                     {errors.panNumber && !['notfound', 'error'].includes(panScanStatus) && <small className="error">{errors.panNumber}</small>}
                     {errors.panFile && <small className="error">{errors.panFile}</small>}
@@ -737,30 +879,56 @@ export default function CustomerRegistration() {
                 <Field label="Mobile" name="mobile" icon={Phone} inputMode="numeric" maxLength="10" placeholder="Enter 10-digit number" form={form} setForm={setForm} error={errors.mobile} />
             </div>
 
-            {/* === State-wise GSTINs OR Ownership Fields === */}
-            {mode === 'ownership' ? (
-                <>
-                    <div className="ownership-divider" />
-                    <div className="gstins-container ownership-mode">
-                        <div className="gstins-header">
-                            <h3>Ownership Details</h3>
-                        </div>
-                    <div className="grid">
+            {/* === Ownership Details (Section 2: MEMWGONOWNRPRTY) â€” shown only in ownership mode === */}
+            {mode === 'ownership' && (
+                <div className="gstins-container">
+                    <div className="gstins-header">
+                        <h3>Ownership Details</h3>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', padding: '1rem 0' }}>
+                        {/* Ownership Party Code */}
                         <div className="field">
-                            <label htmlFor="ownershipCode_bottom">Ownership Code <b>*</b></label>
-                            <div className={'control ' + (errors.ownershipCode ? 'invalid' : '')}>
+                            <label htmlFor="ownershipPartyCode">Ownership Code <b>*</b></label>
+                            <div className={'control ' + (errors.ownershipPartyCode ? 'invalid' : '')}>
                                 <Tag size={15} />
-                                <input id="ownershipCode_bottom" name="ownershipCode" value={form.ownershipCode} placeholder="Enter ownership code" onChange={e => handleOwnershipCodeChange(e.target.value)} />
-                                {lookupLoading && <Loader2 size={14} className="spin field-status" />}
-                                {lookupDone && !lookupLoading && <CheckCircle2 size={14} className="field-status code-ok" />}
+                                <input
+                                    id="ownershipPartyCode"
+                                    name="ownershipPartyCode"
+                                    value={form.ownershipPartyCode || ''}
+                                    placeholder="Enter ownership code"
+                                    onChange={e => handleOwnershipPartyCodeChange(e.target.value)}
+                                    style={{ textTransform: 'uppercase' }}
+                                />
+                                {ownSection2Loading && <Loader2 size={14} className="spin field-status" />}
+                                {!ownSection2Loading && ownSection2Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRPRTY" />}
+                                {!ownSection2Loading && ownSection2Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code â€” will INSERT" />}
                             </div>
-                            {errors.ownershipCode && <small className="error">{errors.ownershipCode}</small>}
+                            {errors.ownershipPartyCode && <small className="error">{errors.ownershipPartyCode}</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>âœ“ Record found in MEMWGONOWNRPRTY â€” address auto-filled.</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code â€” will INSERT on submit.</small>}
                         </div>
-                        <Field id="ownershipAddress_bottom" label="Ownership Address" name="ownershipAddress" icon={Building2} placeholder="Enter ownership address" form={form} setForm={setForm} error={errors.ownershipAddress} />
+
+                        {/* Ownership Party Address */}
+                        <div className="field">
+                            <label htmlFor="ownershipPartyAddress">Ownership Address <b>*</b></label>
+                            <div className={'control ' + (errors.ownershipPartyAddress ? 'invalid' : '')}>
+                                <Building2 size={15} />
+                                <input
+                                    id="ownershipPartyAddress"
+                                    name="ownershipPartyAddress"
+                                    value={form.ownershipPartyAddress || ''}
+                                    placeholder="Enter ownership address"
+                                    onChange={e => setForm(prev => ({ ...prev, ownershipPartyAddress: e.target.value }))}
+                                />
+                            </div>
+                            {errors.ownershipPartyAddress && <small className="error">{errors.ownershipPartyAddress}</small>}
+                        </div>
                     </div>
                 </div>
-                </>
-            ) : (
+            )}
+
+            {/* === State-wise GSTINs â€” hidden in ownership mode === */}
+            {mode !== 'ownership' && (
                 <div className="gstins-container">
                     <div className="gstins-header">
                         <h3>State-wise GSTINs</h3>
@@ -782,17 +950,17 @@ export default function CustomerRegistration() {
                                             <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
                                             <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
                                                 <Paperclip size={13} />
-                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? '✓ Uploaded' : 'Upload GSTIN')}</span>
+                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'âœ“ Uploaded' : 'Upload GSTIN')}</span>
                                                 {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                             </button>
                                         </div>
                                         <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
                                         {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
-                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> ✓ Uploaded — GSTIN auto-filled from document</small>}
+                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> âœ“ Uploaded â€” GSTIN auto-filled from document</small>}
                                         {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
                                         {errors[`gstin_${index}_gstin`] && !['notfound', 'error'].includes(g.scanStatus) && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✓') && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('✕') && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('âœ“') && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('âœ•') && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
                                         {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                     </div>
                                 </div>
