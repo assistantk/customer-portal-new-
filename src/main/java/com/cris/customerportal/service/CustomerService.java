@@ -13,9 +13,11 @@ public interface CustomerService {
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);
   com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode);
   // Ownership (MEMWGONOWNRSHIP)
+  java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);
   void saveOwnershipJDBC(String ownershipCode, String ownershipDesc);
   // Ownership Party (MEMWGONOWNRPRTY)
+  java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode);
   java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode);
   void saveOwnershipPartyJDBC(String partyCode, String partyDesc);
 }

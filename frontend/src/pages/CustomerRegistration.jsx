@@ -41,7 +41,7 @@ const getGstinPanStatus = (gstin, pan) => {
     if (!normalizedGstin) return null;
     if (normalizedGstin.length !== 15) return 'Enter a valid 15-character GSTIN.';
     if (normalizedPan.length !== 10 || !panRe.test(normalizedPan)) return null;
-    return normalizedGstin.slice(2, 12) === normalizedPan ? 'âœ“ GSTIN matches PAN' : 'âœ• GSTIN does not match the PAN number.';
+        return normalizedGstin.slice(2, 12) === normalizedPan ? 'GSTIN matches PAN' : 'GSTIN does not match the PAN number.';
 };
 const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
@@ -359,7 +359,7 @@ export default function CustomerRegistration() {
             setErrors(e);
             return !Object.keys(e).length;
         }
-        // Required field checks â€” exclude globalCustomerCode/handlingAgentCode from required
+        // Required field checks - exclude globalCustomerCode/handlingAgentCode from required
         const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile'];
         requiredFields.forEach(k => { if (!form[k]) e[k] = 'This field is required' });
         if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
@@ -396,7 +396,7 @@ export default function CustomerRegistration() {
 
         if (mode === 'new' && !codeConfirmed && form.companyName) {
             if (codeChecking) {
-                e.customerCode = 'Please wait â€” code is being verified';
+                e.customerCode = 'Please wait - code is being verified';
             } else {
                 e.customerCode = 'Failed to verify code. Make sure the Java backend is running with the latest code.';
             }
@@ -432,7 +432,7 @@ export default function CustomerRegistration() {
                 }
                 setNotice(results.length > 0
                     ? 'Success: ' + results.join(' | ')
-                    : 'Nothing to save â€” enter at least one code.');
+                    : 'Nothing to save - enter at least one code.');
                 // Refresh lookups
                 if (form.ownershipCode?.trim()) {
                     try {
@@ -535,7 +535,7 @@ export default function CustomerRegistration() {
             setErrors(prev => {
                 const next = { ...prev };
                 const field = `gstin_${index}_gstin`;
-                if (status?.startsWith('âœ•')) next[field] = 'GSTIN does not match the PAN number.';
+                if (status === 'GSTIN does not match the PAN number.') next[field] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[field] = status;
                 else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[field])) delete next[field];
                 return next;
@@ -551,7 +551,7 @@ export default function CustomerRegistration() {
             else if (next.panNumber === 'Enter a valid 10-character PAN.') delete next.panNumber;
             gstins.forEach((gstin, index) => {
                 const status = getGstinPanStatus(gstin.gstin, value);
-                    if (status?.startsWith('âœ•')) next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
+                    if (status === 'GSTIN does not match the PAN number.') next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[`gstin_${index}_gstin`] = status;
                 else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[`gstin_${index}_gstin`])) delete next[`gstin_${index}_gstin`];
             });
@@ -678,20 +678,20 @@ export default function CustomerRegistration() {
                 </div></div>
                 <div className="railways-banner"><img src={indianRailwaysLogo} alt="Indian Railways" /></div>
                 <div className="mode-tabs">
-                    <button type="button" className={'mode-tab' + (mode === 'ownership' ? ' active' : '')} onClick={() => switchMode('ownership')}>
+                    <button type="button" className={'mode-tab mode-tab-ownership' + (mode === 'ownership' ? ' active' : '')} onClick={() => switchMode('ownership')}>
                         <Users size={14} /> Ownership
                     </button>
-                    <button type="button" className={'mode-tab' + (mode === 'old' ? ' active' : '')} onClick={() => switchMode('old')}>
+                    <button type="button" className={'mode-tab mode-tab-old' + (mode === 'old' ? ' active' : '')} onClick={() => switchMode('old')}>
                         <Users size={14} /> Old User
                     </button>
-                    <button type="button" className={'mode-tab' + (mode === 'new' ? ' active' : '')} onClick={() => switchMode('new')}>
+                    <button type="button" className={'mode-tab mode-tab-new' + (mode === 'new' ? ' active' : '')} onClick={() => switchMode('new')}>
                         <Plus size={14} /> New Entry
                     </button>
                 </div>
             </div>
             <div className="rule" />
 
-            {notice && <div className={notice.startsWith('âœ“') || notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
+            {notice && <div className={notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
             {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
             {mode === 'old' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
 
@@ -741,7 +741,7 @@ export default function CustomerRegistration() {
                                 {codeConfirmed && !codeChecking && <CheckCircle2 size={14} className="code-ok" />}
                             </span>
                         </div>
-                        {codeConfirmed && <small className="code-confirmed">âœ“ {codeType === 'GLOBAL' ? 'Global' : 'Handling Agent'} Code "{form.customerCode}" is available</small>}
+                        {codeConfirmed && <small className="code-confirmed">{codeType === 'GLOBAL' ? 'Global' : 'Handling Agent'} Code "{form.customerCode}" is available</small>}
                         {lookupError && !codeConfirmed && mode === 'new' && <small className="error lookup-error"><AlertCircle size={13} /> {lookupError}</small>}
                         {errors.customerCode && <small className="error">{errors.customerCode}</small>}
                     </div>
@@ -784,12 +784,12 @@ export default function CustomerRegistration() {
                         <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder={panScanning ? 'Extracting PAN...' : 'Enter 10-character PAN No.'} onChange={e => handlePanChange(e.target.value)} />
                         <button type="button" className={'pan-upload-btn' + (panScanStatus === 'success' || panFile || existingPanFileName ? ' has-file' : '')} disabled={panScanning} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card Document')}>
                             <UploadCloud size={14} />
-                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? 'âœ“ Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
+                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? 'Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
                         </button>
                     </div>
                     <input ref={panFileRef} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePanFileChange} />
                     {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting PAN...</small>}
-                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> âœ“ Uploaded â€” PAN auto-filled from document</small>}
+                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> Uploaded - PAN auto-filled from document</small>}
                     {!panScanning && (panScanStatus === 'notfound' || panScanStatus === 'error') && <small className="pan-scan-status warn"><AlertCircle size={12} /> PAN number could not be detected. Please upload a clearer document or enter the PAN manually.</small>}
                     {errors.panNumber && !['notfound', 'error'].includes(panScanStatus) && <small className="error">{errors.panNumber}</small>}
                     {errors.panFile && <small className="error">{errors.panFile}</small>}
@@ -823,7 +823,7 @@ export default function CustomerRegistration() {
                 <Field label="Mobile" name="mobile" icon={Phone} inputMode="numeric" maxLength="10" placeholder="Enter 10-digit number" form={form} setForm={setForm} error={errors.mobile} />
             </div>
 
-            {/* === Ownership Details (Section 2: MEMWGONOWNRPRTY) â€” shown only in ownership mode === */}
+            {/* === Ownership Details (Section 2: MEMWGONOWNRPRTY) - shown only in ownership mode === */}
             {mode === 'ownership' && (
                 <div className="gstins-container">
                     <div className="gstins-header">
@@ -871,7 +871,7 @@ export default function CustomerRegistration() {
                 </div>
             )}
 
-            {/* === State-wise GSTINs â€” hidden in ownership mode === */}
+            {/* === State-wise GSTINs - hidden in ownership mode === */}
             {mode !== 'ownership' && (
                 <div className="gstins-container">
                     <div className="gstins-header">
@@ -894,17 +894,17 @@ export default function CustomerRegistration() {
                                             <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
                                             <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
                                                 <Paperclip size={13} />
-                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'âœ“ Uploaded' : 'Upload GSTIN')}</span>
+                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : 'Upload GSTIN')}</span>
                                                 {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                             </button>
                                         </div>
                                         <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
                                         {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
-                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> âœ“ Uploaded â€” GSTIN auto-filled from document</small>}
+                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> Uploaded - GSTIN auto-filled from document</small>}
                                         {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
                                         {errors[`gstin_${index}_gstin`] && !['notfound', 'error'].includes(g.scanStatus) && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('âœ“') && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber)?.startsWith('âœ•') && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN matches PAN' && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.' && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
                                         {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                     </div>
                                 </div>

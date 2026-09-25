@@ -424,6 +424,26 @@ public class CustomerServiceImpl implements CustomerService {
 
  // ===== Ownership: MEMWGONOWNRSHIP =====
 
+ public java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode) {
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("ownershipCode", rs.getString("MAVGLBLCUSTCODE"));
+     result.put("ownershipDesc", rs.getString("MAVGLBLCUSTNAME"));
+     return result;
+    }
+    return null;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnership SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
+  }
+ }
+
  public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
   String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
   try (Connection conn = dataSource.getConnection();
@@ -480,6 +500,26 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  // ===== Ownership Party: MEMWGONOWNRPRTY =====
+
+ public java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode) {
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("partyCode", rs.getString("MAVGLBLCUSTCODE"));
+     result.put("partyDesc", rs.getString("MAVGLBLCUSTNAME"));
+     return result;
+    }
+    return null;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnershipParty SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
+  }
+ }
 
  public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
   String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";

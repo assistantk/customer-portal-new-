@@ -491,18 +491,41 @@ footer {
     cursor: pointer;
     background: transparent;
     color: #64748b;
-    transition: all 0.2s ease;
+    transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.mode-tab-ownership {
+    --mode-color: #b42318;
+    --mode-light: #fff1f0;
+    --mode-hover: #ffe0dd;
+}
+
+.mode-tab-old {
+    --mode-color: #18794e;
+    --mode-light: #edf9f1;
+    --mode-hover: #d8f2e1;
+}
+
+.mode-tab-new {
+    --mode-color: #1d4ed8;
+    --mode-light: #eff6ff;
+    --mode-hover: #dbeafe;
+}
+
+.mode-tab:not(.active) {
+    color: var(--mode-color);
+    background: var(--mode-light);
+    box-shadow: inset 0 0 0 1px var(--mode-color);
 }
 
 .mode-tab:hover {
-    color: #334155;
-    background: #e2e8f0;
+    background: var(--mode-hover);
 }
 
 .mode-tab.active {
-    background: #2563eb;
+    background: var(--mode-color);
     color: #fff;
-    box-shadow: 0 1px 3px rgb(37 99 235 / 0.3);
+    box-shadow: inset 0 0 0 1px var(--mode-color), 0 1px 3px rgb(15 23 42 / 0.22);
 }
 
 /* ===== Lookup Error ===== */

@@ -31,47 +31,14 @@ public class DbaEmailService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(dbaEmail);
-            message.setSubject("Customer Registration Portal – Database Operation Executed (" + audit.getOperationType() + " - " + audit.getCustomerCode() + ")");
+            message.setSubject("Customer Registration Portal Database Query");
 
             StringBuilder sb = new StringBuilder();
             sb.append("Dear DBA Team,\n\n");
-            sb.append("This is an automated notification from the Customer Registration Portal.\n\n");
-            sb.append("Database Operation Details\n");
-            sb.append("--------------------------------\n\n");
-            sb.append("Operation:\n").append(audit.getOperationType()).append("\n\n");
-            sb.append("Page:\n").append(audit.getPageName()).append("\n\n");
-            sb.append("Table:\n").append(audit.getTableName()).append("\n\n");
-            sb.append("Customer Code:\n").append(audit.getCustomerCode() != null ? audit.getCustomerCode() : "").append("\n\n");
-            sb.append("Company Name:\n").append(audit.getCompanyName() != null ? audit.getCompanyName() : "").append("\n\n");
-            sb.append("Execution Date/Time:\n").append(audit.getFormattedExecutionTime()).append("\n\n");
-            sb.append("Rows Affected:\n").append(audit.getRowsAffected()).append("\n\n");
-            sb.append("Status:\n").append(audit.getStatus()).append("\n\n");
-            String sqlStatement = audit.getSqlStatement();
-            if ("INSERT".equalsIgnoreCase(audit.getOperationType()) && sqlStatement != null) {
-                sqlStatement = sqlStatement.replaceAll("\\R+", " ").trim();
-            }
-            sb.append("SQL Executed:\n").append(sqlStatement).append("\n\n");
-
-            sb.append("Parameters:\n");
-            if (audit.getParameters() != null && !audit.getParameters().isEmpty()) {
-                for (DatabaseOperationAudit.ParameterEntry p : audit.getParameters()) {
-                    sb.append(p.getIndex()).append(". ").append(p.getName()).append(" = ").append(p.getFormattedValue()).append("\n");
-                }
-            } else {
-                sb.append("None\n");
-            }
-            sb.append("\n--------------------------------\n\n");
-
-            if ("SUCCESS".equalsIgnoreCase(audit.getStatus())) {
-                sb.append("This notification confirms that the above database operation was successfully executed by the Customer Registration Portal.\n\n");
-            } else {
-                sb.append("ATTENTION: The above database operation FAILED during execution.\n");
-                if (audit.getErrorMessage() != null) {
-                    sb.append("Error details: ").append(audit.getErrorMessage()).append("\n\n");
-                }
-            }
-
-            sb.append("Regards,\nCustomer Registration Portal\nIT Team");
+            sb.append("Please run the below script in rfrn3t and training\n\n");
+            sb.append("QUERY:\n");
+            sb.append(audit.getSqlStatement() != null ? audit.getSqlStatement() : "");
+            sb.append("\n\nRegards,\nCustomer Registration Portal\nIT Team");
 
             message.setText(sb.toString());
             mailSender.send(message);
