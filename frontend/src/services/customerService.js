@@ -279,26 +279,73 @@ export async function updateOldCustomerJDBC(payload, gstinEntries) {
   return resp;
 }
 
+/* ---------- Ownership Customer Lookup (legacy ownership mode, not the new sections) ---------- */
+
 export async function lookupOwnershipCustomerJDBC(code) {
   const trimmed = code.trim().toUpperCase();
-  return request(`${API}/customers/ownership-lookup?code=${encodeURIComponent(trimmed)}`);
+  return request(`${API}/customers/old-lookup?code=${encodeURIComponent(trimmed)}`);
 }
 
-export async function updateOwnershipCustomerJDBC(payload, gstinEntries) {
+export async function updateOwnershipCustomerJDBC(payload) {
   const updateBody = {
     customerCode: payload.ownershipCode,
     companyName: payload.ownershipAddress,
     address: payload.address,
     email: payload.email,
     mobile: payload.mobile,
-    panNumber: payload.panNumber
+    panNumber: payload.panNumber,
+    gstinNumbers: '',
   };
 
-  const resp = await request(`${API}/customers/ownership-update`, {
+  return request(`${API}/customers/old-update`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updateBody),
   });
+}
 
-  return resp;
+/* ---------- Ownership Section 1: MEMWGONOWNRSHIP ---------- */
+
+/**
+ * Look up an Ownership record by code.
+ * Returns { found: true, data: { ownershipCode, ownershipDesc } } or { found: false }.
+ * Returns null if not found (caller should allow manual description entry).
+ */
+export async function lookupOwnershipJDBC(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/ownership-lookup?code=${encodeURIComponent(trimmed)}`);
+}
+
+/**
+ * Save (INSERT or UPDATE) an Ownership record.
+ * The backend determines INSERT vs UPDATE based on existence check.
+ */
+export async function saveOwnershipJDBC(ownershipCode, ownershipDesc) {
+  return request(`${API}/customers/ownership-save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ownershipCode, ownershipDesc }),
+  });
+}
+
+/* ---------- Ownership Section 2: MEMWGONOWNRPRTY ---------- */
+
+/**
+ * Look up an Ownership Party record by code.
+ * Returns { found: true, data: { partyCode, partyDesc } } or { found: false }.
+ */
+export async function lookupOwnershipPartyJDBC(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/ownership-party-lookup?code=${encodeURIComponent(trimmed)}`);
+}
+
+/**
+ * Save (INSERT or UPDATE) an Ownership Party record.
+ */
+export async function saveOwnershipPartyJDBC(partyCode, partyDesc) {
+  return request(`${API}/customers/ownership-party-save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ partyCode, partyDesc }),
+  });
 }
