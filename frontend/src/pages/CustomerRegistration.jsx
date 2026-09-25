@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
+import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
 import { extractPanFromFile, extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -312,62 +312,6 @@ export default function CustomerRegistration() {
         }
     };
 
-    const handleOwnershipCodeChange = (code) => {
-        setForm(prev => ({
-            ...prev,
-            ownershipCode: code,
-            ownershipAddress: '',
-            address: '',
-            panNumber: '',
-            email: '',
-            mobile: '',
-        }));
-        setLookupDone(false); setLookupError('');
-        setAddressStatus('');
-        const requestId = ++lookupRequestRef.current;
-        if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
-        if (code.trim().length === 4) {
-            setLookupLoading(true);
-            lookupTimerRef.current = setTimeout(async () => {
-                try {
-                    const customer = await lookupOwnershipCustomerJDBC(code.trim());
-                    if (requestId !== lookupRequestRef.current) return;
-                    setForm(prev => ({
-                        ...prev,
-                        ownershipAddress: customer.companyName || '',
-                        ownershipCode: code,
-                        address: customer.address || '',
-                        panNumber: customer.panNumber || '',
-                        email: customer.emailId || '',
-                        mobile: customer.phoneNumber || '',
-                    }));
-                    setPanFile(null);
-                    setExistingPanFileName('');
-                    if (panFileRef.current) panFileRef.current.value = '';
-                    setLookupDone(true); setLookupError('');
-                } catch (err) {
-                    if (requestId !== lookupRequestRef.current) return;
-                    console.error("Lookup error:", err);
-                    setLookupDone(false);
-                    setLookupError(err.message || 'Error occurred while fetching customer data');
-                    setForm(prev => ({
-                        ...prev,
-                        ownershipAddress: '',
-                        ownershipCode: code,
-                        address: '',
-                        panNumber: '',
-                        email: '',
-                        mobile: '',
-                    }));
-                } finally {
-                    if (requestId === lookupRequestRef.current) setLookupLoading(false);
-                }
-            }, 800);
-        } else {
-            setLookupLoading(false);
-        }
-    };
-
     /* ===== New User: generate code from company name ===== */
     const handleNewCompanyNameChange = useCallback((newName) => {
         setForm(prev => ({ ...prev, companyName: newName }));
@@ -487,7 +431,7 @@ export default function CustomerRegistration() {
                     results.push(r2.message || 'Ownership Party saved');
                 }
                 setNotice(results.length > 0
-                    ? 'âœ“ ' + results.join(' | ')
+                    ? 'Success: ' + results.join(' | ')
                     : 'Nothing to save â€” enter at least one code.');
                 // Refresh lookups
                 if (form.ownershipCode?.trim()) {
@@ -771,14 +715,14 @@ export default function CustomerRegistration() {
                             />
                             {mode === 'ownership' && ownSection1Loading && <Loader2 size={14} className="spin field-status" />}
                             {mode === 'ownership' && !ownSection1Loading && ownSection1Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRSHIP" />}
-                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code â€” will INSERT" />}
+                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
                             {mode !== 'ownership' && lookupLoading && <Loader2 size={14} className="spin field-status" />}
                             {mode !== 'ownership' && lookupDone && !lookupLoading && <CheckCircle2 size={14} className="field-status code-ok" />}
                         </div>
                         {mode === 'ownership' && errors.ownershipCode && <small className="error">{errors.ownershipCode}</small>}
                         {mode !== 'ownership' && errors.customerCode && <small className="error">{errors.customerCode}</small>}
-                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>âœ“ Record found in MEMWGONOWNRSHIP â€” address auto-filled.</small>}
-                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code â€” will INSERT on submit.</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRSHIP - address auto-filled.</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
                     </div>
                 )}
 
@@ -901,11 +845,11 @@ export default function CustomerRegistration() {
                                 />
                                 {ownSection2Loading && <Loader2 size={14} className="spin field-status" />}
                                 {!ownSection2Loading && ownSection2Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRPRTY" />}
-                                {!ownSection2Loading && ownSection2Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code â€” will INSERT" />}
+                                {!ownSection2Loading && ownSection2Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
                             </div>
                             {errors.ownershipPartyCode && <small className="error">{errors.ownershipPartyCode}</small>}
-                            {!errors.ownershipPartyCode && ownSection2Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>âœ“ Record found in MEMWGONOWNRPRTY â€” address auto-filled.</small>}
-                            {!errors.ownershipPartyCode && ownSection2Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code â€” will INSERT on submit.</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRPRTY - address auto-filled.</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
                         </div>
 
                         {/* Ownership Party Address */}

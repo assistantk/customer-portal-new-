@@ -457,18 +457,21 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, ownershipDesc);
     ps.setString(2, normalizedCode);
     ps.executeUpdate();
+    String auditSql = "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc) + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
+    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while updating ownership record: " + e.getMessage(), e);
    }
   } else {
-   // INSERT
-   String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC) VALUES (?, ?)";
+    String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES (?, ?, 'Y')";
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, normalizedCode);
     ps.setString(2, ownershipDesc);
     ps.executeUpdate();
+    String auditSql = "INSERT INTO MEMWGONOWNRSHIP VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(ownershipDesc) + ",'Y',NULL,SYSDATE,NULL);";
+    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while inserting ownership record: " + e.getMessage(), e);
@@ -511,6 +514,8 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, partyDesc);
     ps.setString(2, normalizedCode);
     ps.executeUpdate();
+    String auditSql = "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc) + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
+    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipPartyJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while updating ownership party record: " + e.getMessage(), e);
@@ -523,11 +528,27 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, normalizedCode);
     ps.setString(2, partyDesc);
     ps.executeUpdate();
+    String auditSql = "INSERT INTO MEMWGONOWNRPRTY VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(partyDesc) + ");";
+    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipPartyJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while inserting ownership party record: " + e.getMessage(), e);
    }
   }
+ }
+
+ private void sendOwnershipAuditEmail(String operation, String table, String code, String description, String sql) {
+  DatabaseOperationAudit audit = new DatabaseOperationAudit();
+  audit.setOperationType(operation);
+  audit.setPageName("Ownership");
+  audit.setTableName(table);
+  audit.setCustomerCode(code);
+  audit.setCompanyName(description);
+  audit.setSqlStatement(sql);
+  audit.setRowsAffected(1);
+  audit.addParameter(1, "CODE", code);
+  audit.addParameter(2, "DESCRIPTION", description);
+  dbaEmailService.sendDbaAuditEmail(audit);
  }
 
  private String formatSqlValue(String value) {

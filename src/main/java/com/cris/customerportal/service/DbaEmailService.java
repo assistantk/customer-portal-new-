@@ -19,7 +19,7 @@ public class DbaEmailService {
     public DbaEmailService(
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
-            @Value("${app.dba-email:dba.team@cris.org.in}") String dbaEmail) {
+            @Value("${app.dba-email:sura767848@gmail.com}") String dbaEmail) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
@@ -75,7 +75,7 @@ public class DbaEmailService {
 
             message.setText(sb.toString());
             mailSender.send(message);
-            System.out.println("[DBA EMAIL AUDIT] Sent DBA notification for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to " + dbaEmail + " for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
