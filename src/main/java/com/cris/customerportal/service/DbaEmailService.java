@@ -31,6 +31,10 @@ public class DbaEmailService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(dbaEmail);
+            if (fromEmail != null && !fromEmail.isBlank()
+                    && (dbaEmail == null || !fromEmail.equalsIgnoreCase(dbaEmail))) {
+                message.setCc(fromEmail);
+            }
             message.setSubject("Customer Registration Portal Database Query");
 
             StringBuilder sb = new StringBuilder();
@@ -42,7 +46,7 @@ public class DbaEmailService {
 
             message.setText(sb.toString());
             mailSender.send(message);
-            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to " + dbaEmail + " for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to DBA and sender mailbox for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {

@@ -158,7 +158,6 @@ export async function registerCustomer(payload, gstinEntries) {
   formData.append('operatingDivision', payload.operatingDivision || '');
   formData.append('zone', payload.zone || '');
   formData.append('gstinNumbers', gstinEntries.map(g => g.gstin).filter(Boolean).join(','));
-  if (payload.panFile) formData.append('panFile', payload.panFile);
   gstinEntries.forEach(entry => { if (entry.file) formData.append('gstinFiles', entry.file); });
   return request(`${API}/customers/new-register`, { method: 'POST', body: formData });
 }
@@ -186,17 +185,6 @@ export async function updateCustomer(code, payload, gstinEntries) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updateBody),
   });
-
-  // Upload PAN card file if a new one was provided
-  if (payload.panFile) {
-    const panFd = new FormData();
-    panFd.append('panFile', payload.panFile);
-    panFd.append('panNumber', payload.panNumber || '');
-    await request(
-      `${API}/customers/${encodeURIComponent(trimmedCode)}/pan-file`,
-      { method: 'PUT', body: panFd }
-    );
-  }
 
   // Step 2: Handle GSTINs — add new ones, update existing ones with files
   for (const g of gstinEntries) {

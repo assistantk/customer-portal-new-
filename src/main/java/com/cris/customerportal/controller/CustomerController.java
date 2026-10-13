@@ -32,8 +32,14 @@ public class CustomerController { private final CustomerService service; public 
  public ResponseEntity<?> newRegister(@RequestParam Map<String, String> formData,
                                       @RequestPart(value="gstinFiles", required=false) java.util.List<MultipartFile> gstinFiles,
                                       @RequestPart(value="panFile", required=false) MultipartFile panFile) {
-  String code = service.registerNewEntryJDBC(formData);
-  return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success",true,"message","Customer registration submitted successfully","customerCode",code));
+  try {
+   String code = service.registerNewEntryJDBC(formData);
+   return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success",true,"message","Customer registration submitted successfully","customerCode",code));
+  } catch (IllegalArgumentException e) {
+   return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", e.getMessage()));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Registration failed: " + e.getMessage()));
+  }
  }
 
  @PostMapping("/old-update")

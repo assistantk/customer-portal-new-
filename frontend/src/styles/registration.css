@@ -695,6 +695,10 @@ footer {
     border-top: 1px dotted #dce4eb;
 }
 
+.state-gstins-container {
+    border-top-style: solid;
+}
+
 .gstins-container > .grid {
     grid-template-columns: 1fr 1fr;
 }

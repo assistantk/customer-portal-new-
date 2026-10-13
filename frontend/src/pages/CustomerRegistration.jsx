@@ -1,12 +1,11 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
-import { Building2, Tag, MapPin, FileText, UploadCloud, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Building2, Tag, MapPin, FileText, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
 import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
-import { extractPanFromFile, extractGstinFromFile } from '../utils/panOcr';
+import { extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
 
 const blank = { companyName: '', customerCode: '', address: '', city: '', pincode: '', panNumber: '', operatingDivision: '', zone: '', email: '', mobile: '', globalCustomerCode: '', handlingAgentCode: '', ownershipCode: '', ownershipAddress: '', ownershipPartyCode: '', ownershipPartyAddress: '' };
-const checkPanFile = f => { if (!f) return ''; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) return 'Only PDF, JPG, JPEG, and PNG files are allowed'; return '' };
 const blankGstin = { gstinId: null, state: '', stateCode: '', gstin: '', file: null, existingFileName: '', scanning: false, scanStatus: 'idle', scanError: '' };
 const initialMasterData = { cities: { Delhi: ['110001', '110002'], Mumbai: ['400001', '400002'], Kolkata: ['700001', '700002'], Chennai: ['600001', '600002'] } };
 const INDIAN_STATES = [
@@ -33,15 +32,15 @@ const divisionsByZone = {
     'West Central Railway (WCR)': ['Jabalpur (JBP)', 'Bhopal (BPL)', 'Kota (KOTA)'],
     'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
 };
-const gstinRe = /^[A-Za-z0-9]{15}$/, panRe = /^[A-Za-z0-9]{10}$/, mobileRe = /^[6-9][0-9]{9}$/;
+const gstinRe = /^[A-Z0-9]{15}$/, panRe = /^[A-Z]{5}[0-9]{4}[A-Z]$/, mobileRe = /^[6-9][0-9]{9}$/;
 const normalizeDocumentNumber = value => String(value || '').replace(/\s+/g, '').toUpperCase();
 const getGstinPanStatus = (gstin, pan) => {
     const normalizedGstin = normalizeDocumentNumber(gstin);
     const normalizedPan = normalizeDocumentNumber(pan);
     if (!normalizedGstin) return null;
-    if (normalizedGstin.length !== 15) return 'Enter a valid 15-character GSTIN.';
+    if (!gstinRe.test(normalizedGstin)) return 'Enter a valid 15-character GSTIN.';
     if (normalizedPan.length !== 10 || !panRe.test(normalizedPan)) return null;
-        return normalizedGstin.slice(2, 12) === normalizedPan ? 'GSTIN matches PAN' : 'GSTIN does not match the PAN number.';
+    return normalizedGstin.slice(2, 12) === normalizedPan ? 'GSTIN matches PAN' : 'GSTIN does not match the PAN number.';
 };
 const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
@@ -70,8 +69,8 @@ function generateCodeFromName(name) {
     return parts.join('').toUpperCase().slice(0, 8);
 }
 
-function Field({ label, name, icon: Icon, form, setForm, error, readOnly, ...rest }) {
-    return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control ' + (error ? 'invalid' : '')}><Icon size={15} /><input id={name} name={name} value={form[name]} readOnly={readOnly} onChange={e => setForm({ ...form, [name]: e.target.value })} {...rest} /></div>{error && <small className="error">{error}</small>}</div>;
+function Field({ label, name, icon: Icon, form, setForm, error, readOnly, optional = false, ...rest }) {
+    return <div className="field"><label htmlFor={name}>{label}{optional ? ' (Optional)' : <> <b>*</b></>}</label><div className={'control ' + (error ? 'invalid' : '')}><Icon size={15} /><input id={name} name={name} value={form[name]} readOnly={readOnly} onChange={e => setForm({ ...form, [name]: e.target.value })} {...rest} /></div>{error && <small className="error">{error}</small>}</div>;
 }
 function Select({ label, name, icon: Icon, options, form, setForm, error, disabled, onValueChange, formatOption = value => value }) {
     return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control select ' + (error ? 'invalid' : '')}><Icon size={15} /><select id={name} value={form[name]} disabled={disabled} onChange={e => onValueChange ? onValueChange(e.target.value) : setForm({ ...form, [name]: e.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(v => <option key={v} value={v}>{formatOption(v)}</option>)}</select><ChevronDown size={14} /></div>{error && <small className="error">{error}</small>}</div>;
@@ -79,10 +78,8 @@ function Select({ label, name, icon: Icon, options, form, setForm, error, disabl
 function DivisionSelect({ options, form, setForm, error, disabled }) {
     const [open, setOpen] = useState(false);
     const choose = division => { setForm(prev => ({ ...prev, operatingDivision: division })); setOpen(false); };
-    const divisionCode = form.operatingDivision.match(/\(([^)]+)\)$/)?.[1] || '';
-    const selectedDivision = divisionCode ? `SR.DCM/${divisionCode}` : 'Select division';
-    const divisionLabel = divisionCode ? `Division (SR.DCM/${divisionCode})` : 'Division (SR.DCM/)';
-    return <div className="field zone-field"><label id="division-label">{divisionLabel} <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+    const selectedDivision = form.operatingDivision ? 'Division selected' : 'Select division';
+    return <div className="field zone-field"><label id="division-label">Division <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
 function ZoneSelect({ options, form, setForm, error }) {
@@ -99,10 +96,6 @@ export default function CustomerRegistration() {
     const [codeType, setCodeType] = useState('GLOBAL');
     const [form, setForm] = useState(blank);
     const [gstins, setGstins] = useState([{ ...blankGstin }]);
-    const [panFile, setPanFile] = useState(null);
-    const [existingPanFileName, setExistingPanFileName] = useState('');
-    const [panScanning, setPanScanning] = useState(false);
-    const [panScanStatus, setPanScanStatus] = useState('idle'); // idle | success | notfound | error
     const [data, setData] = useState(initialMasterData);
     const [errors, setErrors] = useState({});
     const [notice, setNotice] = useState('');
@@ -116,7 +109,6 @@ export default function CustomerRegistration() {
     // Track GSTINs that were removed during an Old User edit session
     const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
-    const panFileRef = useRef(null);
     const codeTimerRef = useRef(null);
     const lookupTimerRef = useRef(null);
     const lookupRequestRef = useRef(0);
@@ -141,12 +133,15 @@ export default function CustomerRegistration() {
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
         setAddressStatus('');
         setRemovedGstinIds([]);
-        setPanFile(null); setExistingPanFileName('');
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
-        if (panFileRef.current) panFileRef.current.value = '';
         // Reset ownership section states
         setOwnSection1Loading(false); setOwnSection1Found(null);
         setOwnSection2Loading(false); setOwnSection2Found(null);
+    };
+
+    const clearSelectedUploads = () => {
+        setGstins(prev => prev.map(g => ({ ...g, file: null, scanning: false, scanStatus: 'idle', scanError: '' })));
+        fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
     };
 
     const switchMode = (newMode) => { reset(); setMode(newMode); };
@@ -256,10 +251,6 @@ export default function CustomerRegistration() {
                         globalCustomerCode: '',
                         handlingAgentCode: '',
                     }));
-                    setPanFile(null);
-                    setExistingPanFileName('');
-                    if (panFileRef.current) panFileRef.current.value = '';
-
                     if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
                         const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
                         const loadedGstins = cleanGstins.split(',').filter(Boolean).map((g, idx) => ({
@@ -360,15 +351,14 @@ export default function CustomerRegistration() {
             return !Object.keys(e).length;
         }
         // Required field checks - exclude globalCustomerCode/handlingAgentCode from required
-        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone', 'email', 'mobile'];
+        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone'];
         requiredFields.forEach(k => { if (!form[k]) e[k] = 'This field is required' });
-        if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
-        if (form.mobile && !mobileRe.test(form.mobile)) e.mobile = 'Enter a valid 10-digit Indian mobile number';
+        if (form.address && form.address.length > 100) e.address = 'Address cannot exceed 100 characters.';
+        if (form.email?.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Invalid email';
+        if (form.mobile?.trim() && !mobileRe.test(form.mobile.trim())) e.mobile = 'Enter a valid 10-digit Indian mobile number';
         if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) e.pincode = 'Invalid pincode';
         const normalizedPan = normalizeDocumentNumber(form.panNumber);
-        if (form.panNumber && (!panRe.test(normalizedPan) || normalizedPan.length !== 10)) e.panNumber = 'Enter a valid 10-character PAN.';
-        if (!panFile && !existingPanFileName) e.panFile = 'PAN card PDF is required';
-        else if (panFile) { const pe = checkPanFile(panFile); if (pe) e.panFile = pe; }
+        if (form.panNumber && !panRe.test(normalizedPan)) e.panNumber = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
 
         if (mode !== 'ownership') {
             let stateSet = new Set();
@@ -455,7 +445,7 @@ export default function CustomerRegistration() {
             } else if (mode === 'new') {
                 /* --- New Entry: create customer + GSTINs --- */
                 const result = await registerCustomer(
-                    { ...form, codeType, panFile },
+                    { ...form, codeType },
                     gstins
                 );
                 reset();
@@ -468,6 +458,7 @@ export default function CustomerRegistration() {
                     ? await updateOwnershipCustomerJDBC(form, gstins)
                     : await updateOldCustomerJDBC(form, gstins);
 
+                clearSelectedUploads();
                 setNotice(result.message || 'Customer updated successfully');
                 setRemovedGstinIds([]);
 
@@ -537,7 +528,13 @@ export default function CustomerRegistration() {
                 const field = `gstin_${index}_gstin`;
                 if (status === 'GSTIN does not match the PAN number.') next[field] = 'GSTIN does not match the PAN number.';
                 else if (status?.startsWith('Enter')) next[field] = status;
-                else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[field])) delete next[field];
+                else if (
+                    ['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(next[field]) ||
+                    next[field]?.includes('GSTIN could not be extracted') ||
+                    next[field]?.includes('GSTIN could not be detected') ||
+                    next[field]?.includes('valid 15-character GSTIN could not be extracted') ||
+                    next[field]?.includes('extracted GSTIN contains an invalid PAN')
+                ) delete next[field];
                 return next;
             });
         }
@@ -547,8 +544,8 @@ export default function CustomerRegistration() {
         setErrors(prev => {
             const next = { ...prev };
             const normalizedPan = normalizeDocumentNumber(value);
-            if (value && (!panRe.test(normalizedPan) || normalizedPan.length !== 10)) next.panNumber = 'Enter a valid 10-character PAN.';
-            else if (next.panNumber === 'Enter a valid 10-character PAN.') delete next.panNumber;
+            if (value && !panRe.test(normalizedPan)) next.panNumber = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
+            else if (next.panNumber?.startsWith('Enter a valid PAN')) delete next.panNumber;
             gstins.forEach((gstin, index) => {
                 const status = getGstinPanStatus(gstin.gstin, value);
                     if (status === 'GSTIN does not match the PAN number.') next[`gstin_${index}_gstin`] = 'GSTIN does not match the PAN number.';
@@ -573,97 +570,83 @@ export default function CustomerRegistration() {
 
         try {
             const { gstin, stateName, address, city, pincode } = await extractGstinFromFile(selected);
-            if (gstin) {
-                const updates = { gstin, scanning: false, scanStatus: 'success', scanError: '' };
-                if (stateName && (!gstins[index]?.state || gstins[index]?.state === '')) {
-                    updates.state = stateName;
-                }
-                handleGstinChange(index, updates);
-                setErrors(prev => {
-                    const next = { ...prev };
-                    delete next[`gstin_${index}_gstin`];
-                    delete next[`gstin_${index}_state`];
-                    return next;
-                });
-
-                if (index === 0) {
-                    if (address) {
-                        let shouldUpdate = true;
-                        let isMatch = false;
-
-                        if (form.address || form.city || form.pincode) {
-                            isMatch = form.address ? addressesMatch(form.address, address) : false;
-                            if (isMatch) {
-                                shouldUpdate = false;
-                                setAddressStatus('verified');
-                            } else {
-                                shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
-                            }
-                        }
-
-                        if (shouldUpdate) {
-                            setAddressStatus(!form.address ? 'auto-filled' : 'auto-corrected');
-                            setForm(prev => {
-                                let nextForm = { ...prev, address: address };
-                                if (pincode) nextForm.pincode = pincode;
-                                if (city) nextForm.city = city;
-                                return nextForm;
-                            });
-                        } else if (!isMatch && form.address) {
-                            // User chose not to auto-fill and it didn't match
-                            setAddressStatus('');
-                        }
-                    } else {
-                        setAddressStatus('extraction-failed');
-                    }
-                }
-            } else {
-                handleGstinChange(index, { scanning: false, scanStatus: 'notfound', scanError: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.' });
+            const normalizedGstin = normalizeDocumentNumber(gstin);
+            const extractedPan = gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '';
+            if (!gstinRe.test(normalizedGstin)) {
+                const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+                handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
+                setErrors(prev => ({ ...prev, [`gstin_${index}_gstin`]: message }));
+                return;
+            }
+            if (!panRe.test(extractedPan)) {
+                const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
+                handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
                 setErrors(prev => ({
                     ...prev,
-                    [`gstin_${index}_gstin`]: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.'
+                    panNumber: 'PAN could not be derived because the extracted GSTIN is invalid.',
+                    [`gstin_${index}_gstin`]: message,
                 }));
+                return;
+            }
+
+            const updates = { gstin: normalizedGstin, scanning: false, scanStatus: 'success', scanError: '' };
+            if (stateName && (!gstins[index]?.state || gstins[index]?.state === '')) {
+                updates.state = stateName;
+            }
+            handleGstinChange(index, updates);
+            setForm(prev => ({
+                ...prev,
+                panNumber: extractedPan,
+                ...(index === 0 && city ? { city } : {}),
+                ...(index === 0 && pincode ? { pincode } : {}),
+            }));
+            setErrors(prev => {
+                const next = { ...prev };
+                delete next[`gstin_${index}_gstin`];
+                delete next[`gstin_${index}_state`];
+                delete next.panNumber;
+                return next;
+            });
+
+            if (index === 0) {
+                if (address) {
+                    let shouldUpdate = true;
+                    let isMatch = false;
+
+                    if (form.address || form.city || form.pincode) {
+                        isMatch = form.address ? addressesMatch(form.address, address) : false;
+                        if (isMatch) {
+                            shouldUpdate = false;
+                            setAddressStatus('verified');
+                        } else {
+                            shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
+                        }
+                    }
+
+                    if (shouldUpdate) {
+                        setAddressStatus(!form.address ? 'auto-filled' : 'auto-corrected');
+                        setForm(prev => {
+                            let nextForm = { ...prev, address: address };
+                            if (pincode) nextForm.pincode = pincode;
+                            if (city) nextForm.city = city;
+                            return nextForm;
+                        });
+                    } else if (!isMatch && form.address) {
+                        // User chose not to auto-fill and it didn't match
+                        setAddressStatus('');
+                    }
+                } else {
+                    setAddressStatus('extraction-failed');
+                }
             }
         } catch (err) {
             console.error('GSTIN OCR scan failed:', err);
-            handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.' });
+            const message = 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+            handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
             setErrors(prev => ({
                 ...prev,
-                [`gstin_${index}_gstin`]: 'GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.'
+                [`gstin_${index}_gstin`]: message
             }));
-        }
-    };
-    const handlePanFileChange = async (e) => {
-        const selected = e.target.files[0];
-        if (!selected) return;
-        const error = checkPanFile(selected);
-        setPanFile(error ? null : selected);
-        setErrors(prev => ({ ...prev, panFile: error }));
-        setPanScanStatus('idle');
-        if (error) return;
-
-        setPanScanning(true);
-        try {
-            const extracted = await extractPanFromFile(selected);
-            if (extracted) {
-                handlePanChange(extracted);
-                setPanScanStatus('success');
-            } else {
-                setPanScanStatus('notfound');
-                setErrors(prev => ({
-                    ...prev,
-                    panNumber: 'PAN number could not be detected. Please upload a clearer document or enter the PAN manually.'
-                }));
-            }
-        } catch (err) {
-            console.error('PAN OCR scan failed:', err);
-            setPanScanStatus('error');
-            setErrors(prev => ({
-                ...prev,
-                panNumber: 'PAN number could not be detected. Please upload a clearer document or enter the PAN manually.'
-            }));
-        } finally {
-            setPanScanning(false);
         }
     };
 
@@ -694,6 +677,49 @@ export default function CustomerRegistration() {
             {notice && <div className={notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
             {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
             {mode === 'old' && lookupError && <div className="lookup-error"><AlertCircle size={14} /> {lookupError}</div>}
+
+            {/* === State-wise GSTINs - hidden in ownership mode === */}
+            {mode !== 'ownership' && (
+                <div className="gstins-container state-gstins-container">
+                    <div className="gstins-header">
+                        <h3>State-wise GSTINs</h3>
+                        <button type="button" className="add-gstin-btn" onClick={addGstin}><Plus size={14} /> Add GSTIN</button>
+                    </div>
+                    <div className="gstin-grid">
+                        {gstins.map((g, index) => (
+                            <div key={index} className="gstin-card">
+                                <div className="gstin-card-head">
+                                    <h4>GSTIN {index + 1}</h4>
+                                    {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
+                                </div>
+                                <div className="grid">
+                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
+                                    <div className="field gstin-number-field">
+                                        <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
+                                        <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
+                                            <FileText size={15} />
+                                            <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
+                                            <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
+                                                <Paperclip size={13} />
+                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : 'Upload GSTIN')}</span>
+                                                {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
+                                            </button>
+                                        </div>
+                                        <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
+                                        {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
+                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> Uploaded - GSTIN auto-filled from document</small>}
+                                        {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
+                                        {errors[`gstin_${index}_gstin`] && !['notfound', 'error'].includes(g.scanStatus) && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN matches PAN' && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
+                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.' && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
+                                        {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* === Main Form: 3-column grid === */}
             <div className="grid">
@@ -779,20 +805,11 @@ export default function CustomerRegistration() {
 
                 <div className="field pan-field">
                     <label htmlFor="panNumber">PAN No. <b>*</b></label>
-                    <div className={'control pan-control ' + (errors.panNumber || errors.panFile ? 'invalid' : '')}>
+                    <div className={'control pan-control ' + (errors.panNumber ? 'invalid' : '')}>
                         <FileText size={15} />
-                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder={panScanning ? 'Extracting PAN...' : 'Enter 10-character PAN No.'} onChange={e => handlePanChange(e.target.value)} />
-                        <button type="button" className={'pan-upload-btn' + (panScanStatus === 'success' || panFile || existingPanFileName ? ' has-file' : '')} disabled={panScanning} onClick={() => panFileRef.current?.click()} title={panFile ? panFile.name : (existingPanFileName || 'Upload PAN Card Document')}>
-                            <UploadCloud size={14} />
-                            <span className="pan-upload-label">{panScanning ? 'Processing...' : (panScanStatus === 'success' ? 'Uploaded' : (panFile ? panFile.name : (existingPanFileName || 'Upload PDF')))}</span>
-                        </button>
+                        <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => handlePanChange(e.target.value)} />
                     </div>
-                    <input ref={panFileRef} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePanFileChange} />
-                    {panScanning && <small className="pan-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting PAN...</small>}
-                    {!panScanning && panScanStatus === 'success' && <small className="pan-scan-status success"><CheckCircle2 size={12} /> Uploaded - PAN auto-filled from document</small>}
-                    {!panScanning && (panScanStatus === 'notfound' || panScanStatus === 'error') && <small className="pan-scan-status warn"><AlertCircle size={12} /> PAN number could not be detected. Please upload a clearer document or enter the PAN manually.</small>}
-                    {errors.panNumber && !['notfound', 'error'].includes(panScanStatus) && <small className="error">{errors.panNumber}</small>}
-                    {errors.panFile && <small className="error">{errors.panFile}</small>}
+                    {errors.panNumber && <small className="error">{errors.panNumber}</small>}
                 </div>
 
                 {/* Row 2: Address | City | Pincode */}
@@ -800,12 +817,21 @@ export default function CustomerRegistration() {
                     <label htmlFor="address">Address <b>*</b></label>
                     <div className={'control ' + (errors.address ? 'invalid' : '')}>
                         <MapPin size={15} />
-                        <input id="address" name="address" value={form.address} placeholder="Enter complete business address" onChange={e => {
+                        <input id="address" name="address" value={form.address} maxLength={100} placeholder="Enter complete business address" onChange={e => {
                             setForm({ ...form, address: e.target.value });
                             if (addressStatus) setAddressStatus('');
+                            // Clear length error as user types back within limit
+                            if (errors.address === 'Address cannot exceed 100 characters.' && e.target.value.length <= 100) {
+                                setErrors(prev => { const next = { ...prev }; delete next.address; return next; });
+                            }
                         }} />
                     </div>
                     {errors.address && <small className="error">{errors.address}</small>}
+                    {!errors.address && (
+                        <small style={{ color: form.address && form.address.length > 90 ? (form.address.length >= 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)', fontSize: '0.75rem', marginTop: '2px', display: 'block', textAlign: 'right' }}>
+                            {(form.address || '').length}/100 characters
+                        </small>
+                    )}
                     {!errors.address && addressStatus === 'verified' && <small className="address-status success" style={{ color: 'var(--success, #16a34a)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> Verified against GSTIN document</small>}
                     {!errors.address && addressStatus === 'auto-filled' && <small className="address-status success" style={{ color: 'var(--success, #16a34a)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={12} /> Auto-filled from GSTIN document</small>}
                     {!errors.address && addressStatus === 'auto-corrected' && <small className="address-status warn" style={{ color: 'var(--warning, #ca8a04)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> Auto-corrected based on GSTIN document</small>}
@@ -817,10 +843,10 @@ export default function CustomerRegistration() {
                 {/* Row 3: Zone | Division | Email */}
                 <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} />
                 <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} />
-                <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} />
+                <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} optional />
 
                 {/* Row 4: Mobile */}
-                <Field label="Mobile" name="mobile" icon={Phone} inputMode="numeric" maxLength="10" placeholder="Enter 10-digit number" form={form} setForm={setForm} error={errors.mobile} />
+                <Field label="Mobile" name="mobile" icon={Phone} inputMode="numeric" maxLength="10" placeholder="Enter 10-digit number" form={form} setForm={setForm} error={errors.mobile} optional />
             </div>
 
             {/* === Ownership Details (Section 2: MEMWGONOWNRPRTY) - shown only in ownership mode === */}
@@ -867,49 +893,6 @@ export default function CustomerRegistration() {
                             </div>
                             {errors.ownershipPartyAddress && <small className="error">{errors.ownershipPartyAddress}</small>}
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* === State-wise GSTINs - hidden in ownership mode === */}
-            {mode !== 'ownership' && (
-                <div className="gstins-container">
-                    <div className="gstins-header">
-                        <h3>State-wise GSTINs</h3>
-                        <button type="button" className="add-gstin-btn" onClick={addGstin}><Plus size={14} /> Add GSTIN</button>
-                    </div>
-                    <div className="gstin-grid">
-                        {gstins.map((g, index) => (
-                            <div key={index} className="gstin-card">
-                                <div className="gstin-card-head">
-                                    <h4>GSTIN {index + 1}</h4>
-                                    {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
-                                </div>
-                                <div className="grid">
-                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
-                                    <div className="field gstin-number-field">
-                                        <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
-                                        <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
-                                            <FileText size={15} />
-                                            <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
-                                            <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
-                                                <Paperclip size={13} />
-                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : 'Upload GSTIN')}</span>
-                                                {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
-                                            </button>
-                                        </div>
-                                        <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
-                                        {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
-                                        {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> Uploaded - GSTIN auto-filled from document</small>}
-                                        {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
-                                        {errors[`gstin_${index}_gstin`] && !['notfound', 'error'].includes(g.scanStatus) && <small className="error">{errors[`gstin_${index}_gstin`]}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN matches PAN' && <small className="gstin-verified">{getGstinPanStatus(g.gstin, form.panNumber)}</small>}
-                                        {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.' && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
-                                        {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </div>
             )}

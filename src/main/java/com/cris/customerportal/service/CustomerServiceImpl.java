@@ -245,13 +245,19 @@ public class CustomerServiceImpl implements CustomerService {
     String companyName = firstValue(formData, "companyName", "customerName");
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
+   // Validate address length before attempting DB INSERT (MAVGLBLCUSTADDRTEXT VARCHAR2(100))
+   String address = formData.get("address");
+   if (address != null && address.length() > 100) {
+    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
+   }
+
   while (true) {
     String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, finalCode);
     ps.setString(2, companyName);
-    ps.setString(3, formData.get("address"));
+    ps.setString(3, address);
     ps.setString(4, formData.get("city"));
     if ("global".equals(type)) {
         ps.setString(5, formData.get("gstinNumbers"));
@@ -267,6 +273,9 @@ public class CustomerServiceImpl implements CustomerService {
             org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
             message.setFrom(auditFromEmail);
             message.setTo("shurak949@gmail.com");
+            if (!auditFromEmail.equalsIgnoreCase("shurak949@gmail.com")) {
+                message.setCc(auditFromEmail);
+            }
             message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
             
             java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -276,13 +285,17 @@ public class CustomerServiceImpl implements CustomerService {
 
             String sqlQuery = "";
             if ("global".equals(finalTypeForEmail)) {
+                String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
+                if (divisionDesignation == null) {
+                    System.err.println("[EMAIL AUDIT] No MEMGLBLCUST division code mapping for location: " + formData.get("operatingDivision"));
+                }
                 sqlQuery = "INSERT INTO MEMGLBLCUST VALUES (" +
                     formatSqlValue(finalCodeForEmail) + ", " +
                     formatSqlValue(companyName) + ", " +
                     formatSqlValue(formData.get("address")) + ", " +
                     formatSqlValue(formData.get("city")) + ", " +
                     "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, " +
+                    formatSqlValue(divisionDesignation) + ", NULL, " +
                     formatSqlValue(formData.get("gstinNumbers")) + ", " +
                     formatSqlValue(formData.get("panNumber")) + ", SYSDATE);";
             } else {
@@ -307,7 +320,7 @@ public class CustomerServiceImpl implements CustomerService {
                     
             message.setText(text);
             mailSender.send(message);
-            System.out.println("[EMAIL AUDIT] Real email sent successfully to shurak949@gmail.com for INSERT " + finalCodeForEmail);
+            System.out.println("[EMAIL AUDIT] SMTP accepted INSERT audit email for DBA recipient and sender mailbox, code " + finalCodeForEmail);
         } catch (Exception ex) {
             System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
         }
@@ -357,6 +370,9 @@ public class CustomerServiceImpl implements CustomerService {
            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
            message.setFrom(auditFromEmail);
            message.setTo("sura767848@gmail.com");
+           if (!auditFromEmail.equalsIgnoreCase("sura767848@gmail.com")) {
+               message.setCc(auditFromEmail);
+           }
            message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
            
            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -388,7 +404,7 @@ public class CustomerServiceImpl implements CustomerService {
                    
            message.setText(text);
            mailSender.send(message);
-           System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com for UPDATE " + formData.get("customerCode"));
+           System.out.println("[EMAIL AUDIT] SMTP accepted UPDATE audit email for DBA recipient and sender mailbox, code " + formData.get("customerCode"));
        } catch (Exception ex) {
            System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
        }
@@ -636,6 +652,9 @@ public class CustomerServiceImpl implements CustomerService {
            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
            message.setFrom(auditFromEmail);
            message.setTo("sura767848@gmail.com");
+           if (!auditFromEmail.equalsIgnoreCase("sura767848@gmail.com")) {
+               message.setCc(auditFromEmail);
+           }
            message.setSubject("Ownership Database UPDATE - " + formData.get("customerCode"));
            
            String sqlQuery = "UPDATE MEMWGONOWNRSHIP\nSET\n" +

@@ -13,6 +13,11 @@ public record CustomerRegistrationRequest(
  @Pattern(regexp="^[A-Za-z0-9]{10}$", message="PAN No. must contain exactly 10 letters or numbers") String panNumber,
  @NotBlank(message="Operating division is required") String operatingDivision,
  @NotBlank(message="Zone is required") String zone,
- @Email(message="Invalid email") @NotBlank(message="Email is required") String email,
+ @Email(message="Invalid email") String email,
  @Pattern(regexp="^[6-9][0-9]{9}$", message="Invalid mobile number") String mobile,
- @NotBlank(message="Code type is required") @Pattern(regexp="^(GLOBAL|HANDLING_AGENT)$", message="Code type must be GLOBAL or HANDLING_AGENT") String codeType) {}
+ @NotBlank(message="Code type is required") @Pattern(regexp="^(GLOBAL|HANDLING_AGENT)$", message="Code type must be GLOBAL or HANDLING_AGENT") String codeType) {
+ public CustomerRegistrationRequest {
+  if (email != null && email.isBlank()) email = null;
+  if (mobile != null && mobile.isBlank()) mobile = null;
+ }
+}

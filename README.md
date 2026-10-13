@@ -150,6 +150,7 @@ SELECT * FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE '%07ABCDE1234F1Z5%';
 
 ## 12. DBA EMAIL / SQL AUDIT
 When a database operation occurs, the system uses `JavaMailSender` to send an email to the DBA containing a **READY-TO-EXECUTE** Oracle SQL query.
+Audit notifications are also CC'd to the configured sender mailbox (`CRIS_MAIL_USERNAME`), so the sender mailbox receives a copy.
 
 There are exactly four cases managed:
 1. `MEMGLBLCUST` → `INSERT`
