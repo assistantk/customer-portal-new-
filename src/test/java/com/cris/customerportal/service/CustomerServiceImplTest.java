@@ -42,9 +42,10 @@ class CustomerServiceImplTest {
         service.registerNewEntryJDBC(Map.of(
             "codeType", "global",
             "customerCode", "ABCD",
-            "companyName", "Acme Ltd",
+            "companyName", " Acme Ltd ",
             "address", "Address",
             "city", "Nagpur",
+            "pincode", "828112",
             "operatingDivision", "Nagpur (NGP)",
             "gstinNumbers", "27AAECR3577NLZE",
             "panNumber", "AAECR3577N"
@@ -53,17 +54,23 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, timeout(2000)).send(messageCaptor.capture());
         assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("audit@example.com"));
-        String emailBody = messageCaptor.getValue().getText();
+        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
+        assertTrue(emailBody.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: ABCD"));
         assertTrue(emailBody.contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('ABCD', 'Acme Ltd', 'Address', 'Nagpur', " +
-                "NULL, NULL, SYSDATE, 'SR.DCM/NCP', NULL, '27AAECR3577NLZE', 'AAECR3577N', SYSDATE);"
+            "INSERT INTO MEMGLBLCUST\nVALUES ('ABCD','Acme Ltd',\n'Address',\n'Nagpur',NULL,NULL,NULL,SYSDATE,'SR.DCM/NCP',NULL,'27AAECR3577NLZE','AAECR3577N');"
         ));
+        verify(insertPs).setString(2, "Acme Ltd");
+        verify(insertPs).setString(6, null);
+        verify(insertPs).setString(8, "SR.DCM/NCP");
+        verify(connection).prepareStatement(
+            "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+        );
         assertFalse(emailBody.contains("SR.DCM/NGP"));
         assertFalse(emailBody.contains("Nagpur (NGP)"));
     }
 
     @Test
-    void registerNewGlobalCustomer_shouldNotGuessDivisionCodeForUnmappedLocation() throws SQLException {
+    void registerNewGlobalCustomer_shouldUseDivisionCodeFromSelectedDivision() throws SQLException {
         CustomerRepository customerRepository = mock(CustomerRepository.class);
         CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
         DataSource dataSource = mock(DataSource.class);
@@ -91,13 +98,19 @@ class CustomerServiceImplTest {
 
         ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, timeout(2000)).send(messageCaptor.capture());
-        String emailBody = messageCaptor.getValue().getText();
+        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
+        assertTrue(emailBody.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: EFGH"));
         assertTrue(emailBody.contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('EFGH', 'Example Ltd', 'Address', 'Dhanbad', " +
-                "NULL, NULL, SYSDATE, NULL, NULL, '20AAECR3577NLZE', 'AAECR3577N', SYSDATE);"
+            "INSERT INTO MEMGLBLCUST\nVALUES ('EFGH','Example Ltd',\n'Address',\n'Dhanbad',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20AAECR3577NLZE','AAECR3577N');"
         ));
-        assertFalse(emailBody.contains("SR.DCM/DHN"));
+        verify(insertPs).setString(6, null);
+        verify(insertPs).setString(8, "SR.DCM/DHN");
         assertFalse(emailBody.contains("Dhanbad (DHN)"));
+    }
+
+    @Test
+    void divisionDesignationResolver_shouldUseSelectedDivisionCode() {
+        assertTrue("SR.DCM/SDAH".equals(DivisionDesignationResolver.resolve("Sealdah (SDAH)")));
     }
 
     @Test

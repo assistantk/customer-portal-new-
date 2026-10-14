@@ -237,12 +237,9 @@ public class CustomerServiceImpl implements CustomerService {
   String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
   String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
   String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
-  String panCol = "global".equals(type) ? "MAVCUSTPANNUMB" : null;
-  String sql = "global".equals(type) 
-      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, ?, ?, SYSDATE)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
-
-    String companyName = firstValue(formData, "companyName", "customerName");
+  String sql;
+  String companyName = firstValue(formData, "companyName", "customerName");
+  if (companyName != null) companyName = companyName.trim();
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
    // Validate address length before attempting DB INSERT (MAVGLBLCUSTADDRTEXT VARCHAR2(100))
@@ -251,23 +248,39 @@ public class CustomerServiceImpl implements CustomerService {
     throw new IllegalArgumentException("Address cannot exceed 100 characters.");
    }
 
+  String divisionDesignation = "global".equals(type)
+      ? DivisionDesignationResolver.resolve(formData.get("operatingDivision"))
+      : formData.get("operatingDivision");
+  sql = "global".equals(type)
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
+
   while (true) {
     String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
+    List<String> insertParameters = new ArrayList<>();
+    insertParameters.add(finalCode);
+    insertParameters.add(companyName);
+    insertParameters.add(address);
+    insertParameters.add(formData.get("city"));
+    if ("global".equals(type)) {
+        insertParameters.add(null);
+        insertParameters.add(null);
+        insertParameters.add(null);
+        insertParameters.add(divisionDesignation);
+        insertParameters.add(formData.get("gstinNumbers"));
+        insertParameters.add(formData.get("panNumber"));
+    }
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, finalCode);
-    ps.setString(2, companyName);
-    ps.setString(3, address);
-    ps.setString(4, formData.get("city"));
-    if ("global".equals(type)) {
-        ps.setString(5, formData.get("gstinNumbers"));
-        ps.setString(6, formData.get("panNumber"));
+    for (int i = 0; i < insertParameters.size(); i++) {
+        ps.setString(i + 1, insertParameters.get(i));
     }
     ps.executeUpdate();
     
     // Send INSERT audit email asynchronously
     final String finalCodeForEmail = finalCode;
-    final String finalTypeForEmail = type;
+    final String finalTableForEmail = tableName;
+    final String finalSqlForEmail = formatBoundSql(sql, insertParameters);
     java.util.concurrent.CompletableFuture.runAsync(() -> {
         try {
             org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
@@ -277,45 +290,12 @@ public class CustomerServiceImpl implements CustomerService {
                 message.setCc(auditFromEmail);
             }
             message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
-            
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            String timestamp = sdf.format(new java.util.Date());
-            String table = "global".equals(finalTypeForEmail) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-            String col = "global".equals(finalTypeForEmail) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-
-            String sqlQuery = "";
-            if ("global".equals(finalTypeForEmail)) {
-                String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
-                if (divisionDesignation == null) {
-                    System.err.println("[EMAIL AUDIT] No MEMGLBLCUST division code mapping for location: " + formData.get("operatingDivision"));
-                }
-                sqlQuery = "INSERT INTO MEMGLBLCUST VALUES (" +
-                    formatSqlValue(finalCodeForEmail) + ", " +
-                    formatSqlValue(companyName) + ", " +
-                    formatSqlValue(formData.get("address")) + ", " +
-                    formatSqlValue(formData.get("city")) + ", " +
-                    "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(divisionDesignation) + ", NULL, " +
-                    formatSqlValue(formData.get("gstinNumbers")) + ", " +
-                    formatSqlValue(formData.get("panNumber")) + ", SYSDATE);";
-            } else {
-                sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT VALUES (" +
-                    formatSqlValue(finalCodeForEmail) + ", " +
-                    formatSqlValue(companyName) + ", " +
-                    formatSqlValue(formData.get("address")) + ", " +
-                    formatSqlValue(formData.get("city")) + ", " +
-                    "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, SYSDATE);";
-            }
-
-
-                    
             String text = "Operation: INSERT\n" +
-                    "Table: " + table + "\n" +
+                    "Table: " + finalTableForEmail + "\n" +
                     "Code: " + finalCodeForEmail + "\n\n" +
                     "SQL QUERY:\n" +
                     "----------------------------------------\n" +
-                    sqlQuery + "\n" +
+                    finalSqlForEmail + "\n" +
                     "----------------------------------------";
                     
             message.setText(text);
@@ -609,9 +589,41 @@ public class CustomerServiceImpl implements CustomerService {
   dbaEmailService.sendDbaAuditEmail(audit);
  }
 
- private String formatSqlValue(String value) {
-  if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
-  return "'" + value.replace("'", "''") + "'";
+  private String formatBoundSql(String sql, List<String> parameters) {
+   int valuesStart = sql.indexOf(" VALUES (");
+   int columnsStart = sql.indexOf(" (");
+   if (valuesStart < 0 || columnsStart < 0 || columnsStart > valuesStart) {
+    throw new IllegalArgumentException("Expected INSERT SQL with an explicit column list.");
+   }
+
+   String tableClause = sql.substring(0, columnsStart);
+   String[] valueExpressions = sql.substring(valuesStart + " VALUES (".length(), sql.lastIndexOf(')')).split(",\\s*");
+   StringBuilder formattedSql = new StringBuilder(tableClause).append("\nVALUES (");
+   int parameterIndex = 0;
+   for (int i = 0; i < valueExpressions.length; i++) {
+    if (i > 0) {
+     formattedSql.append(i == 2 || i == 3 ? ",\n" : ",");
+    }
+    String expression = valueExpressions[i];
+    if ("?".equals(expression)) {
+     if (parameterIndex >= parameters.size()) {
+      throw new IllegalArgumentException("SQL contains more placeholders than bound parameters.");
+     }
+     String value = parameters.get(parameterIndex++);
+     formattedSql.append(value == null ? "NULL" : "'" + value.replace("'", "''") + "'");
+    } else {
+     formattedSql.append(expression);
+    }
+   }
+   if (parameterIndex != parameters.size()) {
+    throw new IllegalArgumentException("Bound parameter count does not match SQL placeholders.");
+   }
+   return formattedSql.append(");").toString();
+  }
+
+  private String formatSqlValue(String value) {
+   if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
+   return "'" + value.replace("'", "''") + "'";
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOwnershipCustomerByCode(String customerCode) {

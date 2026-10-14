@@ -78,8 +78,8 @@ function Select({ label, name, icon: Icon, options, form, setForm, error, disabl
 function DivisionSelect({ options, form, setForm, error, disabled }) {
     const [open, setOpen] = useState(false);
     const choose = division => { setForm(prev => ({ ...prev, operatingDivision: division })); setOpen(false); };
-    const selectedDivision = form.operatingDivision ? 'Division selected' : 'Select division';
-    return <div className="field zone-field"><label id="division-label">Division <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+    const selectedDivision = options.includes(form.operatingDivision) ? form.operatingDivision : '';
+    return <div className="field zone-field"><label id="division-label">Division <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision || 'Select division'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
 function ZoneSelect({ options, form, setForm, error }) {
@@ -106,9 +106,11 @@ export default function CustomerRegistration() {
     const [codeChecking, setCodeChecking] = useState(false);
     const [codeConfirmed, setCodeConfirmed] = useState(false);
     const [addressStatus, setAddressStatus] = useState('');
+    const [ocrAutoFillApplied, setOcrAutoFillApplied] = useState(false);
     // Track GSTINs that were removed during an Old User edit session
     const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
+    const formRef = useRef(form);
     const codeTimerRef = useRef(null);
     const lookupTimerRef = useRef(null);
     const lookupRequestRef = useRef(0);
@@ -126,12 +128,14 @@ export default function CustomerRegistration() {
     const ownSection2ReqRef = useRef(0);
 
     useEffect(() => { getMasterData().then(setData).catch(() => { }) }, []);
+    useEffect(() => { formRef.current = form; }, [form]);
 
     const reset = () => {
         setForm(blank); setGstins([{ ...blankGstin }]); setErrors({}); setNotice('');
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
         setAddressStatus('');
+        setOcrAutoFillApplied(false);
         setRemovedGstinIds([]);
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
         // Reset ownership section states
@@ -339,7 +343,16 @@ export default function CustomerRegistration() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [codeType]);
 
-    const checkFile = f => { if (!f) return 'GSTIN file is required'; if (f.size > 5242880) return 'File size must not exceed 5MB'; if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) return 'Only PDF, JPG, JPEG, and PNG files are allowed'; return '' };
+    const checkFile = f => {
+        if (!f) return 'GSTIN file is required';
+        if (f.size > 5242880) return 'File size must not exceed 5MB';
+        const extension = f.name.split('.').pop()?.toLowerCase();
+        const supportedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+        if (!supportedTypes.includes(f.type) && !['pdf', 'jpg', 'jpeg', 'jpe', 'png'].includes(extension)) {
+            return 'Only PDF, JPG, JPEG, and PNG files are allowed';
+        }
+        return '';
+    };
 
     const validate = () => {
         let e = {};
@@ -569,7 +582,15 @@ export default function CustomerRegistration() {
         setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: '' }));
 
         try {
-            const { gstin, stateName, address, city, pincode } = await extractGstinFromFile(selected);
+            const { gstin, stateName, address, city, pincode, tradeName } = await extractGstinFromFile(selected);
+            if (index === 0 && tradeName && !formRef.current.companyName.trim()) {
+                if (mode === 'new') {
+                    handleNewCompanyNameChange(tradeName);
+                } else {
+                    setForm(prev => prev.companyName.trim() ? prev : { ...prev, companyName: tradeName });
+                }
+                setOcrAutoFillApplied(true);
+            }
             const normalizedGstin = normalizeDocumentNumber(gstin);
             const extractedPan = gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '';
             if (!gstinRe.test(normalizedGstin)) {
@@ -600,6 +621,7 @@ export default function CustomerRegistration() {
                 ...(index === 0 && city ? { city } : {}),
                 ...(index === 0 && pincode ? { pincode } : {}),
             }));
+            setOcrAutoFillApplied(true);
             setErrors(prev => {
                 const next = { ...prev };
                 delete next[`gstin_${index}_gstin`];
@@ -641,7 +663,9 @@ export default function CustomerRegistration() {
             }
         } catch (err) {
             console.error('GSTIN OCR scan failed:', err);
-            const message = 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+            const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
+                ? `${err.message} Please upload a shorter PDF.`
+                : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
             handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
             setErrors(prev => ({
                 ...prev,
@@ -692,7 +716,6 @@ export default function CustomerRegistration() {
                                     {index > 0 && <button type="button" className="remove-btn" onClick={() => removeGstin(index)}><Trash2 size={13} /></button>}
                                 </div>
                                 <div className="grid">
-                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
                                     <div className="field gstin-number-field">
                                         <label htmlFor={`gstin-${index}`}>GSTIN No. <b>*</b></label>
                                         <div className={'control gstin-control ' + (errors[`gstin_${index}_gstin`] || errors[`gstin_${index}_file`] ? 'invalid' : '')}>
@@ -704,7 +727,7 @@ export default function CustomerRegistration() {
                                                 {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                             </button>
                                         </div>
-                                        <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleGstinFileChange(index, e)} />
+                                        <input ref={el => fileRefs.current[index] = el} className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.jpe,.png" onChange={e => handleGstinFileChange(index, e)} />
                                         {g.scanning && <small className="gstin-scan-status scanning"><Loader2 size={12} className="spin" /> Extracting GSTIN...</small>}
                                         {!g.scanning && g.scanStatus === 'success' && <small className="gstin-scan-status success"><CheckCircle2 size={12} /> Uploaded - GSTIN auto-filled from document</small>}
                                         {!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error') && <small className="gstin-scan-status warn"><AlertCircle size={12} /> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.</small>}
@@ -713,6 +736,7 @@ export default function CustomerRegistration() {
                                         {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.' && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
                                         {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                     </div>
+                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
                                 </div>
                             </div>
                         ))}
@@ -897,6 +921,11 @@ export default function CustomerRegistration() {
                 </div>
             )}
 
+            {ocrAutoFillApplied && (
+                <div className="info-banner" role="status">
+                    <CheckCircle2 size={16} /> Please check the auto-filled details and verify that the information matches your uploaded document.
+                </div>
+            )}
             <div className="actions"><span className="secure"><ShieldCheck /> 256-bit encryption</span><div><button type="button" className="reset" onClick={reset}><RotateCcw /> Reset</button><button className="submit" disabled={loading}><Send />{loading ? 'Submitting...' : 'Submit Request'}</button></div></div>
         </form></main>
     );

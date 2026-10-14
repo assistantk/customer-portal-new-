@@ -3,9 +3,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+const TESSERACT_ASSET_BASE = new URL(`${import.meta.env.BASE_URL}tesseract-assets/`, window.location.origin).href;
 
 const GSTIN_REGEX = /[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]/;
 const PIN_PATTERN = /\b[1-9][0-9]{5}\b/;
+const MAX_PDF_PAGES = Number(import.meta.env.VITE_GSTIN_MAX_PDF_PAGES) || 50;
 const ADDRESS_FIELDS = [
     { label: 'Building No./Flat No.', pattern: /Building\s+No\.?\s*\/\s*Flat\s+No\.?/ig },
     { label: 'Name Of Premises/Building', pattern: /Name\s+Of\s+Premises\s*\/\s*Building/ig },
@@ -91,9 +93,7 @@ export function correctGstinCandidate(candidate) {
     return GSTIN_REGEX.test(res) ? res : null;
 }
 
-async function renderPdfPageToCanvas(file, pageNumber = 1) {
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+async function renderPdfPageToCanvas(pdf, pageNumber = 1) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 2.5 });
 
@@ -102,7 +102,55 @@ async function renderPdfPageToCanvas(file, pageNumber = 1) {
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
+    page.cleanup();
     return canvas;
+}
+
+async function prepareImageForOcr(file) {
+    if (typeof createImageBitmap !== 'function') return file;
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    try {
+        const scale = Math.min(2.5, 2200 / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const image = context.getImageData(0, 0, canvas.width, canvas.height);
+        const histogram = new Uint32Array(256);
+        const { data } = image;
+        const pixelCount = data.length / 4;
+
+        for (let index = 0; index < data.length; index += 4) {
+            histogram[Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114)]++;
+        }
+
+        let low = 0;
+        let high = 255;
+        let accumulated = 0;
+        for (; low < 255; low++) {
+            accumulated += histogram[low];
+            if (accumulated >= pixelCount * 0.01) break;
+        }
+        accumulated = 0;
+        for (; high > 0; high--) {
+            accumulated += histogram[high];
+            if (accumulated >= pixelCount * 0.03) break;
+        }
+
+        const contrast = 255 / Math.max(1, high - low);
+        for (let index = 0; index < data.length; index += 4) {
+            const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+            const enhanced = Math.max(0, Math.min(255, Math.round((gray - low) * contrast)));
+            data[index] = enhanced;
+            data[index + 1] = enhanced;
+            data[index + 2] = enhanced;
+        }
+        context.putImageData(image, 0, 0);
+        return canvas;
+    } finally {
+        bitmap.close();
+    }
 }
 
 async function callBackendOcrApi(endpoint, file) {
@@ -324,7 +372,32 @@ function extractGstinDetails(text) {
         }
     }
     const address = cleanPrincipalAddress(text);
-    return { gstin, stateCode: gstin ? gstin.slice(0, 2) : null, ...address };
+    return {
+        gstin,
+        stateCode: gstin ? gstin.slice(0, 2) : null,
+        tradeName: findTradeName(text),
+        ...address,
+    };
+}
+
+export function findTradeName(text) {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    const labelPattern = /\b(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
+    const nextLabelPattern = /\b(?:legal\s+name(?:\s+of\s+business)?|trade\s+name|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
+
+    for (const match of normalized.matchAll(labelPattern)) {
+        const remaining = normalized.slice(match.index + match[0].length);
+        nextLabelPattern.lastIndex = 0;
+        const nextLabel = nextLabelPattern.exec(remaining);
+        const candidate = remaining.slice(0, nextLabel ? nextLabel.index : remaining.length)
+            .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
+            .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
+            .trim();
+        if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
+            return candidate;
+        }
+    }
+    return null;
 }
 
 /**
@@ -336,39 +409,65 @@ export async function extractGstinFromFile(file) {
     if (!file) return { gstin: null, stateCode: null, stateName: null };
 
     let details = { gstin: null, stateCode: null, address: null, city: null, pincode: null, state: null };
-    const isPdf = file.type === 'application/pdf';
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const isPdf = file.type === 'application/pdf' || extension === 'pdf';
     let pdf;
     let text = '';
+    let pageLimitExceeded = false;
 
     if (isPdf) {
         try {
             const buffer = await file.arrayBuffer();
             pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-            const pages = [];
-            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-                const page = await pdf.getPage(pageNumber);
-                const content = await page.getTextContent();
-                pages.push(content.items.map(item => 'str' in item ? item.str : '').filter(Boolean).join(' '));
+            if (pdf.numPages > MAX_PDF_PAGES) {
+                await pdf.destroy();
+                pdf = null;
+                pageLimitExceeded = true;
+            } else {
+                const pages = [];
+                for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+                    const page = await pdf.getPage(pageNumber);
+                    const content = await page.getTextContent();
+                    pages.push(content.items.map(item => 'str' in item ? item.str : '').filter(Boolean).join(' '));
+                    page.cleanup();
+                }
+                text = pages.join('\n');
+                details = extractGstinDetails(text);
             }
-            text = pages.join('\n');
-            details = extractGstinDetails(text);
         } catch (err) {
             console.warn('Client-side PDF text extraction failed, trying OCR:', err);
         }
     }
+    if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
 
-    if (!details.gstin || !details.address) {
+    if ((!isPdf || pdf) && (!details.gstin || !details.address || !details.tradeName)) {
         let worker;
+        let imageCanvas;
         try {
-            worker = await createWorker('eng');
-            const pagesToScan = isPdf && pdf ? Math.min(pdf.numPages, 3) : 1;
+            worker = await createWorker('eng', 1, {
+                workerPath: new URL('worker.min.js', TESSERACT_ASSET_BASE).href,
+                corePath: TESSERACT_ASSET_BASE,
+                langPath: '/api/documents/tessdata',
+                gzip: false,
+                workerBlobURL: false,
+            });
+            await worker.setParameters({ tessedit_pageseg_mode: '11' });
+            const pagesToScan = isPdf ? (pdf ? pdf.numPages : 0) : 1;
             const ocrPages = [];
             for (let pageNumber = 1; pageNumber <= pagesToScan; pageNumber++) {
-                const source = isPdf ? await renderPdfPageToCanvas(file, pageNumber) : file;
+                const source = isPdf
+                    ? await renderPdfPageToCanvas(pdf, pageNumber)
+                    : (imageCanvas ||= await prepareImageForOcr(file));
                 const { data: { text: pageText } } = await worker.recognize(source);
                 ocrPages.push(pageText);
                 const ocrDetails = extractGstinDetails(ocrPages.join('\n'));
-                if (ocrDetails.gstin && ocrDetails.address) break;
+                if (isPdf) {
+                    source.width = 0;
+                    source.height = 0;
+                }
+                if ((details.gstin || ocrDetails.gstin) &&
+                    (details.address || ocrDetails.address) &&
+                    (details.tradeName || ocrDetails.tradeName)) break;
             }
             const ocrDetails = extractGstinDetails(ocrPages.join('\n'));
             details = {
@@ -378,11 +477,16 @@ export async function extractGstinFromFile(file) {
                 city: details.city || ocrDetails.city,
                 pincode: details.pincode || ocrDetails.pincode,
                 state: details.state || ocrDetails.state,
+                tradeName: details.tradeName || ocrDetails.tradeName,
             };
         } catch (err) {
             console.warn('Client-side GSTIN OCR failed, trying API:', err);
         } finally {
             if (worker) await worker.terminate();
+            if (imageCanvas) {
+                imageCanvas.width = 0;
+                imageCanvas.height = 0;
+            }
         }
     }
 
@@ -400,6 +504,7 @@ export async function extractGstinFromFile(file) {
         }
     }
 
+    if (pdf) await pdf.destroy();
     return {
         ...details,
         stateName: details.state || getStateNameFromGstinCode(details.stateCode),

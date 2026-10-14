@@ -1,6 +1,15 @@
 import { Request, Response } from 'express';
+import { createReadStream } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { asyncHandler, AppError } from '../middleware/errorHandler.js';
 import { scanDocument } from '../utils/documentScanner.js';
+
+export const getEnglishOcrLanguageData = (_req: Request, res: Response, next: (error?: Error) => void) => {
+  const languageDataPath = fileURLToPath(new URL('../../eng.traineddata', import.meta.url));
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  createReadStream(languageDataPath).on('error', next).pipe(res);
+};
 
 export const scanPanDocument = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('PAN document file is required', 400);
@@ -45,4 +54,4 @@ export const scanGstinDocument = asyncHandler(async (req: Request, res: Response
     legalName: result.legalName,
     confidence: Number(result.confidence.toFixed(2)),
   });
-});
+});

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { scanPanDocument, scanGstinDocument } from '../controllers/documentController.js';
+import { getEnglishOcrLanguageData, scanPanDocument, scanGstinDocument } from '../controllers/documentController.js';
 
 const router = Router();
 const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
@@ -12,5 +12,6 @@ const upload = multer({
 
 router.post('/pan/scan', upload.single('document'), scanPanDocument);
 router.post('/gstin/scan', upload.single('document'), scanGstinDocument);
+router.get('/tessdata/eng.traineddata', getEnglishOcrLanguageData);
 
 export default router;

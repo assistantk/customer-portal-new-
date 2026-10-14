@@ -79,14 +79,12 @@ The application interacts with the following actual CRIS tables:
 | Address (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTADDRTEXT` |
 | City (Global) | `MEMGLBLCUST` | `MAVGNBLCUSTCITYNAME` |
 | City (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTCITYNAME` |
-| Pincode (Global) | `MEMGLBLCUST` | `MAVPCOCODE` |
-| Pincode (Agent) | `MEMGLBLHNDGAGNT` | `MAVPCOCODE` |
 | PAN | `MEMGLBLCUST` | `MAVCUSTPANNUMB` |
 | GSTIN | `MEMGLBLCUST` | `MAVCUSTGSTNUMB` |
 | Operating Division (Global)| `MEMGLBLCUST` | `MAVIMPLREMK` |
 | Operating Division (Agent)| `MEMGLBLHNDGAGNT` | `MAVIMPLREMK` |
 
-> **Unmapped Fields**: `Email`, `Mobile`, and `Zone` are collected by the frontend forms but **do not** have corresponding columns in the CRIS Oracle schema. They are deliberately excluded from `INSERT` and `UPDATE` statements to prevent database crashes.
+> **Unmapped Fields**: `Pincode`, `Email`, `Mobile`, and `Zone` are collected by the frontend forms but are not written to these master tables. `MAVPCOCODE` is a 3-character PCO code, not a six-digit postal pincode. The operating division is written as its resolved designation (for example, `SR.DCM/<division code>`) to `MAVIMPLREMK`.
 
 ## 7. OLD USER FLOW
 1. **Customer Code entered**: The user enters an existing 4-character code.
