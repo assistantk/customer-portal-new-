@@ -19,7 +19,7 @@ public class DbaEmailService {
     public DbaEmailService(
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
-            @Value("${app.dba-email:sura767848@gmail.com}") String dbaEmail) {
+            @Value("${app.dba-email:dbafois@cris.org.in}") String dbaEmail) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;

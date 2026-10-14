@@ -18,7 +18,7 @@ export async function sendAuditEmail(options: AuditEmailOptions) {
   const { page, operation, table, customerCode, globalCode, handlingAgentCode, changes, executedQuery, timestamp, submittedBy } = options;
 
   // Determine recipients
-  const dbaEmail = env.DBA_EMAIL || 'sura767848@gmail.com'; // fallback for demo
+  const dbaEmail = env.DBA_EMAIL || 'dbafois@cris.org.in'; // fallback for demo
   console.log('[EMAIL AUDIT] Preparing to send email to:', dbaEmail);
   console.log('[EMAIL AUDIT] SMTP_HOST:', env.SMTP_HOST ? 'set' : 'not set');
   console.log('[EMAIL AUDIT] SMTP_PORT:', env.SMTP_PORT ? 'set' : 'not set');

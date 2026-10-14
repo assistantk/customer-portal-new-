@@ -2,6 +2,7 @@ package com.cris.customerportal.controller;
 
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
+import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.service.CustomerService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -49,6 +50,20 @@ public class CustomerController { private final CustomerService service; public 
    return ResponseEntity.ok(Map.of("success", true, "message", "Customer updated successfully"));
   } catch (Exception e) {
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
+  }
+ }
+
+ @DeleteMapping("/global-delete")
+ public ResponseEntity<?> deleteGlobalCustomer(@RequestParam String code) {
+  try {
+   service.deleteGlobalCustomerJDBC(code);
+   return ResponseEntity.ok(Map.of("success", true, "message", "Global customer code deleted successfully"));
+  } catch (IllegalArgumentException e) {
+   return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+  } catch (ResourceNotFoundException e) {
+   return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "message", e.getMessage()));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Delete failed: " + e.getMessage()));
   }
  }
 
