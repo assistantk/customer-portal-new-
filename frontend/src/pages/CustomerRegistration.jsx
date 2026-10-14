@@ -672,7 +672,6 @@ export default function CustomerRegistration() {
                     </button>
                 </div>
             </div>
-            <div className="rule" />
 
             {notice && <div className={notice.toLowerCase().includes('success') ? 'notice success' : 'notice'} role="alert">{notice}</div>}
             {mode === 'old' && lookupDone && <div className="info-banner"><CheckCircle2 size={16} /> Information loaded from previous registration. You may update fields and re-upload files before submitting.</div>}
@@ -718,6 +717,7 @@ export default function CustomerRegistration() {
                             </div>
                         ))}
                     </div>
+                    <div className="gstins-bottom-separator" aria-hidden="true" style={{ height: 0, borderTop: '1px solid #e5e7eb', width: '100%', margin: '12px 0 16px 0' }} />
                 </div>
             )}
 
