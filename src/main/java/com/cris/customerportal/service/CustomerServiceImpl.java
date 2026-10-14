@@ -97,7 +97,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
@@ -109,11 +109,12 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
-     if (ts != null) {
-         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
+     if (amendmentDate != null && !amendmentDate.isBlank()) {
+         response.setCreationDate(amendmentDate);
      }
      
      return response;
@@ -128,7 +129,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
-     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, MADIMPLDATE FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -141,11 +142,12 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
-     java.sql.Timestamp ts = rs.getTimestamp("MADIMPLDATE");
-     if (ts != null) {
-         response.setCreationDate(new java.text.SimpleDateFormat("dd-MM-yyyy").format(new java.util.Date(ts.getTime())));
+     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
+     if (amendmentDate != null && !amendmentDate.isBlank()) {
+         response.setCreationDate(amendmentDate);
      }
      
      responses.add(response);
@@ -237,11 +239,17 @@ public class CustomerServiceImpl implements CustomerService {
   String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
   String panCol = "global".equals(type) ? "MAVCUSTPANNUMB" : null;
   String sql = "global".equals(type) 
-      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ") VALUES (?, ?, ?, ?, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ") VALUES (?, ?, ?, ?)";
+      ? "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCUSTGSTNUMB, " + panCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, ?, ?, SYSDATE)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
 
     String companyName = firstValue(formData, "companyName", "customerName");
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
+
+   // Validate address length before attempting DB INSERT (MAVGLBLCUSTADDRTEXT VARCHAR2(100))
+   String address = formData.get("address");
+   if (address != null && address.length() > 100) {
+    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
+   }
 
   while (true) {
     String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
@@ -249,7 +257,7 @@ public class CustomerServiceImpl implements CustomerService {
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, finalCode);
     ps.setString(2, companyName);
-    ps.setString(3, formData.get("address"));
+    ps.setString(3, address);
     ps.setString(4, formData.get("city"));
     if ("global".equals(type)) {
         ps.setString(5, formData.get("gstinNumbers"));
@@ -265,6 +273,9 @@ public class CustomerServiceImpl implements CustomerService {
             org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
             message.setFrom(auditFromEmail);
             message.setTo("shurak949@gmail.com");
+            if (!auditFromEmail.equalsIgnoreCase("shurak949@gmail.com")) {
+                message.setCc(auditFromEmail);
+            }
             message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
             
             java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -274,15 +285,19 @@ public class CustomerServiceImpl implements CustomerService {
 
             String sqlQuery = "";
             if ("global".equals(finalTypeForEmail)) {
+                String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
+                if (divisionDesignation == null) {
+                    System.err.println("[EMAIL AUDIT] No MEMGLBLCUST division code mapping for location: " + formData.get("operatingDivision"));
+                }
                 sqlQuery = "INSERT INTO MEMGLBLCUST VALUES (" +
                     formatSqlValue(finalCodeForEmail) + ", " +
                     formatSqlValue(companyName) + ", " +
                     formatSqlValue(formData.get("address")) + ", " +
                     formatSqlValue(formData.get("city")) + ", " +
                     "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, " +
+                    formatSqlValue(divisionDesignation) + ", NULL, " +
                     formatSqlValue(formData.get("gstinNumbers")) + ", " +
-                    formatSqlValue(formData.get("panNumber")) + ");";
+                    formatSqlValue(formData.get("panNumber")) + ", SYSDATE);";
             } else {
                 sqlQuery = "INSERT INTO MEMGLBLHNDGAGNT VALUES (" +
                     formatSqlValue(finalCodeForEmail) + ", " +
@@ -290,7 +305,7 @@ public class CustomerServiceImpl implements CustomerService {
                     formatSqlValue(formData.get("address")) + ", " +
                     formatSqlValue(formData.get("city")) + ", " +
                     "NULL, NULL, SYSDATE, " +
-                    formatSqlValue(formData.get("operatingDivision")) + ", NULL);";
+                    formatSqlValue(formData.get("operatingDivision")) + ", NULL, SYSDATE);";
             }
 
 
@@ -305,7 +320,7 @@ public class CustomerServiceImpl implements CustomerService {
                     
             message.setText(text);
             mailSender.send(message);
-            System.out.println("[EMAIL AUDIT] Real email sent successfully to shurak949@gmail.com for INSERT " + finalCodeForEmail);
+            System.out.println("[EMAIL AUDIT] SMTP accepted INSERT audit email for DBA recipient and sender mailbox, code " + finalCodeForEmail);
         } catch (Exception ex) {
             System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
         }
@@ -355,6 +370,9 @@ public class CustomerServiceImpl implements CustomerService {
            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
            message.setFrom(auditFromEmail);
            message.setTo("sura767848@gmail.com");
+           if (!auditFromEmail.equalsIgnoreCase("sura767848@gmail.com")) {
+               message.setCc(auditFromEmail);
+           }
            message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
            
            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -386,7 +404,7 @@ public class CustomerServiceImpl implements CustomerService {
                    
            message.setText(text);
            mailSender.send(message);
-           System.out.println("[EMAIL AUDIT] Real email sent successfully to sura767848@gmail.com for UPDATE " + formData.get("customerCode"));
+           System.out.println("[EMAIL AUDIT] SMTP accepted UPDATE audit email for DBA recipient and sender mailbox, code " + formData.get("customerCode"));
        } catch (Exception ex) {
            System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
        }
@@ -424,6 +442,26 @@ public class CustomerServiceImpl implements CustomerService {
 
  // ===== Ownership: MEMWGONOWNRSHIP =====
 
+ public java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode) {
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("ownershipCode", rs.getString("MAVGLBLCUSTCODE"));
+     result.put("ownershipDesc", rs.getString("MAVGLBLCUSTNAME"));
+     return result;
+    }
+    return null;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnership SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
+  }
+ }
+
  public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
   String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
   try (Connection conn = dataSource.getConnection();
@@ -457,18 +495,21 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, ownershipDesc);
     ps.setString(2, normalizedCode);
     ps.executeUpdate();
+    String auditSql = "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc) + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
+    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while updating ownership record: " + e.getMessage(), e);
    }
   } else {
-   // INSERT
-   String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC) VALUES (?, ?)";
+    String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES (?, ?, 'Y')";
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, normalizedCode);
     ps.setString(2, ownershipDesc);
     ps.executeUpdate();
+    String auditSql = "INSERT INTO MEMWGONOWNRSHIP VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(ownershipDesc) + ",'Y',NULL,SYSDATE,NULL);";
+    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while inserting ownership record: " + e.getMessage(), e);
@@ -477,6 +518,26 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  // ===== Ownership Party: MEMWGONOWNRPRTY =====
+
+ public java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode) {
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+     result.put("partyCode", rs.getString("MAVGLBLCUSTCODE"));
+     result.put("partyDesc", rs.getString("MAVGLBLCUSTNAME"));
+     return result;
+    }
+    return null;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnershipParty SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
+  }
+ }
 
  public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
   String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";
@@ -511,6 +572,8 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, partyDesc);
     ps.setString(2, normalizedCode);
     ps.executeUpdate();
+    String auditSql = "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc) + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
+    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipPartyJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while updating ownership party record: " + e.getMessage(), e);
@@ -523,11 +586,27 @@ public class CustomerServiceImpl implements CustomerService {
     ps.setString(1, normalizedCode);
     ps.setString(2, partyDesc);
     ps.executeUpdate();
+    String auditSql = "INSERT INTO MEMWGONOWNRPRTY VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(partyDesc) + ");";
+    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
    } catch (SQLException e) {
     System.err.printf("[DB ERROR] saveOwnershipPartyJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
     throw new RuntimeException("Database error while inserting ownership party record: " + e.getMessage(), e);
    }
   }
+ }
+
+ private void sendOwnershipAuditEmail(String operation, String table, String code, String description, String sql) {
+  DatabaseOperationAudit audit = new DatabaseOperationAudit();
+  audit.setOperationType(operation);
+  audit.setPageName("Ownership");
+  audit.setTableName(table);
+  audit.setCustomerCode(code);
+  audit.setCompanyName(description);
+  audit.setSqlStatement(sql);
+  audit.setRowsAffected(1);
+  audit.addParameter(1, "CODE", code);
+  audit.addParameter(2, "DESCRIPTION", description);
+  dbaEmailService.sendDbaAuditEmail(audit);
  }
 
  private String formatSqlValue(String value) {
@@ -573,6 +652,9 @@ public class CustomerServiceImpl implements CustomerService {
            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
            message.setFrom(auditFromEmail);
            message.setTo("sura767848@gmail.com");
+           if (!auditFromEmail.equalsIgnoreCase("sura767848@gmail.com")) {
+               message.setCc(auditFromEmail);
+           }
            message.setSubject("Ownership Database UPDATE - " + formData.get("customerCode"));
            
            String sqlQuery = "UPDATE MEMWGONOWNRSHIP\nSET\n" +

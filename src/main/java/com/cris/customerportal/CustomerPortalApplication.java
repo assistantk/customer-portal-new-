@@ -19,3 +19,11 @@ public class CustomerPortalApplication {
     SpringApplication.run(CustomerPortalApplication.class, args);
   }
 }
+
+
+
+/*$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//10.30.6.65:1521/test.crisexacc.org"
+$env:ORACLE_DB_USERNAME = "tms3t"
+$env:ORACLE_DB_PASSWORD = Read-Host "Oracle database password"
+
+.\mvnw.cmd spring-boot:run*/

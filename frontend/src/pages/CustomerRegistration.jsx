@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
 import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
 import { extractGstinFromFile } from '../utils/panOcr';

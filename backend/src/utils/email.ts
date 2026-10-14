@@ -91,6 +91,9 @@ export async function sendAuditEmail(options: AuditEmailOptions) {
   const mailOptions = {
     from: `"Customer Portal Audit" <${env.SMTP_USER || 'audit@customerportal.com'}>`,
     to: dbaEmail,
+    ...(env.SMTP_USER && env.SMTP_USER.toLowerCase() !== dbaEmail.toLowerCase()
+      ? { cc: env.SMTP_USER }
+      : {}),
     subject: 'Database Change Notification - Customer Portal',
     text: lines.join('\n'),
   };

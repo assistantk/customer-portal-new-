@@ -150,6 +150,7 @@ SELECT * FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE '%07ABCDE1234F1Z5%';
 
 ## 12. DBA EMAIL / SQL AUDIT
 When a database operation occurs, the system uses `JavaMailSender` to send an email to the DBA containing a **READY-TO-EXECUTE** Oracle SQL query.
+Audit notifications are also CC'd to the configured sender mailbox (`CRIS_MAIL_USERNAME`), so the sender mailbox receives a copy.
 
 There are exactly four cases managed:
 1. `MEMGLBLCUST` → `INSERT`
@@ -187,7 +188,7 @@ Database configuration is stored in `src/main/resources/application.properties`.
 
 **PowerShell startup:** Set all three variables in the same terminal used to start Spring Boot. The URL must use the SQL Developer connection's service name:
 ```powershell
-$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//tndexaccvm-scan.crisexacc.org:1521/test.crisexacc.org"
+$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//10.30.6.65:1521/test.crisexacc.org"
 $env:ORACLE_DB_USERNAME = "tms3t"
 $env:ORACLE_DB_PASSWORD = Read-Host "Oracle database password"
 Get-ChildItem Env:ORACLE_DB_URL,Env:ORACLE_DB_USERNAME,Env:ORACLE_DB_PASSWORD

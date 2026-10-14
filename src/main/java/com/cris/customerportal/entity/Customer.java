@@ -14,8 +14,8 @@ public class Customer {
   @Column(nullable=false, length=10) private String panNumber;
   @Column(nullable=false) private String operatingDivision;
   @Column(nullable=false) private String zone;
-  @Column(nullable=false) private String email;
-  @Column(nullable=false, length=10) private String mobile;
+  @Column private String email;
+  @Column(length=10) private String mobile;
   @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
   private java.util.List<CustomerGstin> gstins = new java.util.ArrayList<>();
   @Column(nullable=false) private String codeType;
