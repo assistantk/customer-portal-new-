@@ -252,6 +252,7 @@ export async function updateOldCustomerJDBC(payload, gstinEntries) {
     customerCode: payload.customerCode,
     companyName: payload.companyName,
     address: payload.address,
+    city: payload.city,
     email: payload.email,
     mobile: payload.mobile,
     panNumber: payload.panNumber,
