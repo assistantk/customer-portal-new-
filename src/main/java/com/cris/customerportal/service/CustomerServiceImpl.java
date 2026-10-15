@@ -25,9 +25,7 @@ import com.cris.customerportal.service.DbaEmailService;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
- @Autowired private org.springframework.mail.javamail.JavaMailSender mailSender;
  @Autowired private DbaEmailService dbaEmailService;
- @Value("${spring.mail.username}") private String auditFromEmail;
  private final CustomerRepository repo;
  private final CustomerGstinRepository gstinRepo;
  private final Path uploadPath;
@@ -282,28 +280,7 @@ public class CustomerServiceImpl implements CustomerService {
     final String finalTableForEmail = tableName;
     final String finalSqlForEmail = formatBoundSql(sql, insertParameters);
     java.util.concurrent.CompletableFuture.runAsync(() -> {
-        try {
-            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-            message.setFrom(auditFromEmail);
-            message.setTo("dbafois@cris.org.in");
-            if (!auditFromEmail.equalsIgnoreCase("dbafois@cris.org.in")) {
-                message.setCc(auditFromEmail);
-            }
-            message.setSubject("New Customer Database INSERT - " + finalCodeForEmail);
-            String text = "Operation: INSERT\n" +
-                    "Table: " + finalTableForEmail + "\n" +
-                    "Code: " + finalCodeForEmail + "\n\n" +
-                    "SQL QUERY:\n" +
-                    "----------------------------------------\n" +
-                    finalSqlForEmail + "\n" +
-                    "----------------------------------------";
-                    
-            message.setText(text);
-            mailSender.send(message);
-            System.out.println("[EMAIL AUDIT] SMTP accepted INSERT audit email for DBA recipient and sender mailbox, code " + finalCodeForEmail);
-        } catch (Exception ex) {
-            System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
-        }
+        dbaEmailService.sendDbaQueryEmail("INSERT", finalTableForEmail, finalCodeForEmail, finalSqlForEmail);
     });
     
     return finalCode;
@@ -363,73 +340,34 @@ public class CustomerServiceImpl implements CustomerService {
  String type = formData.get("codeType");
  if (type != null) type = type.toLowerCase();
  if ("handling_agent".equals(type)) type = "handling";
- boolean isGlobal = !"handling".equals(type); 
+ boolean isGlobal = !"handling".equals(type);
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-    String sql = isGlobal
-        ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-            : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
-      
+  String sql = isGlobal
+      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
+      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
+
+  List<String> updateParameters = new ArrayList<>();
+  updateParameters.add(formData.get("companyName"));
+  updateParameters.add(formData.get("address"));
+  updateParameters.add(formData.get("city"));
+  if (isGlobal) {
+      updateParameters.add(formData.get("panNumber"));
+      updateParameters.add(formData.get("gstinNumbers"));
+  }
+  updateParameters.add(formData.get("customerCode"));
+
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, formData.get("companyName"));
-   ps.setString(2, formData.get("address"));
-   ps.setString(3, formData.get("city"));
-   if (isGlobal) {
-       ps.setString(4, formData.get("panNumber"));
-       ps.setString(5, formData.get("gstinNumbers"));
-       ps.setString(6, formData.get("customerCode"));
-   } else {
-       ps.setString(4, formData.get("customerCode"));
+   for (int i = 0; i < updateParameters.size(); i++) {
+       ps.setString(i + 1, updateParameters.get(i));
    }
-   
+
    ps.executeUpdate();
-   
-   // Send UPDATE audit email asynchronously
-   java.util.concurrent.CompletableFuture.runAsync(() -> {
-       try {
-           org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-           message.setFrom(auditFromEmail);
-           message.setTo("dbafois@cris.org.in");
-           if (!auditFromEmail.equalsIgnoreCase("dbafois@cris.org.in")) {
-               message.setCc(auditFromEmail);
-           }
-           message.setSubject("Customer Database UPDATE - " + formData.get("customerCode"));
-           
-           java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-           String timestamp = sdf.format(new java.util.Date());
-            String sqlQuery = "";
-            if (isGlobal) {
-                sqlQuery = "UPDATE MEMGLBLCUST\nSET\n" +
-                    "    MAVGLBLCUSTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
-                    "    MAVGLBLCUSTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
-                    "    MAVGNBLCUSTCITYNAME = " + formatSqlValue(formData.get("city")) + ",\n" +
-                    "    MAVCUSTPANNUMB = " + formatSqlValue(formData.get("panNumber")) + ",\n" +
-                    "    MAVCUSTGSTNUMB = " + formatSqlValue(formData.get("gstinNumbers")) + "\n" +
-                    "WHERE MAVGLBLCUSTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
-            } else {
-                sqlQuery = "UPDATE MEMGLBLHNDGAGNT\nSET\n" +
-                    "    MAVHNDGAGNTNAME = " + formatSqlValue(formData.get("companyName")) + ",\n" +
-                    "    MAVHNDGAGNTADDRTEXT = " + formatSqlValue(formData.get("address")) + ",\n" +
-                    "    MAVHNDGAGNTCITYNAME = " + formatSqlValue(formData.get("city")) + "\n" +
-                    "WHERE MAVHNDGAGNTCODE = " + formatSqlValue(formData.get("customerCode")) + ";";
-            }
-                    
-            String text = "Operation: UPDATE\n" +
-                    "Table: " + table + "\n" +
-                    "Code: " + formData.get("customerCode") + "\n\n" +
-                    "SQL QUERY:\n" +
-                    "----------------------------------------\n" +
-                    sqlQuery + "\n" +
-                    "----------------------------------------";
-                   
-           message.setText(text);
-           mailSender.send(message);
-           System.out.println("[EMAIL AUDIT] SMTP accepted UPDATE audit email for DBA recipient and sender mailbox, code " + formData.get("customerCode"));
-       } catch (Exception ex) {
-           System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
-       }
-   });
+
+   final String finalSqlForEmail = formatBoundSql(sql, updateParameters);
+   java.util.concurrent.CompletableFuture.runAsync(() ->
+       dbaEmailService.sendDbaQueryEmail("UPDATE", table, formData.get("customerCode"), finalSqlForEmail));
   } catch (SQLException e) {
    throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
   }
@@ -631,39 +569,40 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   private String formatBoundSql(String sql, List<String> parameters) {
-   int valuesStart = sql.indexOf(" VALUES (");
-   int columnsStart = sql.indexOf(" (");
-   if (valuesStart < 0 || columnsStart < 0 || columnsStart > valuesStart) {
-    throw new IllegalArgumentException("Expected INSERT SQL with an explicit column list.");
-   }
-
-   String tableClause = sql.substring(0, columnsStart);
-   String[] valueExpressions = sql.substring(valuesStart + " VALUES (".length(), sql.lastIndexOf(')')).split(",\\s*");
-   StringBuilder formattedSql = new StringBuilder(tableClause).append("\nVALUES (");
+   StringBuilder formattedSql = new StringBuilder(sql.length() + parameters.size() * 8);
    int parameterIndex = 0;
-   for (int i = 0; i < valueExpressions.length; i++) {
-    if (i > 0) {
-     formattedSql.append(i == 2 || i == 3 ? ",\n" : ",");
-    }
-    String expression = valueExpressions[i];
-    if ("?".equals(expression)) {
+   boolean inString = false;
+   boolean inQuotedIdentifier = false;
+   for (int i = 0; i < sql.length(); i++) {
+    char current = sql.charAt(i);
+    if (current == '\'' && !inQuotedIdentifier) {
+     formattedSql.append(current);
+     if (inString && i + 1 < sql.length() && sql.charAt(i + 1) == '\'') {
+      formattedSql.append(sql.charAt(++i));
+     } else {
+      inString = !inString;
+     }
+    } else if (current == '"' && !inString) {
+     formattedSql.append(current);
+     inQuotedIdentifier = !inQuotedIdentifier;
+    } else if (current == '?' && !inString && !inQuotedIdentifier) {
      if (parameterIndex >= parameters.size()) {
       throw new IllegalArgumentException("SQL contains more placeholders than bound parameters.");
      }
      String value = parameters.get(parameterIndex++);
      formattedSql.append(value == null ? "NULL" : "'" + value.replace("'", "''") + "'");
     } else {
-     formattedSql.append(expression);
+     formattedSql.append(current);
     }
    }
    if (parameterIndex != parameters.size()) {
     throw new IllegalArgumentException("Bound parameter count does not match SQL placeholders.");
    }
-   return formattedSql.append(");").toString();
+   return formattedSql.toString();
   }
 
   private String formatSqlValue(String value) {
-   if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value)) return "NULL";
+   if (value == null) return "NULL";
    return "'" + value.replace("'", "''") + "'";
  }
 
@@ -699,36 +638,12 @@ public class CustomerServiceImpl implements CustomerService {
    ps.setString(2, formData.get("customerCode"));
    ps.executeUpdate();
    
-   // Send UPDATE audit email asynchronously
-   java.util.concurrent.CompletableFuture.runAsync(() -> {
-       try {
-           org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-           message.setFrom(auditFromEmail);
-           message.setTo("dbafois@cris.org.in");
-           if (!auditFromEmail.equalsIgnoreCase("dbafois@cris.org.in")) {
-               message.setCc(auditFromEmail);
-           }
-           message.setSubject("Ownership Database UPDATE - " + formData.get("customerCode"));
-           
-           String sqlQuery = "UPDATE MEMWGONOWNRSHIP\nSET\n" +
-               "    TODO_MAP_OWNERSHIP_ADDR = " + formatSqlValue(formData.get("companyName")) + "\n" +
-               "WHERE TODO_MAP_OWNERSHIP_CODE = " + formatSqlValue(formData.get("customerCode")) + ";";
-                   
-           String text = "Operation: UPDATE\n" +
-                   "Table: MEMWGONOWNRSHIP\n" +
-                   "Code: " + formData.get("customerCode") + "\n\n" +
-                   "SQL QUERY:\n" +
-                   "----------------------------------------\n" +
-                   sqlQuery + "\n" +
-                   "----------------------------------------";
-                  
-           message.setText(text);
-           mailSender.send(message);
-           System.out.println("[EMAIL AUDIT] Email sent successfully for UPDATE " + formData.get("customerCode"));
-       } catch (Exception ex) {
-           System.err.println("[EMAIL AUDIT] Failed to send email: " + ex.getMessage());
-       }
-   });
+   final String finalSqlForEmail = formatBoundSql(sql, Arrays.asList(
+       formData.get("companyName"),
+       formData.get("customerCode")));
+   java.util.concurrent.CompletableFuture.runAsync(() ->
+       dbaEmailService.sendDbaQueryEmail(
+           "UPDATE", "MEMWGONOWNRSHIP", formData.get("customerCode"), finalSqlForEmail));
   } catch (SQLException e) {
    throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this update can execute.", e);
   }
