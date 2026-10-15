@@ -21,7 +21,7 @@ public class CustomerPortalApplication {
 }
 
 
-
+//JCIB
 /*$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//10.30.6.65:1521/test.crisexacc.org"
 $env:ORACLE_DB_USERNAME = "tms3t"
 $env:ORACLE_DB_PASSWORD = Read-Host "Oracle database password"
