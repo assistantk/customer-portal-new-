@@ -664,9 +664,16 @@ public class CustomerServiceImpl implements CustomerService {
    if (parameters.size() != 10) {
     throw new IllegalArgumentException("Global customer INSERT requires 10 bound values.");
    }
+   String companyName = parameters.get(1);
+   if (companyName != null) {
+    companyName = companyName.trim();
+    if (!companyName.regionMatches(true, 0, "M/S", 0, 3)) {
+     companyName = "M/S " + companyName;
+    }
+   }
    return "INSERT INTO MEMGLBLCUST VALUES ("
        + formatSqlValue(parameters.get(0)) + ", "
-       + formatSqlValue(parameters.get(1)) + ", "
+       + formatSqlValue(companyName) + ", "
        + formatSqlValue(parameters.get(2)) + ", "
        + formatSqlValue(parameters.get(3)) + ", "
        + "NULL, NULL, NULL, SYSDATE, "

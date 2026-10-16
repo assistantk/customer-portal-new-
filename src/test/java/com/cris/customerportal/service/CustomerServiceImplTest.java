@@ -66,7 +66,7 @@ class CustomerServiceImplTest {
                 "----------------------------------------1 INSERT---------------------------\n\n"
         ));
         assertTrue(emailBody.contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('ABCD', 'ACME AND SONS LTD', 'ADDRESS', 'NAGPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/NCP', NULL, '27AAECR3577NLZE', 'AAECR3577N');"
+            "INSERT INTO MEMGLBLCUST VALUES ('ABCD', 'M/S ACME AND SONS LTD', 'ADDRESS', 'NAGPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/NCP', NULL, '27AAECR3577NLZE', 'AAECR3577N');"
         ));
         assertTrue(emailBody.endsWith(
             "---\n\nPrasanta Mondal\nChief Manager / FOIS\nCentre for Railway Information Systems\nMob:-8130797454"
@@ -78,6 +78,41 @@ class CustomerServiceImplTest {
             "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
         );
         assertFalse(emailBody.contains("Nagpur (NGP)"));
+    }
+
+    @Test
+    void registerNewGlobalCustomer_shouldNotDuplicateExistingCompanyPrefixInEmail() throws SQLException {
+        CustomerRepository customerRepository = mock(CustomerRepository.class);
+        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement insertPs = mock(PreparedStatement.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(insertPs);
+        when(insertPs.executeUpdate()).thenReturn(1);
+
+        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
+        ReflectionTestUtils.setField(service, "dbaEmailService",
+            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
+        service.registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "RAOT",
+            "companyName", "  m/s RAO TRADERS ",
+            "address", "Address",
+            "city", "Nagpur",
+            "operatingDivision", "Nagpur (NGP)",
+            "gstinNumbers", "27AAECR3577NLZE",
+            "panNumber", "AAECR3577N"
+        ));
+
+        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
+        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
+        assertTrue(emailBody.contains("'M/S RAO TRADERS'"));
+        assertFalse(emailBody.contains("'M/S M/S RAO TRADERS'"));
+        verify(insertPs).setString(2, "m/s RAO TRADERS");
     }
 
     @Test
@@ -112,7 +147,7 @@ class CustomerServiceImplTest {
         String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
         assertTrue(emailBody.contains("----------------------------------------1 INSERT---------------------------"));
         assertTrue(emailBody.contains(
-            "'EFGH', 'EXAMPLE LTD', 'ADDRESS', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20AAECR3577NLZE', 'AAECR3577N')"
+            "'EFGH', 'M/S EXAMPLE LTD', 'ADDRESS', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20AAECR3577NLZE', 'AAECR3577N')"
         ));
         verify(insertPs).setString(6, null);
         verify(insertPs).setString(8, "SR.DCM/DHN");
