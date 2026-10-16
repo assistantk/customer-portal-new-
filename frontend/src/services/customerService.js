@@ -252,10 +252,12 @@ export async function updateOldCustomerJDBC(payload, gstinEntries) {
     customerCode: payload.customerCode,
     companyName: payload.companyName,
     address: payload.address,
+    city: payload.city || '',
     email: payload.email,
     mobile: payload.mobile,
     panNumber: payload.panNumber,
-    gstinNumbers: gstinNumbers
+    gstinNumbers: gstinNumbers,
+    codeType: payload.codeType || 'GLOBAL',
   };
 
   const resp = await request(`${API}/customers/old-update`, {

@@ -183,7 +183,7 @@ public class CustomerServiceImpl implements CustomerService {
   while (base.length() < 4) base += "X";
 
   String tableName = type.equals("global") ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : "MAVHNDAGNTCODE";
   String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
 
   String candidate = base;
@@ -231,10 +231,10 @@ public class CustomerServiceImpl implements CustomerService {
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
   String tableName = "global".equals(type) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-  String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
+  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDAGNTCODE";
+  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDAGNTNAME";
+  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDAGNTADDRTEXT";
+  String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDAGNTCITYNAME";
   String sql;
   String companyName = firstValue(formData, "companyName", "customerName");
   if (companyName != null) companyName = companyName.trim();
@@ -343,18 +343,17 @@ public class CustomerServiceImpl implements CustomerService {
  boolean isGlobal = !"handling".equals(type);
 
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+  // Both global and handling paths now update NAME, ADDRTEXT, CITYNAME, MAVCUSTPANNUMB, MAVCUSTGSTNUMB
   String sql = isGlobal
       ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
+      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = ?, MAVHNDAGNTADDRTEXT = ?, MAVHNDAGNTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVHNDAGNTCODE = ?";
 
   List<String> updateParameters = new ArrayList<>();
   updateParameters.add(formData.get("companyName"));
   updateParameters.add(formData.get("address"));
   updateParameters.add(formData.get("city"));
-  if (isGlobal) {
-      updateParameters.add(formData.get("panNumber"));
-      updateParameters.add(formData.get("gstinNumbers"));
-  }
+  updateParameters.add(formData.get("panNumber"));
+  updateParameters.add(formData.get("gstinNumbers"));
   updateParameters.add(formData.get("customerCode"));
 
   try (Connection conn = dataSource.getConnection();
@@ -374,26 +373,33 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
-    String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
+    // SELECT all columns needed for the Old User Handling Agent fetch/edit flow
+    String sql = "SELECT MAVHNDAGNTCODE, MAVHNDAGNTNAME, MAVHNDAGNTADDRTEXT, MAVHNDAGNTCITYNAME,"
+        + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MAVCUSTGSTNUMB, MAVCUSTPANNUMB"
+        + " FROM MEMGLBLHNDGAGNT WHERE MAVHNDAGNTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, handlingCode);
+   ps.setString(1, handlingCode == null ? null : handlingCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
-     response.setCode(rs.getString("handling_code"));
-     response.setCompanyName(rs.getString("company_name"));
-     response.setAddress(rs.getString("address"));
-     response.setCity(rs.getString("city"));
-     response.setEmail(rs.getString("email"));
-     response.setMobile(rs.getString("mobile"));
+     response.setCode(rs.getString("MAVHNDAGNTCODE"));
+     response.setCompanyName(rs.getString("MAVHNDAGNTNAME"));
+     response.setAddress(rs.getString("MAVHNDAGNTADDRTEXT"));
+     response.setCity(rs.getString("MAVHNDAGNTCITYNAME"));
+     response.setCentBlng(rs.getString("MAVCENTBLNG"));
+     response.setPcoCode(rs.getString("MAVPCOCODE"));
+     response.setEdMndFlag(rs.getString("MAVEDMNDFLAG"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setStatus("Active");
-     return response; // Handling agent lookup without Pincode
+     return response;
     } else {
-     throw new ResourceNotFoundException("Agent Handling Code not found.");
+     throw new ResourceNotFoundException("Handling agent code not found.");
     }
    }
   } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupHandlingAgentByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
  }

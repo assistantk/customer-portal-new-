@@ -130,7 +130,7 @@ class CustomerServiceImplTest {
         audit.setOperationType("INSERT");
         audit.setTableName("MEMGLBLCUST");
         audit.setCustomerCode("ABCD");
-        audit.setSqlStatement("INSERT INTO RailTable (MixedColumn, created_date) VALUES ('rail&co', SYSDATE);");
+        audit.setSqlStatement("INSERT INTO RailTable (MixedColumn, created_date) VALUES ('rail & co', SYSDATE);");
 
         service.sendDbaAuditEmail(audit);
 
@@ -189,6 +189,93 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void updateOldCustomer_handlingAgent_shouldUpdateMemglblhndgagntAndSendEmail() throws SQLException {
+        CustomerRepository customerRepository = mock(CustomerRepository.class);
+        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement updatePs = mock(PreparedStatement.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(updatePs);
+        when(updatePs.executeUpdate()).thenReturn(1);
+
+        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
+        ReflectionTestUtils.setField(service, "dbaEmailService",
+            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
+        service.updateOldCustomerJDBC(Map.of(
+            "codeType", "HANDLING_AGENT",
+            "customerCode", "H001",
+            "companyName", "Cargo Handling Co",
+            "address", "Port Road",
+            "city", "Mumbai",
+            "panNumber", "AAAAA1111A",
+            "gstinNumbers", "27AAAAA1111A1Z5"
+        ));
+
+        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
+        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
+        assertTrue(emailBody.contains("----------------------------------------1 UPDATE---------------------------"));
+        assertTrue(emailBody.contains("UPDATE MEMGLBLHNDGAGNT"));
+        assertTrue(emailBody.contains("MAVHNDAGNTNAME = 'CARGO HANDLING CO'"));
+        assertTrue(emailBody.contains("MAVHNDAGNTADDRTEXT = 'PORT ROAD'"));
+        assertTrue(emailBody.contains("MAVHNDAGNTCITYNAME = 'MUMBAI'"));
+        assertTrue(emailBody.contains("MAVCUSTPANNUMB = 'AAAAA1111A'"));
+        assertTrue(emailBody.contains("MAVCUSTGSTNUMB = '27AAAAA1111A1Z5'"));
+        assertTrue(emailBody.contains("WHERE MAVHNDAGNTCODE = 'H001'"));
+
+        verify(connection).prepareStatement(
+            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = ?, MAVHNDAGNTADDRTEXT = ?, MAVHNDAGNTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVHNDAGNTCODE = ?"
+        );
+        verify(updatePs).setString(1, "Cargo Handling Co");
+        verify(updatePs).setString(2, "Port Road");
+        verify(updatePs).setString(3, "Mumbai");
+        verify(updatePs).setString(4, "AAAAA1111A");
+        verify(updatePs).setString(5, "27AAAAA1111A1Z5");
+        verify(updatePs).setString(6, "H001");
+    }
+
+    @Test
+    void lookupHandlingAgentByCode_shouldReturnHandlingAgentDetails() throws SQLException {
+        CustomerRepository customerRepository = mock(CustomerRepository.class);
+        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true);
+        when(rs.getString("MAVHNDAGNTCODE")).thenReturn("H101");
+        when(rs.getString("MAVHNDAGNTNAME")).thenReturn("Speed Cargo");
+        when(rs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("Terminal 2");
+        when(rs.getString("MAVHNDAGNTCITYNAME")).thenReturn("Delhi");
+        when(rs.getString("MAVCENTBLNG")).thenReturn("Y");
+        when(rs.getString("MAVPCOCODE")).thenReturn("P01");
+        when(rs.getString("MAVEDMNDFLAG")).thenReturn("N");
+        when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07AAAAA0000A1Z5");
+        when(rs.getString("MAVCUSTPANNUMB")).thenReturn("AAAAA0000A");
+
+        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
+        com.cris.customerportal.dto.GlobalAgentResponse resp = service.lookupHandlingAgentByCode("h101");
+
+        org.junit.jupiter.api.Assertions.assertNotNull(resp);
+        org.junit.jupiter.api.Assertions.assertEquals("H101", resp.getCode());
+        org.junit.jupiter.api.Assertions.assertEquals("Speed Cargo", resp.getCompanyName());
+        org.junit.jupiter.api.Assertions.assertEquals("Terminal 2", resp.getAddress());
+        org.junit.jupiter.api.Assertions.assertEquals("Delhi", resp.getCity());
+        org.junit.jupiter.api.Assertions.assertEquals("AAAAA0000A", resp.getPanNumber());
+        org.junit.jupiter.api.Assertions.assertEquals("07AAAAA0000A1Z5", resp.getGstinNumbers());
+        org.junit.jupiter.api.Assertions.assertEquals("Y", resp.getCentBlng());
+        org.junit.jupiter.api.Assertions.assertEquals("P01", resp.getPcoCode());
+        org.junit.jupiter.api.Assertions.assertEquals("N", resp.getEdMndFlag());
+    }
+
+    @Test
     void saveOwnershipJDBC_shouldInsertOnlyOwnershipFields() throws SQLException {
         CustomerRepository customerRepository = mock(CustomerRepository.class);
         CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
@@ -213,7 +300,7 @@ class CustomerServiceImplTest {
         verify(connection, atLeastOnce()).prepareStatement(sqlCaptor.capture());
 
         assertTrue(sqlCaptor.getAllValues().stream().anyMatch(sql ->
-            sql.equals("INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC) VALUES (?, ?)")
+            sql.equals("INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES (?, ?, 'Y')")
         ));
     }
 }
