@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { User, Lock, ShieldCheck, RotateCcw, CircleUser, LogIn, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Lock, ShieldCheck, RotateCcw, LogIn, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { loginUser } from '../services/authService';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -63,8 +63,8 @@ function drawCaptcha(canvas, text) {
 }
 
 /* ── Component ── */
-export default function Login({ onLoginSuccess, onNavigateSignUp }) {
-  const [username, setUsername] = useState('');
+export default function Login({ onLoginSuccess }) {
+  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -83,27 +83,36 @@ export default function Login({ onLoginSuccess, onNavigateSignUp }) {
 
   useEffect(() => { refreshCaptcha(); }, [refreshCaptcha]);
 
+  const handleReset = () => {
+    setUserId('');
+    setPassword('');
+    setCaptchaInput('');
+    setError('');
+    refreshCaptcha();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!username.trim()) { setError('Please enter your username'); return; }
+    if (!userId.trim()) { setError('Please enter your User ID'); return; }
     if (!password) { setError('Please enter your password'); return; }
     if (!captchaInput.trim()) { setError('Please enter the captcha'); return; }
     if (captchaInput.trim() !== captchaText) { setError('Captcha does not match. Please try again.'); refreshCaptcha(); return; }
 
     setLoading(true);
     try {
-      const result = await loginUser({ username: username.trim(), password });
-      if (onLoginSuccess) onLoginSuccess(result.data || { username });
+      const result = await loginUser({ username: userId.trim(), password });
+      if (onLoginSuccess) onLoginSuccess(result.data || { userId: userId.trim() });
     } catch (err) {
       // Provide a user-friendly error message
       let errorMsg = 'Login failed. Please try again.';
       
       if (err instanceof Error) {
         errorMsg = err.message;
-        // Log full error for debugging
         console.error('[Login Error]', err);
+      } else if (typeof err === 'string') {
+        errorMsg = err;
       }
       
       setError(errorMsg);
@@ -155,17 +164,17 @@ export default function Login({ onLoginSuccess, onNavigateSignUp }) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="login-grid" autoComplete="off">
-            {/* Username */}
+            {/* User ID */}
             <div className="login-field-wrap">
-              <label htmlFor="login-user">Username <b>*</b></label>
+              <label htmlFor="login-user">User ID <b>*</b></label>
               <div className="login-control">
                 <User size={15} />
                 <input
                   id="login-user"
                   type="text"
-                  placeholder="Enter UserName"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Enter User ID"
+                  value={userId}
+                  onChange={e => setUserId(e.target.value)}
                   autoFocus
                 />
               </div>
@@ -229,9 +238,9 @@ export default function Login({ onLoginSuccess, onNavigateSignUp }) {
                   {loading ? <Loader2 size={14} className="spin" /> : <LogIn size={14} />}
                   {loading ? 'Signing in…' : 'Login'}
                 </button>
-                <button type="button" className="login-reset" onClick={onNavigateSignUp} disabled={loading}>
-                  <CircleUser size={14} />
-                  Sign Up
+                <button type="button" className="login-reset" onClick={handleReset} disabled={loading}>
+                  <RotateCcw size={14} />
+                  Reset
                 </button>
               </div>
             </div>

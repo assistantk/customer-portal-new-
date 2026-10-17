@@ -12,9 +12,15 @@ const API = '/api';
 async function request(url, options = {}) {
   let res;
   try {
-    res = await fetch(url, options);
+    res = await fetch(url, {
+      ...options,
+      credentials: 'include',
+    });
   } catch (networkErr) {
     throw new Error('Cannot connect to the customer API. Start the Spring Boot backend and check the Oracle network/VPN connection.');
+  }
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('auth-expired'));
   }
   // For file downloads, return raw response
   if (options.rawResponse) return res;

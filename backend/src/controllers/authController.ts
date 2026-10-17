@@ -157,24 +157,10 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     // --- Check if MEMUSERS table exists ---
     const tableReady = await isUsersTableReady();
 
-    // Dev-mode fallback: if MEMUSERS table doesn't exist AND not production,
-    // allow login with any credentials so the app is usable during development.
     if (!tableReady) {
-      if (!env.isProduction) {
-        console.warn('[Auth] MEMUSERS table not found. Dev-mode bypass: allowing login for any credentials.');
-        return res.status(200).json({
-          success: true,
-          message: 'Login successful (dev-mode bypass — MEMUSERS table not initialized).',
-          data: {
-            userId: 0,
-            email: 'dev@localhost',
-            username: trimmedUsername,
-          },
-        });
-      }
       return res.status(503).json({
         success: false,
-        message: 'Authentication tables not initialized. Please run database/06_create_users_table.sql against your Oracle instance.',
+        message: 'Unable to authenticate at this time. Please try again later.',
       });
     }
 
@@ -219,23 +205,9 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     // Provide a clear message for common Oracle connection errors
     const msg = String(err?.message ?? '');
     if (msg.includes('ORA-12541') || msg.includes('ORA-12514') || msg.includes('ECONNREFUSED')) {
-      // Dev-mode fallback when Oracle is completely unreachable
-      if (!env.isProduction) {
-        const trimmedUsername = req.body?.username?.trim() ?? 'dev';
-        console.warn('[Auth] Oracle unreachable. Dev-mode bypass: allowing login.');
-        return res.status(200).json({
-          success: true,
-          message: 'Login successful (dev-mode bypass — Oracle unreachable).',
-          data: {
-            userId: 0,
-            email: 'dev@localhost',
-            username: trimmedUsername,
-          },
-        });
-      }
       return res.status(503).json({
         success: false,
-        message: 'Cannot connect to database. Please ensure Oracle is running and backend .env is configured.',
+        message: 'Unable to authenticate at this time. Please try again later.',
       });
     }
     // Pass all other errors to the error handler

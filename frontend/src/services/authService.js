@@ -1,7 +1,8 @@
 /**
  * Authentication — Frontend API Service
  *
- * Calls the Node.js/Express backend at /api/auth (proxied by Vite to :4000).
+ * Calls the Oracle authentication backend at /api/auth.
+ * Maintains secure server-side session credentials.
  */
 
 const API = '/api/auth';
@@ -11,47 +12,38 @@ const API = '/api/auth';
 async function request(url, options = {}) {
   let res;
   try {
-    res = await fetch(url, options);
+    res = await fetch(url, {
+      ...options,
+      credentials: 'include', // Ensure session cookies (JSESSIONID) are sent with every request
+    });
   } catch (networkErr) {
-    throw new Error('Cannot connect to server. Please ensure the backend is running.');
+    throw new Error('Unable to authenticate at this time. Please try again later.');
   }
 
-  // Handle non-JSON responses (e.g. empty body, proxy errors, HTML error pages)
+  // Handle non-JSON responses
   let body = {};
   let text = '';
-  
+
   try {
     text = await res.text();
     if (text && text.trim()) {
       body = JSON.parse(text);
     }
   } catch (parseErr) {
-    // If response is not OK and we have a parsing error, it's likely an error from the server
     if (!res.ok) {
-      throw new Error(`Server error (${res.status}). Please ensure the backend is running.`);
+      throw new Error(`Server error (${res.status}). Unable to authenticate at this time.`);
     }
-    // For successful responses with invalid JSON, this is still an error
     console.error('Response parse error:', parseErr, 'Response text:', text);
     throw new Error('Invalid response format from server.');
   }
 
-  // Check if the response indicates an error
+  // Check if response indicates an error
   if (!res.ok) {
     const msg = body?.message || body?.error || `Request failed with status ${res.status}`;
     throw new Error(msg);
   }
-  
+
   return body;
-}
-
-/* ---------- Register ---------- */
-
-export async function registerUser({ email, username, password, confirmPassword }) {
-  return request(`${API}/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, username, password, confirmPassword }),
-  });
 }
 
 /* ---------- Login ---------- */
@@ -60,6 +52,24 @@ export async function loginUser({ username, password }) {
   return request(`${API}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ userId: username, password }),
+  });
+}
+
+/* ---------- Logout ---------- */
+
+export async function logoutUser() {
+  return request(`${API}/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/* ---------- Check Current Session ---------- */
+
+export async function checkSession() {
+  return request(`${API}/session`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
   });
 }
