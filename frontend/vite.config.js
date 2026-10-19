@@ -83,11 +83,19 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/api/customers/ownership-submit': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/api/customers/ownership-party-lookup': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/api/customers/ownership-party-save': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/api/auth': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },

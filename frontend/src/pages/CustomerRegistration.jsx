@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupCustomer, lookupOldCustomerJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, updateCustomer, deleteGstin, lookupOwnershipCustomerJDBC, updateOwnershipCustomerJDBC, lookupOwnershipJDBC, saveOwnershipJDBC, lookupOwnershipPartyJDBC, saveOwnershipPartyJDBC } from '../services/customerService';
+import { getMasterData, lookupOldCustomerJDBC, lookupHandlingAgentJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, lookupOwnershipJDBC, lookupOwnershipPartyJDBC, submitOwnershipJDBC } from '../services/customerService';
 import { extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -218,8 +218,8 @@ export default function CustomerRegistration() {
         }
     };
 
-    /* ===== Old User: lookup by customer code ===== */
-    const handleOldCodeChange = (code) => {
+    /* ===== Old User: lookup by customer / handling agent code ===== */
+    const triggerOldLookup = (code, type) => {
         setForm(prev => ({
             ...prev,
             customerCode: code,
@@ -228,8 +228,12 @@ export default function CustomerRegistration() {
             city: '',
             pincode: '',
             panNumber: '',
+            operatingDivision: '',
+            zone: '',
             email: '',
             mobile: '',
+            globalCustomerCode: '',
+            handlingAgentCode: '',
         }));
         setGstins([{ ...blankGstin }]);
         setLookupDone(false); setLookupError('');
@@ -240,7 +244,12 @@ export default function CustomerRegistration() {
             setLookupLoading(true);
             lookupTimerRef.current = setTimeout(async () => {
                 try {
-                    const customer = await lookupOldCustomerJDBC(code.trim());
+                    let customer;
+                    if (type === 'HANDLING_AGENT') {
+                        customer = await lookupHandlingAgentJDBC(code.trim());
+                    } else {
+                        customer = await lookupOldCustomerJDBC(code.trim());
+                    }
                     if (requestId !== lookupRequestRef.current) return;
                     setForm(prev => ({
                         ...prev,
@@ -248,12 +257,12 @@ export default function CustomerRegistration() {
                         customerCode: code,
                         address: customer.address || '',
                         city: customer.city || '',
-                        pincode: '',
+                        pincode: customer.pincode || '',
                         panNumber: customer.panNumber || '',
                         operatingDivision: '',
                         zone: '',
-                        email: customer.emailId || '',
-                        mobile: customer.phoneNumber || '',
+                        email: customer.email || customer.emailId || '',
+                        mobile: customer.mobile || customer.phoneNumber || '',
                         globalCustomerCode: '',
                         handlingAgentCode: '',
                     }));
@@ -276,7 +285,8 @@ export default function CustomerRegistration() {
                     console.error("Lookup error:", err);
                     setLookupDone(false);
                     setLookupError(err.message || 'Error occurred while fetching customer data');
-                    setForm({
+                    setForm(prev => ({
+                        ...prev,
                         companyName: '',
                         customerCode: code,
                         address: '',
@@ -289,7 +299,7 @@ export default function CustomerRegistration() {
                         mobile: '',
                         globalCustomerCode: '',
                         handlingAgentCode: '',
-                    });
+                    }));
                     setGstins([{ ...blankGstin }]);
                 } finally {
                     if (requestId === lookupRequestRef.current) setLookupLoading(false);
@@ -303,11 +313,24 @@ export default function CustomerRegistration() {
                 companyName: '',
                 address: '',
                 city: '',
-                pincode: '',
                 panNumber: '',
                 email: '',
                 mobile: '',
             }));
+        }
+    };
+
+    const handleOldCodeChange = (code) => {
+        triggerOldLookup(code, codeType);
+    };
+
+    const handleOldCodeTypeChange = (newType) => {
+        setCodeType(newType);
+        if (form.customerCode.trim().length === 4) {
+            triggerOldLookup(form.customerCode, newType);
+        } else {
+            setLookupDone(false);
+            setLookupError('');
         }
     };
 
@@ -420,78 +443,56 @@ export default function CustomerRegistration() {
         setLoading(true);
         try {
             if (mode === 'ownership') {
-                /* --- Ownership mode: save Section 1 (MEMWGONOWNRSHIP) and Section 2 (MEMWGONOWNRPRTY) --- */
-                const results = [];
-                // Section 1
-                if (form.ownershipCode?.trim()) {
-                    const r1 = await saveOwnershipJDBC(
-                        form.ownershipCode.trim().toUpperCase(),
-                        form.ownershipAddress?.trim() || ''
-                    );
-                    results.push(r1.message || 'Ownership saved');
-                }
-                // Section 2
-                if (form.ownershipPartyCode?.trim()) {
-                    const r2 = await saveOwnershipPartyJDBC(
-                        form.ownershipPartyCode.trim().toUpperCase(),
-                        form.ownershipPartyAddress?.trim() || ''
-                    );
-                    results.push(r2.message || 'Ownership Party saved');
-                }
-                setNotice(results.length > 0
-                    ? 'Success: ' + results.join(' | ')
-                    : 'Nothing to save - enter at least one code.');
-                // Refresh lookups
-                if (form.ownershipCode?.trim()) {
-                    try {
-                        const ref1 = await lookupOwnershipJDBC(form.ownershipCode.trim());
-                        if (ref1?.found && ref1.data) {
-                            setForm(prev => ({ ...prev, ownershipAddress: ref1.data.ownershipDesc || prev.ownershipAddress }));
-                            setOwnSection1Found(true);
-                        }
-                    } catch (_) {}
-                }
-                if (form.ownershipPartyCode?.trim()) {
-                    try {
-                        const ref2 = await lookupOwnershipPartyJDBC(form.ownershipPartyCode.trim());
-                        if (ref2?.found && ref2.data) {
-                            setForm(prev => ({ ...prev, ownershipPartyAddress: ref2.data.partyDesc || prev.ownershipPartyAddress }));
-                            setOwnSection2Found(true);
-                        }
-                    } catch (_) {}
-                }
+                const result = await submitOwnershipJDBC(
+                    form.ownershipCode.trim().toUpperCase(),
+                    form.ownershipAddress?.trim() || '',
+                    form.ownershipPartyCode?.trim().toUpperCase() || '',
+                    form.ownershipPartyAddress?.trim() || ''
+                );
+                setNotice(result.message || 'Request email sent to DBA. Database changes are pending DBA execution.');
             } else if (mode === 'new') {
-                /* --- New Entry: create customer + GSTINs --- */
+                /* --- New Entry: email the DBA's INSERT request --- */
                 const result = await registerCustomer(
                     { ...form, codeType },
                     gstins
                 );
                 reset();
                 setNotice(result.customerCode
-                    ? `Customer registration submitted successfully. Customer Code: ${result.customerCode}`
-                    : (result.message || 'Customer registration submitted successfully'));
+                    ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${result.customerCode}`
+                    : (result.message || 'Request email sent to DBA. The database change is pending DBA execution.'));
             } else {
-                /* --- Old User / Ownership: update customer via JDBC --- */
-                const result = mode === 'ownership'
-                    ? await updateOwnershipCustomerJDBC(form, gstins)
-                    : await updateOldCustomerJDBC(form, gstins);
+                /* --- Old User: email the DBA's UPDATE request --- */
+                const result = await updateOldCustomerJDBC({ ...form, codeType }, gstins);
 
                 clearSelectedUploads();
-                setNotice(result.message || 'Customer updated successfully');
+                setNotice(result.message || 'Request email sent to DBA. The database change is pending DBA execution.');
                 setRemovedGstinIds([]);
 
                 // Re-lookup to refresh data from DB
                 try {
-                    if (mode === 'ownership') {
-                        const refreshed = await lookupOwnershipCustomerJDBC(form.ownershipCode.trim());
+                    if (codeType === 'HANDLING_AGENT') {
+                        const refreshed = await lookupHandlingAgentJDBC(form.customerCode.trim());
                         setForm(prev => ({
                             ...prev,
-                            ownershipAddress: refreshed.companyName || prev.ownershipAddress,
+                            companyName: refreshed.companyName || prev.companyName,
                             address: refreshed.address || prev.address,
+                            city: refreshed.city || prev.city,
                             panNumber: refreshed.panNumber || prev.panNumber,
-                            email: refreshed.emailId || prev.email,
-                            mobile: refreshed.phoneNumber || prev.mobile,
+                            email: refreshed.email || prev.email,
+                            mobile: refreshed.mobile || prev.mobile,
                         }));
+
+                        if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
+                            const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');
+                            const loadedGstins = cleanGstins.split(',').filter(Boolean).map((g, idx) => ({
+                                ...blankGstin,
+                                gstinId: `old-${idx}`, // temporary ID
+                                gstin: g,
+                            }));
+                            setGstins(loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }]);
+                        } else {
+                            setGstins([{ ...blankGstin }]);
+                        }
                     } else {
                         const refreshed = await lookupOldCustomerJDBC(form.customerCode.trim());
                         setForm(prev => ({
@@ -759,15 +760,22 @@ export default function CustomerRegistration() {
                         <label htmlFor={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}>
                             {mode === 'ownership' ? 'Ownership Code' : 'Customer Code'} <b>*</b>
                         </label>
+                        {mode === 'old' && (
+                            <div className="code-type-toggle">
+                                <button type="button" className={'code-type-btn' + (codeType === 'GLOBAL' ? ' active' : '')} onClick={() => handleOldCodeTypeChange('GLOBAL')}><Globe size={13} /> Global Code</button>
+                                <button type="button" className={'code-type-btn' + (codeType === 'HANDLING_AGENT' ? ' active' : '')} onClick={() => handleOldCodeTypeChange('HANDLING_AGENT')}><Users size={13} /> Handling Agent Code</button>
+                            </div>
+                        )}
                         <div className={'control ' + ((mode === 'ownership' ? errors.ownershipCode : errors.customerCode) ? 'invalid' : '')}>
                             <Tag size={15} />
                             <input
                                 id={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}
                                 name={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}
                                 value={mode === 'ownership' ? (form.ownershipCode || '') : form.customerCode}
-                                placeholder={mode === 'ownership' ? 'Enter ownership code' : 'Enter customer code'}
+                                placeholder={mode === 'ownership' ? 'Enter ownership code' : (codeType === 'HANDLING_AGENT' ? 'Enter handling agent code' : 'Enter customer code')}
                                 onChange={e => mode === 'ownership' ? handleOwnershipCodeChange(e.target.value) : handleOldCodeChange(e.target.value)}
-                                style={mode === 'ownership' ? { textTransform: 'uppercase' } : {}}
+                                style={{ textTransform: 'uppercase' }}
+                                maxLength={4}
                             />
                             {mode === 'ownership' && ownSection1Loading && <Loader2 size={14} className="spin field-status" />}
                             {mode === 'ownership' && !ownSection1Loading && ownSection1Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRSHIP" />}

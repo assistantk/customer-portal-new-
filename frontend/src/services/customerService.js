@@ -12,9 +12,15 @@ const API = '/api';
 async function request(url, options = {}) {
   let res;
   try {
-    res = await fetch(url, options);
+    res = await fetch(url, {
+      ...options,
+      credentials: 'include',
+    });
   } catch (networkErr) {
     throw new Error('Cannot connect to the customer API. Start the Spring Boot backend and check the Oracle network/VPN connection.');
+  }
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('auth-expired'));
   }
   // For file downloads, return raw response
   if (options.rawResponse) return res;
@@ -252,11 +258,12 @@ export async function updateOldCustomerJDBC(payload, gstinEntries) {
     customerCode: payload.customerCode,
     companyName: payload.companyName,
     address: payload.address,
-    city: payload.city,
+    city: payload.city || '',
     email: payload.email,
     mobile: payload.mobile,
     panNumber: payload.panNumber,
-    gstinNumbers: gstinNumbers
+    gstinNumbers: gstinNumbers,
+    codeType: payload.codeType || 'GLOBAL',
   };
 
   const resp = await request(`${API}/customers/old-update`, {
@@ -314,6 +321,14 @@ export async function saveOwnershipJDBC(ownershipCode, ownershipDesc) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ownershipCode, ownershipDesc }),
+  });
+}
+
+export async function submitOwnershipJDBC(ownershipCode, ownershipDesc, partyCode, partyDesc) {
+  return request(`${API}/customers/ownership-submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ownershipCode, ownershipDesc, partyCode, partyDesc }),
   });
 }
 

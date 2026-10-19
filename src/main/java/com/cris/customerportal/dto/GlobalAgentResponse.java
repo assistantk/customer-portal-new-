@@ -8,6 +8,12 @@ public class GlobalAgentResponse {
     private String email;
     private String mobile;
     private String status;
+    // Additional MEMGLBLHNDGAGNT columns exposed for Old User / Handling Agent mode
+    private String panNumber;
+    private String gstinNumbers;
+    private String centBlng;
+    private String pcoCode;
+    private String edMndFlag;
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
@@ -29,4 +35,19 @@ public class GlobalAgentResponse {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getPanNumber() { return panNumber; }
+    public void setPanNumber(String panNumber) { this.panNumber = panNumber; }
+
+    public String getGstinNumbers() { return gstinNumbers; }
+    public void setGstinNumbers(String gstinNumbers) { this.gstinNumbers = gstinNumbers; }
+
+    public String getCentBlng() { return centBlng; }
+    public void setCentBlng(String centBlng) { this.centBlng = centBlng; }
+
+    public String getPcoCode() { return pcoCode; }
+    public void setPcoCode(String pcoCode) { this.pcoCode = pcoCode; }
+
+    public String getEdMndFlag() { return edMndFlag; }
+    public void setEdMndFlag(String edMndFlag) { this.edMndFlag = edMndFlag; }
 }

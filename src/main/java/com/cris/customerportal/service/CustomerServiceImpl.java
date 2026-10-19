@@ -3,15 +3,12 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
-import com.cris.customerportal.entity.CustomerGstin;
 import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.repository.CustomerRepository;
-import com.cris.customerportal.repository.CustomerGstinRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.IOException; import java.nio.file.*; import java.util.*;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
@@ -27,46 +24,112 @@ import com.cris.customerportal.service.DbaEmailService;
 public class CustomerServiceImpl implements CustomerService {
  @Autowired private DbaEmailService dbaEmailService;
  private final CustomerRepository repo;
- private final CustomerGstinRepository gstinRepo;
- private final Path uploadPath;
  private final DataSource dataSource;
- public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir, DataSource dataSource) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); this.dataSource=dataSource;}
+ public CustomerServiceImpl(CustomerRepository repo, DataSource dataSource) { this.repo=repo; this.dataSource=dataSource;}
+
+ private volatile boolean columnsResolved = false;
+ private String glblCityCol = "MAVGNBLCUSTCITYNAME";
+ private String glblGstCol = "MAVCUSTGSTNUMB";
+ private String glblDateCol = "MADEDMNDDATE";
+
+ private String hndgCodeCol = "MAVHNDGAGNTCODE";
+ private String hndgNameCol = "MAVHNDGAGNTNAME";
+ private String hndgAddrCol = "MAVHNDGAGNTADDRTEXT";
+ private String hndgCityCol = "MAVHNDGAGNTCITYNAME";
+ private String hndgGstCol = "MAVCUSTGSTNUMB";
+ private String hndgDateCol = "MADEDMNDDATE";
+
+ private synchronized void initDbColumns() {
+  if (columnsResolved) return;
+  try (Connection conn = dataSource.getConnection()) {
+   if (conn == null) {
+    columnsResolved = true;
+    return;
+   }
+   java.sql.DatabaseMetaData meta = conn.getMetaData();
+   if (meta == null) {
+    columnsResolved = true;
+    return;
+   }
+
+   Set<String> glblCols = new HashSet<>();
+   try (ResultSet rs = meta.getColumns(null, "%", "MEMGLBLCUST", "%")) {
+    if (rs != null) {
+     while (rs.next()) {
+      String col = rs.getString("COLUMN_NAME");
+      if (col != null) glblCols.add(col.toUpperCase(Locale.ROOT));
+     }
+    }
+   }
+   if (!glblCols.isEmpty()) {
+    if (glblCols.contains("MAVGLBLCUSTCITYNAME")) glblCityCol = "MAVGLBLCUSTCITYNAME";
+    else if (glblCols.contains("MAVGNBLCUSTCITYNAME")) glblCityCol = "MAVGNBLCUSTCITYNAME";
+
+    if (glblCols.contains("MAVCUSTGSTNNUMB")) glblGstCol = "MAVCUSTGSTNNUMB";
+    else if (glblCols.contains("MAVCUSTGSTNUMB")) glblGstCol = "MAVCUSTGSTNUMB";
+
+    if (glblCols.contains("MADEDMDNDATE")) glblDateCol = "MADEDMDNDATE";
+    else if (glblCols.contains("MADEDMNDDATE")) glblDateCol = "MADEDMNDDATE";
+   }
+
+   Set<String> hndgCols = new HashSet<>();
+   try (ResultSet rs = meta.getColumns(null, "%", "MEMGLBLHNDGAGNT", "%")) {
+    if (rs != null) {
+     while (rs.next()) {
+      String col = rs.getString("COLUMN_NAME");
+      if (col != null) hndgCols.add(col.toUpperCase(Locale.ROOT));
+     }
+    }
+   }
+   if (!hndgCols.isEmpty()) {
+    if (hndgCols.contains("MAVHNDGAGNTCODE")) hndgCodeCol = "MAVHNDGAGNTCODE";
+    else if (hndgCols.contains("MAVHNDAGNTCODE")) hndgCodeCol = "MAVHNDAGNTCODE";
+
+    if (hndgCols.contains("MAVHNDGAGNTNAME")) hndgNameCol = "MAVHNDGAGNTNAME";
+    else if (hndgCols.contains("MAVHNDAGNTNAME")) hndgNameCol = "MAVHNDAGNTNAME";
+
+    if (hndgCols.contains("MAVHNDGAGNTADDRTEXT")) hndgAddrCol = "MAVHNDGAGNTADDRTEXT";
+    else if (hndgCols.contains("MAVHNDAGNTADDRTEXT")) hndgAddrCol = "MAVHNDAGNTADDRTEXT";
+
+    if (hndgCols.contains("MAVHNDGAGNTCITYNAME")) hndgCityCol = "MAVHNDGAGNTCITYNAME";
+    else if (hndgCols.contains("MAVHNDAGNTCITYNAME")) hndgCityCol = "MAVHNDAGNTCITYNAME";
+
+    if (hndgCols.contains("MAVCUSTGSTNNUMB")) hndgGstCol = "MAVCUSTGSTNNUMB";
+    else if (hndgCols.contains("MAVCUSTGSTNUMB")) hndgGstCol = "MAVCUSTGSTNUMB";
+
+    if (hndgCols.contains("MADEDMDNDATE")) hndgDateCol = "MADEDMDNDATE";
+    else if (hndgCols.contains("MADEDMNDDATE")) hndgDateCol = "MADEDMNDDATE";
+   }
+  } catch (Throwable t) {
+   // Fall back gracefully to defaults
+  } finally {
+   columnsResolved = true;
+  }
+ }
+
 
  @Override
- public Long register(CustomerRegistrationRequest request, List<MultipartFile> files) {
+ public String register(CustomerRegistrationRequest request, List<MultipartFile> files) {
   CustomerRegistrationRequest r = request;
   if (r.gstins() == null || files == null || r.gstins().size() != files.size()) throw new IllegalArgumentException("Number of GSTIN records must match uploaded files");
-  String uniqueCode = generateUniqueCode(r.customerCode());
-  
-  for(com.cris.customerportal.dto.GstinRequest gr : r.gstins()) {
-      if(gstinRepo.existsByGstin(gr.gstin())) throw new ResourceAlreadyExistsException("GSTIN " + gr.gstin() + " already registered");
-  }
-
-  Customer c = new Customer(); c.setCompanyName(r.companyName());c.setCustomerCode(uniqueCode);c.setAddress(r.address());c.setCity(r.city());c.setPincode(r.pincode());c.setPanNumber(r.panNumber());c.setOperatingDivision(r.operatingDivision());c.setZone(r.zone());c.setEmail(r.email());c.setMobile(r.mobile());c.setCodeType(r.codeType());
-  
-  List<CustomerGstin> gstinEntities = new ArrayList<>();
-  try { Files.createDirectories(uploadPath); } catch(IOException e){throw new IllegalStateException("Could not create upload directory");}
-
-  for(int i=0; i<r.gstins().size(); i++) {
-      com.cris.customerportal.dto.GstinRequest gr = r.gstins().get(i);
-      MultipartFile file = files.get(i);
-      validateFile(file);
-      String ext = Optional.ofNullable(file.getOriginalFilename()).filter(n->n.contains(".")).map(n->n.substring(n.lastIndexOf('.')).toLowerCase()).orElse("");
-      String name = UUID.randomUUID() + ext;
-      Path saved = uploadPath.resolve(name).normalize();
-      if(!saved.startsWith(uploadPath)) throw new IllegalArgumentException("Invalid file path");
-      try { Files.copy(file.getInputStream(), saved, StandardCopyOption.REPLACE_EXISTING); } catch(IOException e){throw new IllegalStateException("Could not save uploaded file");}
-      
-      CustomerGstin cg = new CustomerGstin();
-      cg.setState(gr.state());
-      cg.setGstin(gr.gstin());
-      cg.setGstinFileName(name);
-      cg.setGstinFilePath(saved.toString());
-      cg.setCustomer(c);
-      gstinEntities.add(cg);
-  }
-  c.setGstins(gstinEntities);
-  return repo.save(c).getId();
+  files.forEach(this::validateFile);
+  Map<String, String> formData = new HashMap<>();
+  formData.put("codeType", r.codeType());
+  formData.put("customerCode", r.customerCode());
+  formData.put("companyName", r.companyName());
+  formData.put("address", r.address());
+  formData.put("city", r.city());
+  formData.put("pincode", r.pincode());
+  formData.put("panNumber", r.panNumber());
+  formData.put("operatingDivision", r.operatingDivision());
+  formData.put("zone", r.zone());
+  formData.put("email", r.email());
+  formData.put("mobile", r.mobile());
+  formData.put("gstinNumbers", r.gstins().stream()
+      .map(com.cris.customerportal.dto.GstinRequest::gstin)
+      .filter(Objects::nonNull)
+      .collect(Collectors.joining(",")));
+  return registerNewEntryJDBC(formData);
  }
 
  public CustomerLookupResponse lookupByCode(String customerCode) {
@@ -95,7 +158,12 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    initDbColumns();
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+        + glblGstCol + " AS MAVCUSTGSTNUMB, "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
+        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
@@ -127,7 +195,12 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
-    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+    initDbColumns();
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+        + glblGstCol + " AS MAVCUSTGSTNUMB, "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
+        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + "FROM MEMGLBLCUST WHERE " + glblGstCol + " LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -182,8 +255,9 @@ public class CustomerServiceImpl implements CustomerService {
   if (base.length() > 4) base = base.substring(0, 4);
   while (base.length() < 4) base += "X";
 
+  initDbColumns();
   String tableName = type.equals("global") ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : hndgCodeCol;
   String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
 
   String candidate = base;
@@ -226,35 +300,81 @@ public class CustomerServiceImpl implements CustomerService {
 
  public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
   String type = formData.get("codeType");
-  if (type != null) type = type.toLowerCase();
+  if (type != null) type = type.trim().toLowerCase(Locale.ROOT);
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
+  for (String field : List.of("companyName", "address", "city", "pincode", "operatingDivision", "zone", "panNumber", "gstinNumbers")) {
+   if (firstValue(formData, field) == null) {
+    throw new IllegalArgumentException(field + " is required");
+   }
+  }
+  if (formData.get("address").length() > 100) {
+   throw new IllegalArgumentException("Address cannot exceed 100 characters.");
+  }
+  if (!formData.get("pincode").matches("^[1-9][0-9]{5}$")) {
+   throw new IllegalArgumentException("Invalid pincode");
+  }
+  if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+   throw new IllegalArgumentException("Enter a valid PAN number.");
+  }
+  List<String> gstinNumbers = Arrays.stream(formData.get("gstinNumbers").split(","))
+      .map(String::trim)
+      .filter(value -> !value.isEmpty())
+      .toList();
+  if (gstinNumbers.isEmpty() || gstinNumbers.stream().anyMatch(value ->
+      !value.toUpperCase(Locale.ROOT).matches("^[A-Z0-9]{15}$"))) {
+   throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
+  }
+  String email = formData.get("email");
+  if (email != null && !email.isBlank() && !email.trim().matches("^\\S+@\\S+\\.\\S+$")) {
+   throw new IllegalArgumentException("Invalid email");
+  }
+  String mobile = formData.get("mobile");
+  if (mobile != null && !mobile.isBlank() && !mobile.trim().matches("^[6-9][0-9]{9}$")) {
+   throw new IllegalArgumentException("Enter a valid 10-digit Indian mobile number.");
+  }
+
+  initDbColumns();
   String tableName = "global".equals(type) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-  String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
+  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : hndgCodeCol;
+  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : hndgNameCol;
+  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : hndgAddrCol;
+  String cityCol = "global".equals(type) ? glblCityCol : hndgCityCol;
   String sql;
   String companyName = firstValue(formData, "companyName", "customerName");
   if (companyName != null) companyName = companyName.trim();
+  String codeCompanyName = companyName;
+  if ("global".equals(type) && companyName != null) {
+   companyName = withGlobalCompanyNamePrefix(companyName);
+  }
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
-   // Validate address length before attempting DB INSERT (MAVGLBLCUSTADDRTEXT VARCHAR2(100))
    String address = formData.get("address");
-   if (address != null && address.length() > 100) {
-    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
-   }
 
   String divisionDesignation = "global".equals(type)
       ? DivisionDesignationResolver.resolve(formData.get("operatingDivision"))
       : formData.get("operatingDivision");
   sql = "global".equals(type)
-      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + hndgDateCol + ") VALUES (?, ?, ?, ?, SYSDATE)";
 
-  while (true) {
-    String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
+  String finalCode = (providedCode != null && !providedCode.isEmpty())
+      ? providedCode.trim().toUpperCase(Locale.ROOT)
+      : generateUniqueCodeJDBC(codeCompanyName, type);
+  String duplicateSql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(duplicateSql)) {
+   ps.setString(1, finalCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (rs.next()) {
+     throw new ResourceAlreadyExistsException("Customer code " + finalCode + " already exists. Please verify the code before submitting.");
+    }
+   }
+  } catch (SQLException e) {
+   throw new RuntimeException("Database error while checking customer code availability: " + e.getMessage(), e);
+  }
+
     List<String> insertParameters = new ArrayList<>();
     insertParameters.add(finalCode);
     insertParameters.add(companyName);
@@ -268,34 +388,19 @@ public class CustomerServiceImpl implements CustomerService {
         insertParameters.add(formData.get("gstinNumbers"));
         insertParameters.add(formData.get("panNumber"));
     }
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
-    for (int i = 0; i < insertParameters.size(); i++) {
-        ps.setString(i + 1, insertParameters.get(i));
-    }
-    int rowsAffected = ps.executeUpdate();
-    if (rowsAffected > 0) {
-     // Send INSERT audit email asynchronously only after a row is inserted.
-     final String finalCodeForEmail = finalCode;
-     final String finalTableForEmail = tableName;
-     final String finalSqlForEmail = "global".equals(type)
-         ? buildGlobalCustomerInsertEmailSql(insertParameters)
-         : formatBoundSql(sql, insertParameters);
-     java.util.concurrent.CompletableFuture.runAsync(() -> {
-         dbaEmailService.sendDbaQueryEmail("INSERT", finalTableForEmail, finalCodeForEmail, finalSqlForEmail);
-     });
-    }
-    
-    return finalCode;
-   } catch (SQLException e) {
-    // MySQL Duplicate Entry Code
-    if (e.getErrorCode() == 1062) {
-     providedCode = null; // Regenerate code
-    } else {
-     throw new RuntimeException("Database error in registerNewEntryJDBC: " + e.getMessage(), e);
-    }
-   }
+   String executableSql = formatBoundSql(sql, insertParameters) + ";";
+   dbaEmailService.sendDbaSqlEmail(List.of(
+       new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql)));
+   return finalCode;
+ }
+
+ private String withGlobalCompanyNamePrefix(String companyName) {
+  if (companyName.length() >= 3
+      && companyName.regionMatches(true, 0, "M/S", 0, 3)
+      && (companyName.length() == 3 || Character.isWhitespace(companyName.charAt(3)))) {
+   return companyName;
   }
+  return "M/S " + companyName;
  }
 
  @Override
@@ -340,87 +445,69 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
-   String type = formData.get("codeType");
-   if (type != null) type = type.toLowerCase();
-   if ("handling_agent".equals(type)) type = "handling";
-   boolean isGlobal = !"handling".equals(type);
+ String type = formData.get("codeType");
+ if (type != null) type = type.trim().toLowerCase(Locale.ROOT);
+ if ("handling_agent".equals(type)) type = "handling";
+ if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
+ boolean isGlobal = "global".equals(type);
+ String customerCode = firstValue(formData, "customerCode");
+ if (customerCode == null) throw new IllegalArgumentException("Customer code is required");
 
-   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-   String codeColumn = isGlobal ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-   String nameColumn = isGlobal ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-   String addressColumn = isGlobal ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-   String cityColumn = isGlobal ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
-   String panColumn = "MAVCUSTPANNUMB";
-   String gstinColumn = "MAVCUSTGSTNUMB";
-   Map<String, String> fieldNames = new LinkedHashMap<>();
-   fieldNames.put(nameColumn, "companyName");
-   fieldNames.put(addressColumn, "address");
-   fieldNames.put(cityColumn, "city");
-   if (isGlobal) {
-     fieldNames.put(panColumn, "panNumber");
-     fieldNames.put(gstinColumn, "gstinNumbers");
+  initDbColumns();
+  String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+  com.cris.customerportal.dto.OldCustomerResponse oldCustomer;
+  String keyColumn;
+  String nameColumn;
+  String addressColumn;
+  String cityColumn;
+  String panColumn = "MAVCUSTPANNUMB";
+  String gstColumn;
+  if (isGlobal) {
+   oldCustomer = lookupOldCustomerByCode(customerCode);
+   keyColumn = "MAVGLBLCUSTCODE";
+   nameColumn = "MAVGLBLCUSTNAME";
+   addressColumn = "MAVGLBLCUSTADDRTEXT";
+   cityColumn = glblCityCol;
+   gstColumn = glblGstCol;
+  } else {
+   com.cris.customerportal.dto.GlobalAgentResponse agent = lookupHandlingAgentByCode(customerCode);
+   oldCustomer = new com.cris.customerportal.dto.OldCustomerResponse();
+   oldCustomer.setCompanyName(agent.getCompanyName());
+   oldCustomer.setAddress(agent.getAddress());
+   oldCustomer.setCity(agent.getCity());
+   oldCustomer.setPanNumber(agent.getPanNumber());
+   oldCustomer.setGstinNumbers(agent.getGstinNumbers());
+   keyColumn = hndgCodeCol;
+   nameColumn = hndgNameCol;
+   addressColumn = hndgAddrCol;
+   cityColumn = hndgCityCol;
+   gstColumn = hndgGstCol;
+  }
+
+  Map<String, String> current = new LinkedHashMap<>();
+  current.put(nameColumn, oldCustomer.getCompanyName());
+  current.put(addressColumn, oldCustomer.getAddress());
+  current.put(cityColumn, oldCustomer.getCity());
+  current.put(panColumn, oldCustomer.getPanNumber());
+  current.put(gstColumn, oldCustomer.getGstinNumbers());
+  Map<String, String> requested = new LinkedHashMap<>();
+  requested.put(nameColumn, formData.get("companyName"));
+  requested.put(addressColumn, formData.get("address"));
+  requested.put(cityColumn, formData.get("city"));
+  requested.put(panColumn, formData.get("panNumber"));
+  requested.put(gstColumn, formData.get("gstinNumbers"));
+
+  List<String> assignments = new ArrayList<>();
+  for (Map.Entry<String, String> entry : requested.entrySet()) {
+   if (!Objects.equals(normalizeOracleValue(current.get(entry.getKey())), normalizeOracleValue(entry.getValue()))) {
+    assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
-
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement lookup = conn.prepareStatement(
-            "SELECT " + nameColumn + ", " + addressColumn + ", " + cityColumn
-                + (isGlobal ? ", " + panColumn + ", " + gstinColumn : "")
-                + " FROM " + table + " WHERE " + codeColumn + " = ?")) {
-     lookup.setString(1, formData.get("customerCode"));
-     Map<String, String> existingValues = new LinkedHashMap<>();
-     try (ResultSet rs = lookup.executeQuery()) {
-       if (!rs.next()) {
-         throw new ResourceNotFoundException("No customer found for code " + formData.get("customerCode"));
-       }
-       for (String column : fieldNames.keySet()) {
-         existingValues.put(column, rs.getString(column));
-       }
-     }
-
-     Map<String, String> changedValues = new LinkedHashMap<>();
-     for (Map.Entry<String, String> field : fieldNames.entrySet()) {
-       String column = field.getKey();
-       String requestedValue = formData.get(field.getValue());
-       if (!Objects.equals(normalizeNullableValue(existingValues.get(column)), normalizeNullableValue(requestedValue))) {
-         changedValues.put(column, normalizeNullableValue(requestedValue));
-       }
-     }
-
-     String sql = isGlobal
-         ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-         : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = ?, MAVHNDGAGNTADDRTEXT = ?, MAVHNDGAGNTCITYNAME = ? WHERE MAVHNDGAGNTCODE = ?";
-     List<String> updateParameters = new ArrayList<>();
-     updateParameters.add(formData.get("companyName"));
-     updateParameters.add(formData.get("address"));
-     updateParameters.add(formData.get("city"));
-     if (isGlobal) {
-       updateParameters.add(formData.get("panNumber"));
-       updateParameters.add(formData.get("gstinNumbers"));
-     }
-     updateParameters.add(formData.get("customerCode"));
-
-     try (PreparedStatement ps = conn.prepareStatement(sql)) {
-       for (int i = 0; i < updateParameters.size(); i++) {
-         ps.setString(i + 1, updateParameters.get(i));
-       }
-
-       int rowsUpdated = ps.executeUpdate();
-       if (rowsUpdated > 0 && !changedValues.isEmpty()) {
-         String emailAssignments = String.join(",\n    ", changedValues.keySet().stream()
-             .map(column -> column + " = ?")
-             .toList());
-         String emailSql = "UPDATE " + table + "\nSET " + emailAssignments
-             + "\nWHERE " + codeColumn + " = ?;";
-         List<String> emailParameters = new ArrayList<>(changedValues.values());
-         emailParameters.add(formData.get("customerCode"));
-         final String finalSqlForEmail = formatBoundSql(emailSql, emailParameters);
-         java.util.concurrent.CompletableFuture.runAsync(() ->
-             dbaEmailService.sendDbaQueryEmail("UPDATE", table, formData.get("customerCode"), finalSqlForEmail));
-       }
-     }
-   } catch (SQLException e) {
-     throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
-   }
+  }
+  if (assignments.isEmpty()) throw new IllegalArgumentException("No changes detected for this record.");
+  String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
+      + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim().toUpperCase(Locale.ROOT)) + ";";
+  dbaEmailService.sendDbaSqlEmail(List.of(
+      new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim().toUpperCase(Locale.ROOT), executableSql)));
  }
 
  private String normalizeNullableValue(String value) {
@@ -428,26 +515,39 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
-    String sql = "SELECT MAVHNDGAGNTCODE as handling_code, MAVHNDGAGNTNAME as company_name, MAVHNDGAGNTADDRTEXT as address, MAVHNDGAGNTCITYNAME as city FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?";
+    initDbColumns();
+    // SELECT all columns needed for the Old User Handling Agent fetch/edit flow
+    String sql = "SELECT " + hndgCodeCol + " AS MAVHNDAGNTCODE, "
+        + hndgNameCol + " AS MAVHNDAGNTNAME, "
+        + hndgAddrCol + " AS MAVHNDAGNTADDRTEXT, "
+        + hndgCityCol + " AS MAVHNDAGNTCITYNAME,"
+        + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, "
+        + hndgGstCol + " AS MAVCUSTGSTNUMB, "
+        + "MAVCUSTPANNUMB"
+        + " FROM MEMGLBLHNDGAGNT WHERE " + hndgCodeCol + " = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, handlingCode);
+   ps.setString(1, handlingCode == null ? null : handlingCode.trim().toUpperCase(Locale.ROOT));
    try (ResultSet rs = ps.executeQuery()) {
     if (rs.next()) {
      com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
-     response.setCode(rs.getString("handling_code"));
-     response.setCompanyName(rs.getString("company_name"));
-     response.setAddress(rs.getString("address"));
-     response.setCity(rs.getString("city"));
-     response.setEmail(rs.getString("email"));
-     response.setMobile(rs.getString("mobile"));
+     response.setCode(rs.getString("MAVHNDAGNTCODE"));
+     response.setCompanyName(rs.getString("MAVHNDAGNTNAME"));
+     response.setAddress(rs.getString("MAVHNDAGNTADDRTEXT"));
+     response.setCity(rs.getString("MAVHNDAGNTCITYNAME"));
+     response.setCentBlng(rs.getString("MAVCENTBLNG"));
+     response.setPcoCode(rs.getString("MAVPCOCODE"));
+     response.setEdMndFlag(rs.getString("MAVEDMNDFLAG"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setStatus("Active");
-     return response; // Handling agent lookup without Pincode
+     return response;
     } else {
-     throw new ResourceNotFoundException("Agent Handling Code not found.");
+     throw new ResourceNotFoundException("Handling agent code not found.");
     }
    }
   } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupHandlingAgentByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
  }
@@ -497,37 +597,49 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void saveOwnershipJDBC(String ownershipCode, String ownershipDesc) {
-  String normalizedCode = ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT);
-  // Check existence first
-  java.util.Map<String, String> existing = lookupOwnershipJDBC(normalizedCode);
-  if (existing != null) {
-   // UPDATE
-   String sql = "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = ? WHERE MAVWGONOWNRSHIPCODE = ?";
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, ownershipDesc);
-    ps.setString(2, normalizedCode);
-    ps.executeUpdate();
-    String auditSql = "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc) + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
-    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
-   } catch (SQLException e) {
-    System.err.printf("[DB ERROR] saveOwnershipJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-    throw new RuntimeException("Database error while updating ownership record: " + e.getMessage(), e);
-   }
-  } else {
-    String sql = "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES (?, ?, 'Y')";
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, normalizedCode);
-    ps.setString(2, ownershipDesc);
-    ps.executeUpdate();
-    String auditSql = "INSERT INTO MEMWGONOWNRSHIP VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(ownershipDesc) + ",'Y',NULL,SYSDATE,NULL);";
-    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRSHIP", normalizedCode, ownershipDesc, auditSql);
-   } catch (SQLException e) {
-    System.err.printf("[DB ERROR] saveOwnershipJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-    throw new RuntimeException("Database error while inserting ownership record: " + e.getMessage(), e);
+  submitOwnershipJDBC(ownershipCode, ownershipDesc, null, null);
+ }
+
+ public void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc) {
+  boolean hasOwnership = ownershipCode != null && !ownershipCode.isBlank();
+  boolean hasParty = partyCode != null && !partyCode.isBlank();
+  if (!hasOwnership && !hasParty) throw new IllegalArgumentException("At least one ownership code is required.");
+
+  List<DbaEmailService.SqlRequest> statements = new ArrayList<>();
+  if (hasOwnership) {
+   String sql = generateOwnershipSql(ownershipCode, ownershipDesc);
+   if (sql != null) {
+    statements.add(new DbaEmailService.SqlRequest(
+        sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
+        "MEMWGONOWNRSHIP",
+        ownershipCode.trim().toUpperCase(Locale.ROOT),
+        sql));
    }
   }
+  if (hasParty) {
+   String sql = generateOwnershipPartySql(partyCode, partyDesc);
+   if (sql != null) {
+    statements.add(new DbaEmailService.SqlRequest(
+        sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
+        "MEMWGONOWNRPRTY",
+        partyCode.trim().toUpperCase(Locale.ROOT),
+        sql));
+   }
+  }
+  if (statements.isEmpty()) throw new IllegalArgumentException("No changes detected for the ownership records.");
+  dbaEmailService.sendDbaSqlEmail(statements);
+ }
+
+ private String generateOwnershipSql(String ownershipCode, String ownershipDesc) {
+  String normalizedCode = ownershipCode.trim().toUpperCase(Locale.ROOT);
+  Map<String, String> existing = lookupOwnershipJDBC(normalizedCode);
+  if (existing != null) {
+   if (Objects.equals(normalizeOracleValue(existing.get("ownershipDesc")), normalizeOracleValue(ownershipDesc))) return null;
+   return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
+       + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
+  }
+  return "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES ("
+      + formatSqlValue(normalizedCode) + ", " + formatSqlValue(ownershipDesc) + ", 'Y');";
  }
 
  // ===== Ownership Party: MEMWGONOWNRPRTY =====
@@ -574,52 +686,19 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
-  String normalizedCode = partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT);
-  // Check existence first
-  java.util.Map<String, String> existing = lookupOwnershipPartyJDBC(normalizedCode);
-  if (existing != null) {
-   // UPDATE
-   String sql = "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = ? WHERE MAVWGONOWNRPRTYCODE = ?";
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, partyDesc);
-    ps.setString(2, normalizedCode);
-    ps.executeUpdate();
-    String auditSql = "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc) + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
-    sendOwnershipAuditEmail("UPDATE", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
-   } catch (SQLException e) {
-    System.err.printf("[DB ERROR] saveOwnershipPartyJDBC UPDATE SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-    throw new RuntimeException("Database error while updating ownership party record: " + e.getMessage(), e);
-   }
-  } else {
-   // INSERT
-   String sql = "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES (?, ?)";
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
-    ps.setString(1, normalizedCode);
-    ps.setString(2, partyDesc);
-    ps.executeUpdate();
-    String auditSql = "INSERT INTO MEMWGONOWNRPRTY VALUES (" + formatSqlValue(normalizedCode) + "," + formatSqlValue(partyDesc) + ");";
-    sendOwnershipAuditEmail("INSERT", "MEMWGONOWNRPRTY", normalizedCode, partyDesc, auditSql);
-   } catch (SQLException e) {
-    System.err.printf("[DB ERROR] saveOwnershipPartyJDBC INSERT SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-    throw new RuntimeException("Database error while inserting ownership party record: " + e.getMessage(), e);
-   }
-  }
+  submitOwnershipJDBC(null, null, partyCode, partyDesc);
  }
 
- private void sendOwnershipAuditEmail(String operation, String table, String code, String description, String sql) {
-  DatabaseOperationAudit audit = new DatabaseOperationAudit();
-  audit.setOperationType(operation);
-  audit.setPageName("Ownership");
-  audit.setTableName(table);
-  audit.setCustomerCode(code);
-  audit.setCompanyName(description);
-  audit.setSqlStatement(sql);
-  audit.setRowsAffected(1);
-  audit.addParameter(1, "CODE", code);
-  audit.addParameter(2, "DESCRIPTION", description);
-  dbaEmailService.sendDbaAuditEmail(audit);
+ private String generateOwnershipPartySql(String partyCode, String partyDesc) {
+  String normalizedCode = partyCode.trim().toUpperCase(Locale.ROOT);
+  Map<String, String> existing = lookupOwnershipPartyJDBC(normalizedCode);
+  if (existing != null) {
+   if (Objects.equals(normalizeOracleValue(existing.get("partyDesc")), normalizeOracleValue(partyDesc))) return null;
+   return "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc)
+       + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
+  }
+  return "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES ("
+      + formatSqlValue(normalizedCode) + ", " + formatSqlValue(partyDesc) + ");";
  }
 
   private String formatBoundSql(String sql, List<String> parameters) {
@@ -656,32 +735,13 @@ public class CustomerServiceImpl implements CustomerService {
   }
 
   private String formatSqlValue(String value) {
-   if (value == null) return "NULL";
+   if (value == null || value.isEmpty()) return "NULL";
    return "'" + value.replace("'", "''") + "'";
  }
 
- private String buildGlobalCustomerInsertEmailSql(List<String> parameters) {
-   if (parameters.size() != 10) {
-    throw new IllegalArgumentException("Global customer INSERT requires 10 bound values.");
-   }
-   String companyName = parameters.get(1);
-   if (companyName != null) {
-    companyName = companyName.trim();
-    if (!companyName.regionMatches(true, 0, "M/S", 0, 3)) {
-     companyName = "M/S " + companyName;
-    }
-   }
-   return "INSERT INTO MEMGLBLCUST VALUES ("
-       + formatSqlValue(parameters.get(0)) + ", "
-       + formatSqlValue(companyName) + ", "
-       + formatSqlValue(parameters.get(2)) + ", "
-       + formatSqlValue(parameters.get(3)) + ", "
-       + "NULL, NULL, NULL, SYSDATE, "
-       + formatSqlValue(parameters.get(7)) + ", "
-       + "NULL, "
-       + formatSqlValue(parameters.get(8)) + ", "
-       + formatSqlValue(parameters.get(9)) + ");";
- }
+  private String normalizeOracleValue(String value) {
+   return value == null || value.isEmpty() ? null : value;
+  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOwnershipCustomerByCode(String customerCode) {
      // TODO: exact mapping not provided, using MEMWGONOWNRSHIP and placeholder columns to deliberately throw a mapping error
@@ -707,22 +767,6 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void updateOwnershipCustomerJDBC(java.util.Map<String, String> formData) {
-     // TODO: exact mapping not provided, using placeholder columns to deliberately throw a mapping error
-     String sql = "UPDATE MEMWGONOWNRSHIP SET TODO_MAP_OWNERSHIP_ADDR = ? WHERE TODO_MAP_OWNERSHIP_CODE = ?";
-  try (Connection conn = dataSource.getConnection();
-       PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, formData.get("companyName")); // Ownership address
-   ps.setString(2, formData.get("customerCode"));
-   ps.executeUpdate();
-   
-   final String finalSqlForEmail = formatBoundSql(sql, Arrays.asList(
-       formData.get("companyName"),
-       formData.get("customerCode")));
-   java.util.concurrent.CompletableFuture.runAsync(() ->
-       dbaEmailService.sendDbaQueryEmail(
-           "UPDATE", "MEMWGONOWNRSHIP", formData.get("customerCode"), finalSqlForEmail));
-  } catch (SQLException e) {
-   throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this update can execute.", e);
-  }
+  throw new IllegalStateException("The legacy ownership update has no valid Oracle column mapping. Use the ownership request workflow.");
  }
 }

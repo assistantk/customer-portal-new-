@@ -3,7 +3,7 @@ import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import org.springframework.web.multipart.MultipartFile;
 public interface CustomerService {
-  Long register(CustomerRegistrationRequest request, java.util.List<MultipartFile> files);
+  String register(CustomerRegistrationRequest request, java.util.List<MultipartFile> files);
   CustomerLookupResponse lookupByCode(String customerCode);
   String generateUniqueCode(String baseCode);
   com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
@@ -17,6 +17,7 @@ public interface CustomerService {
   java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);
   void saveOwnershipJDBC(String ownershipCode, String ownershipDesc);
+  void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc);
   // Ownership Party (MEMWGONOWNRPRTY)
   java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode);
   java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode);
