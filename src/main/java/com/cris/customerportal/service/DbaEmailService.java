@@ -88,6 +88,7 @@ public class DbaEmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
+        message.setCc("malhotra.poonam@cris.org.in");
         message.setSubject("Customer Registration Portal Database Query");
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n"
@@ -127,6 +128,11 @@ public class DbaEmailService {
 
     private String formatSqlForEmail(SqlRequest request) {
         String sql = request.sql();
+        if ("UPDATE".equalsIgnoreCase(request.operation())
+                && ("MEMGLBLCUST".equalsIgnoreCase(request.table())
+                    || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {
+            return formatUpdateForEmail(sql, request.table()).toUpperCase(Locale.ROOT);
+        }
         if (!"INSERT".equalsIgnoreCase(request.operation())
                 || !"MEMGLBLCUST".equalsIgnoreCase(request.table())) {
             return sql.toUpperCase(Locale.ROOT);
@@ -155,6 +161,86 @@ public class DbaEmailService {
         }
 
         return insertPrefix + " " + sql.substring(valuesStart).toUpperCase(Locale.ROOT);
+    }
+
+    private String formatUpdateForEmail(String sql, String table) {
+        String updatePrefix = "UPDATE " + table;
+        if (!sql.regionMatches(true, 0, updatePrefix, 0, updatePrefix.length())) {
+            throw new IllegalArgumentException("Expected an UPDATE statement for " + table + ".");
+        }
+
+        int setStart = updatePrefix.length();
+        while (setStart < sql.length() && Character.isWhitespace(sql.charAt(setStart))) {
+            setStart++;
+        }
+        if (!sql.regionMatches(true, setStart, "SET", 0, 3)) {
+            throw new IllegalArgumentException("Expected SET in the UPDATE statement for " + table + ".");
+        }
+
+        int assignmentsStart = setStart + 3;
+        int whereStart = findKeywordOutsideString(sql, "WHERE", assignmentsStart);
+        if (whereStart < 0) {
+            throw new IllegalArgumentException("Expected WHERE in the UPDATE statement for " + table + ".");
+        }
+
+        List<String> assignments = splitSqlAssignments(sql.substring(assignmentsStart, whereStart));
+        if (assignments.isEmpty()) {
+            throw new IllegalArgumentException("Expected at least one assignment in the UPDATE statement for " + table + ".");
+        }
+
+        String whereClause = sql.substring(whereStart).trim();
+        return updatePrefix + " SET\n"
+                + String.join(",\n", assignments)
+                + "\n" + whereClause;
+    }
+
+    private int findKeywordOutsideString(String sql, String keyword, int start) {
+        boolean inString = false;
+        for (int i = start; i <= sql.length() - keyword.length(); i++) {
+            char current = sql.charAt(i);
+            if (current == '\'') {
+                if (inString && i + 1 < sql.length() && sql.charAt(i + 1) == '\'') {
+                    i++;
+                } else {
+                    inString = !inString;
+                }
+            } else if (!inString
+                    && sql.regionMatches(true, i, keyword, 0, keyword.length())
+                    && (i == 0 || !Character.isLetterOrDigit(sql.charAt(i - 1)))
+                    && (i + keyword.length() == sql.length()
+                        || !Character.isLetterOrDigit(sql.charAt(i + keyword.length())))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<String> splitSqlAssignments(String assignments) {
+        List<String> result = new ArrayList<>();
+        boolean inString = false;
+        int start = 0;
+        for (int i = 0; i < assignments.length(); i++) {
+            char current = assignments.charAt(i);
+            if (current == '\'') {
+                if (inString && i + 1 < assignments.length() && assignments.charAt(i + 1) == '\'') {
+                    i++;
+                } else {
+                    inString = !inString;
+                }
+            } else if (current == ',' && !inString) {
+                addAssignment(result, assignments.substring(start, i));
+                start = i + 1;
+            }
+        }
+        addAssignment(result, assignments.substring(start));
+        return result;
+    }
+
+    private void addAssignment(List<String> assignments, String assignment) {
+        String trimmed = assignment.trim();
+        if (!trimmed.isEmpty()) {
+            assignments.add(trimmed);
+        }
     }
 
     private int findClosingParenthesis(String sql, int openingParenthesis) {

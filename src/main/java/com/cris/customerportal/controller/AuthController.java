@@ -16,7 +16,7 @@ import java.util.Map;
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AuthController {
 
-    public static final String AUTH_SESSION_KEY = "PORTAL_AUTH_USER";
+    public static final String AUTH_SESSION_KEY = "AUTHENTICATED_USER";
 
     private final AuthService authService;
 
@@ -32,11 +32,11 @@ public class AuthController {
         if (userId == null || userId.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "User ID and Password are required."
+                    "message", "User ID/Email and Password are required."
             ));
         }
 
-        // Authenticate against Oracle PORTAL_AUTH_USERS
+        // Authenticate against TMS3T.AEM_USER.
         AuthUserDto user = authService.authenticate(userId, password);
 
         // Invalidate any existing session to prevent session fixation, then create fresh session

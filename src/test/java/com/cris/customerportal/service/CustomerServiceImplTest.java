@@ -190,14 +190,17 @@ class CustomerServiceImplTest {
             "codeType", "global",
             "customerCode", "AB12",
             "companyName", "New Name",
-            "address", "O'Brien Street",
+            "address", "O'Brien, Street",
             "city", "Nagpur",
             "panNumber", "AAECR3577N",
             "gstinNumbers", "27AAECR3577NLZE"
         ));
 
         assertTrue(emailedBody(mailSender).contains(
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'NEW NAME', MAVGLBLCUSTADDRTEXT = 'O''BRIEN STREET' WHERE MAVGLBLCUSTCODE = 'AB12';"
+            "UPDATE MEMGLBLCUST SET\n"
+                + "MAVGLBLCUSTNAME = 'NEW NAME',\n"
+                + "MAVGLBLCUSTADDRTEXT = 'O''BRIEN, STREET'\n"
+                + "WHERE MAVGLBLCUSTCODE = 'AB12';"
         ));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?"));
         verify(lookupPs, never()).executeUpdate();
@@ -232,7 +235,9 @@ class CustomerServiceImplTest {
         ));
 
         assertTrue(emailedBody(mailSender).contains(
-            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = 'NEW CARGO' WHERE MAVHNDGAGNTCODE = 'H001';"
+            "UPDATE MEMGLBLHNDGAGNT SET\n"
+                + "MAVHNDGAGNTNAME = 'NEW CARGO'\n"
+                + "WHERE MAVHNDGAGNTCODE = 'H001';"
         ));
         verify(lookupPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("UPDATE"));
@@ -341,7 +346,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaSqlEmailDoesNotSetCcRecipients() {
+    void dbaSqlEmailCopiesPoonamOnCc() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
 
@@ -349,7 +354,7 @@ class CustomerServiceImplTest {
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
-        assertNull(message.getValue().getCc());
+        assertArrayEquals(new String[]{"malhotra.poonam@cris.org.in"}, message.getValue().getCc());
     }
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {

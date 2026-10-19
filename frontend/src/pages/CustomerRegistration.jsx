@@ -384,9 +384,11 @@ export default function CustomerRegistration() {
     const validate = () => {
         let e = {};
         if (mode === 'ownership') {
-            // For ownership mode: only validate the two code fields
+            // Require both ownership records and their corresponding descriptions.
             if (!form.ownershipCode?.trim()) e.ownershipCode = 'Ownership Code is required';
             if (!form.ownershipAddress?.trim()) e.ownershipAddress = 'Ownership Address is required';
+            if (!form.ownershipPartyCode?.trim()) e.ownershipPartyCode = 'Ownership Code is required';
+            if (!form.ownershipPartyAddress?.trim()) e.ownershipPartyAddress = 'Ownership Address is required';
             setErrors(e);
             return !Object.keys(e).length;
         }
@@ -842,7 +844,7 @@ export default function CustomerRegistration() {
                 )}
 
                 <div className="field pan-field">
-                    <label htmlFor="panNumber">PAN No. <b>*</b></label>
+                    <label htmlFor="panNumber">PAN No.{mode === 'ownership' ? ' (Optional)' : <> <b>*</b></>}</label>
                     <div className={'control pan-control ' + (errors.panNumber ? 'invalid' : '')}>
                         <FileText size={15} />
                         <input id="panNumber" name="panNumber" value={form.panNumber} maxLength="10" placeholder="Enter 10-character PAN No." onChange={e => handlePanChange(e.target.value)} />
@@ -852,7 +854,7 @@ export default function CustomerRegistration() {
 
                 {/* Row 2: Address | City | Pincode */}
                 <div className="field">
-                    <label htmlFor="address">Address <b>*</b></label>
+                    <label htmlFor="address">Address{mode === 'ownership' ? ' (Optional)' : <> <b>*</b></>}</label>
                     <div className={'control ' + (errors.address ? 'invalid' : '')}>
                         <MapPin size={15} />
                         <input id="address" name="address" value={form.address} maxLength={100} placeholder="Enter complete business address" onChange={e => {
@@ -875,12 +877,12 @@ export default function CustomerRegistration() {
                     {!errors.address && addressStatus === 'auto-corrected' && <small className="address-status warn" style={{ color: 'var(--warning, #ca8a04)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> Auto-corrected based on GSTIN document</small>}
                     {!errors.address && addressStatus === 'extraction-failed' && <small className="address-status error" style={{ color: 'var(--danger, #dc2626)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> Unable to extract address from GSTIN PDF. Please verify manually.</small>}
                 </div>
-                <Field label="City" name="city" icon={MapPin} placeholder="Enter city" form={form} setForm={setForm} error={errors.city} />
-                <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} optional={mode === 'old'} />
+                <Field label="City" name="city" icon={MapPin} placeholder="Enter city" form={form} setForm={setForm} error={errors.city} optional={mode === 'ownership'} />
+                <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} optional={mode === 'old' || mode === 'ownership'} />
 
                 {/* Row 3: Zone | Division | Email */}
-                <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} optional={mode === 'old'} />
-                <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} optional={mode === 'old'} />
+                <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} optional={mode === 'old' || mode === 'ownership'} />
+                <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} optional={mode === 'old' || mode === 'ownership'} />
                 <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} optional />
 
                 {/* Row 4: Mobile */}

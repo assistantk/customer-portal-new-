@@ -95,7 +95,7 @@ export default function Login({ onLoginSuccess }) {
     e.preventDefault();
     setError('');
 
-    if (!userId.trim()) { setError('Please enter your User ID'); return; }
+    if (!userId.trim()) { setError('Please enter your User ID or email address'); return; }
     if (!password) { setError('Please enter your password'); return; }
     if (!captchaInput.trim()) { setError('Please enter the captcha'); return; }
     if (captchaInput.trim() !== captchaText) { setError('Captcha does not match. Please try again.'); refreshCaptcha(); return; }
@@ -164,15 +164,15 @@ export default function Login({ onLoginSuccess }) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="login-grid" autoComplete="off">
-            {/* User ID */}
+            {/* User ID or email */}
             <div className="login-field-wrap">
-              <label htmlFor="login-user">User ID <b>*</b></label>
+              <label htmlFor="login-user">User ID or Email <b>*</b></label>
               <div className="login-control">
                 <User size={15} />
                 <input
                   id="login-user"
                   type="text"
-                  placeholder="Enter User ID"
+                  placeholder="Enter User ID or email address"
                   value={userId}
                   onChange={e => setUserId(e.target.value)}
                   autoFocus
