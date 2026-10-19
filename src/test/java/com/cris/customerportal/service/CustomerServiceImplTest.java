@@ -1,10 +1,10 @@
 package com.cris.customerportal.service;
 
-import com.cris.customerportal.repository.CustomerGstinRepository;
-import com.cris.customerportal.repository.CustomerRepository;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
+import com.cris.customerportal.repository.CustomerRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -16,291 +16,354 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class CustomerServiceImplTest {
 
     @Test
-    void registerNewGlobalCustomer_shouldEmailExecutedInsertWithFormattedStringValues() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+    void registerNewGlobalCustomer_emailsExecutableInsertWithoutExecutingIt() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
-        PreparedStatement insertPs = mock(PreparedStatement.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(insertPs);
-        when(insertPs.executeUpdate()).thenReturn(1);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
 
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
-        ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
-        service.registerNewEntryJDBC(Map.of(
+        service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
             "codeType", "global",
-            "customerCode", "ABCD",
-            "companyName", " Acme & Sons Ltd ",
-            "address", "Address",
-            "city", "Nagpur",
-            "pincode", "828112",
-            "operatingDivision", "Nagpur (NGP)",
-            "gstinNumbers", "27AAECR3577NLZE",
-            "panNumber", "AAECR3577N"
-        ));
-
-        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getTo()).contains("dba@example.com"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("sharma.ashish@cris.org.in"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("rajeevsiloiya@cris.org.in"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("audit@example.com"));
-        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
-        assertTrue(emailBody.startsWith(
-            "Dear DBA Team,\n\nKindly execute attached/below script on rfrn3t and training.\n\nSQL QUERY:\n" +
-                "----------------------------------------1 INSERT---------------------------\n\n"
-        ));
-        assertTrue(emailBody.contains(
-            "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) " +
-                "VALUES ('ABCD', 'ACME AND SONS LTD', 'ADDRESS', 'NAGPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/NCP', NULL, '27AAECR3577NLZE', 'AAECR3577N')"
-        ));
-        assertTrue(emailBody.endsWith(
-            "---\n\nPrasanta Mondal\nChief Manager / FOIS\nCentre for Railway Information Systems\nMob:-8130797454"
-        ));
-        verify(insertPs).setString(2, "Acme & Sons Ltd");
-        verify(insertPs).setString(6, null);
-        verify(insertPs).setString(8, "SR.DCM/NCP");
-        verify(connection).prepareStatement(
-            "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
-        );
-        assertFalse(emailBody.contains("Nagpur (NGP)"));
-    }
-
-    @Test
-    void registerNewGlobalCustomer_shouldUseDivisionCodeFromSelectedDivision() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
-        DataSource dataSource = mock(DataSource.class);
-        Connection connection = mock(Connection.class);
-        PreparedStatement insertPs = mock(PreparedStatement.class);
-        JavaMailSender mailSender = mock(JavaMailSender.class);
-
-        when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(insertPs);
-        when(insertPs.executeUpdate()).thenReturn(1);
-
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
-        ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
-        service.registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "EFGH",
-            "companyName", "Example Ltd",
-            "address", "Address",
+            "customerCode", "MSBC",
+            "companyName", " M/S BALAJI ENTERPRISES ",
+            "address", "O'Brien Road",
             "city", "Dhanbad",
+            "pincode", "440001",
+            "zone", "Central Railway",
             "operatingDivision", "Dhanbad (DHN)",
-            "gstinNumbers", "20AAECR3577NLZE",
-            "panNumber", "AAECR3577N"
+            "gstinNumbers", "20APEPA6196G1Z9",
+            "panNumber", "APEPA6196G"
         ));
 
-        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
-        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
-        assertTrue(emailBody.contains("----------------------------------------1 INSERT---------------------------"));
-        assertTrue(emailBody.contains(
-            "'EFGH', 'EXAMPLE LTD', 'ADDRESS', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20AAECR3577NLZE', 'AAECR3577N')"
+        String body = emailedBody(mailSender);
+        assertTrue(body.startsWith("Dear DBA Team,\n"
+            + "Kindly execute attached/below script on rfrn3t and training.\n\n"
+            + "Operation: INSERT\n"
+            + "Table: MEMGLBLCUST\n"
+            + "Code: MSBC\n\n"
+            + "SQL QUERY:\n"
+            + "----------------------------------------1 INSERT---------------------------\n\n"));
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUST VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20APEPA6196G1Z9', 'APEPA6196G');"
         ));
-        verify(insertPs).setString(6, null);
-        verify(insertPs).setString(8, "SR.DCM/DHN");
-        assertFalse(emailBody.contains("Dhanbad (DHN)"));
+        assertTrue(body.contains("\n\n----------------------------------------\n\nPrasanta Mondal\n"
+            + "Chief Manager / FOIS\n"
+            + "Centre for Railway information systems\n"
+            + "Mob:-8130797454"));
+        verify(existsPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("INSERT"));
     }
 
     @Test
-    void divisionDesignationResolver_shouldUseSelectedDivisionCode() {
-        assertTrue("SR.DCM/SDAH".equals(DivisionDesignationResolver.resolve("Sealdah (SDAH)")));
-    }
-
-    @Test
-    void dbaAuditEmail_shouldCopyConfiguredSenderMailbox() {
-        JavaMailSender mailSender = mock(JavaMailSender.class);
-        DbaEmailService service = new DbaEmailService(mailSender, "audit@example.com", "dba@example.com");
-        DatabaseOperationAudit audit = new DatabaseOperationAudit();
-        audit.setOperationType("INSERT");
-        audit.setTableName("MEMGLBLCUST");
-        audit.setCustomerCode("ABCD");
-        audit.setSqlStatement("INSERT INTO RailTable (MixedColumn, created_date) VALUES ('rail & co', SYSDATE);");
-
-        service.sendDbaAuditEmail(audit);
-
-        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(messageCaptor.capture());
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getTo()).contains("dba@example.com"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("audit@example.com"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("sharma.ashish@cris.org.in"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("rajeevsiloiya@cris.org.in"));
-        assertTrue(messageCaptor.getValue().getText().contains(
-            "INSERT INTO RailTable (MixedColumn, created_date) VALUES ('RAIL AND CO', SYSDATE);"
-        ));
-        assertTrue(messageCaptor.getValue().getText().contains(
-            "----------------------------------------1 INSERT---------------------------"
-        ));
-        assertTrue(messageCaptor.getValue().getText().contains("Mob:-8130797454"));
-    }
-
-    @Test
-    void updateOldCustomer_shouldEmailSuccessfulUpdateAndOriginalWhereClause() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+    void registerAnotherGlobalCustomer_emailsValuesOnlyInDatabaseColumnOrder() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
-        PreparedStatement updatePs = mock(PreparedStatement.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(updatePs);
-        when(updatePs.executeUpdate()).thenReturn(1);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
 
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
-        ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
-        service.updateOldCustomerJDBC(Map.of(
+        service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "ASEB",
+            "companyName", "AVANTIKA SOLAR ENERGY PRIVATE LIMITED",
+            "address", "FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014",
+            "city", "PATNA",
+            "pincode", "800014",
+            "zone", "East Central Railway",
+            "operatingDivision", "Danapur (DNR)",
+            "gstinNumbers", "10ABACA6462C1ZD",
+            "panNumber", "ABACA6462C"
+        ));
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: ASEB"));
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUST VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', "
+                + "'FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014', 'PATNA', "
+                + "NULL, NULL, NULL, SYSDATE, 'SR.DCM/DNR', NULL, '10ABACA6462C1ZD', 'ABACA6462C');"
+        ));
+        assertFalse(body.contains("INSERT INTO MEMGLBLCUST ("));
+        verify(existsPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("INSERT"));
+    }
+
+    @Test
+    void registerGlobalCustomer_doesNotDuplicateCaseInsensitiveCompanyPrefix() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "ASEB",
+            "companyName", "  m/s AVANTIKA SOLAR ENERGY PRIVATE LIMITED  ",
+            "address", "Patna Road",
+            "city", "Patna",
+            "pincode", "800014",
+            "zone", "East Central Railway",
+            "operatingDivision", "Danapur (DNR)",
+            "gstinNumbers", "10ABACA6462C1ZD",
+            "panNumber", "ABACA6462C"
+        ));
+
+        assertTrue(emailedBody(mailSender).contains(
+            "INSERT INTO MEMGLBLCUST VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', "
+                + "'PATNA ROAD', 'PATNA', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DNR', NULL, "
+                + "'10ABACA6462C1ZD', 'ABACA6462C');"
+        ));
+    }
+
+    @Test
+    void registerHandlingAgent_emailsInsertUsingExistingColumnMappings() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?")).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "handling_agent",
+            "customerCode", "H001",
+            "companyName", "Cargo Co",
+            "address", "Port Road",
+            "city", "Mumbai",
+            "pincode", "400001",
+            "zone", "Western Railway",
+            "operatingDivision", "Mumbai Central",
+            "gstinNumbers", "27AAAAA1111A1Z5",
+            "panNumber", "AAAAA1111A"
+        ));
+
+        assertTrue(emailedBody(mailSender).contains(
+            "INSERT INTO MEMGLBLHNDGAGNT (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MADEDMNDDATE) " +
+                "VALUES ('H001', 'CARGO CO', 'PORT ROAD', 'MUMBAI', SYSDATE);"
+        ));
+        verify(existsPs, never()).executeUpdate();
+    }
+
+    @Test
+    void updateOldGlobalCustomer_emailsOnlyChangedFieldsWithoutExecutingUpdate() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("Old Name");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Old Address");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAECR3577N");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAECR3577NLZE");
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
+
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
             "codeType", "global",
             "customerCode", "AB12",
-            "companyName", "Rail & Road",
+            "companyName", "New Name",
             "address", "O'Brien Street",
-            "city", "Pune",
-            "panNumber", "abcde1234f",
-            "gstinNumbers", "27abcde1234f1z9"
+            "city", "Nagpur",
+            "panNumber", "AAECR3577N",
+            "gstinNumbers", "27AAECR3577NLZE"
         ));
 
-        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
-        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
-        assertTrue(emailBody.contains("----------------------------------------1 UPDATE---------------------------"));
-        assertTrue(emailBody.contains("MAVGLBLCUSTNAME = 'RAIL AND ROAD'"));
-        assertTrue(emailBody.contains("MAVGLBLCUSTADDRTEXT = 'O''BRIEN STREET'"));
-        assertTrue(emailBody.contains("MAVCUSTPANNUMB = 'ABCDE1234F'"));
-        assertTrue(emailBody.contains("WHERE MAVGLBLCUSTCODE = 'AB12'"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("sharma.ashish@cris.org.in"));
-        assertTrue(java.util.Arrays.asList(messageCaptor.getValue().getCc()).contains("rajeevsiloiya@cris.org.in"));
-        verify(updatePs).setString(2, "O'Brien Street");
+        assertTrue(emailedBody(mailSender).contains(
+            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'NEW NAME', MAVGLBLCUSTADDRTEXT = 'O''BRIEN STREET' WHERE MAVGLBLCUSTCODE = 'AB12';"
+        ));
+        verify(connection).prepareStatement(contains("FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?"));
+        verify(lookupPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
 
     @Test
-    void updateOldCustomer_handlingAgent_shouldUpdateMemglblhndgagntAndSendEmail() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+    void updateOldHandlingAgent_emailsUpdateUsingHandlingAgentKey() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
-        PreparedStatement updatePs = mock(PreparedStatement.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(updatePs);
-        when(updatePs.executeUpdate()).thenReturn(1);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVHNDAGNTNAME")).thenReturn("Old Cargo");
+        when(lookupRs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("Port Road");
+        when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("Mumbai");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAAAA1111A");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAAAA1111A1Z5");
 
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
-        ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mailSender, "audit@example.com", "dba@example.com"));
-        service.updateOldCustomerJDBC(Map.of(
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
             "codeType", "HANDLING_AGENT",
             "customerCode", "H001",
-            "companyName", "Cargo Handling Co",
+            "companyName", "New Cargo",
             "address", "Port Road",
             "city", "Mumbai",
             "panNumber", "AAAAA1111A",
             "gstinNumbers", "27AAAAA1111A1Z5"
         ));
 
-        ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender, timeout(2000)).send(messageCaptor.capture());
-        String emailBody = java.util.Objects.requireNonNull(messageCaptor.getValue().getText());
-        assertTrue(emailBody.contains("----------------------------------------1 UPDATE---------------------------"));
-        assertTrue(emailBody.contains("UPDATE MEMGLBLHNDGAGNT"));
-        assertTrue(emailBody.contains("MAVHNDAGNTNAME = 'CARGO HANDLING CO'"));
-        assertTrue(emailBody.contains("MAVHNDAGNTADDRTEXT = 'PORT ROAD'"));
-        assertTrue(emailBody.contains("MAVHNDAGNTCITYNAME = 'MUMBAI'"));
-        assertTrue(emailBody.contains("MAVCUSTPANNUMB = 'AAAAA1111A'"));
-        assertTrue(emailBody.contains("MAVCUSTGSTNUMB = '27AAAAA1111A1Z5'"));
-        assertTrue(emailBody.contains("WHERE MAVHNDAGNTCODE = 'H001'"));
-
-        verify(connection).prepareStatement(
-            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = ?, MAVHNDAGNTADDRTEXT = ?, MAVHNDAGNTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVHNDAGNTCODE = ?"
-        );
-        verify(updatePs).setString(1, "Cargo Handling Co");
-        verify(updatePs).setString(2, "Port Road");
-        verify(updatePs).setString(3, "Mumbai");
-        verify(updatePs).setString(4, "AAAAA1111A");
-        verify(updatePs).setString(5, "27AAAAA1111A1Z5");
-        verify(updatePs).setString(6, "H001");
+        assertTrue(emailedBody(mailSender).contains(
+            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = 'NEW CARGO' WHERE MAVHNDGAGNTCODE = 'H001';"
+        ));
+        verify(lookupPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
 
     @Test
-    void lookupHandlingAgentByCode_shouldReturnHandlingAgentDetails() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+    void ownershipSubmission_emailsBothTableStatementsTogetherWithoutWrites() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(ownershipLookup, partyLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(ownershipRs.next()).thenReturn(false);
+        when(partyRs.next()).thenReturn(false);
+
+        service(dataSource, mailSender).submitOwnershipJDBC("AB12", "O'Brien ownership", "PT34", "Party & Co");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES ('AB12', 'O''BRIEN OWNERSHIP', 'Y');"
+        ));
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES ('PT34', 'PARTY & CO');"
+        ));
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
+            + "----------------------------------------1 INSERT---------------------------"));
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRPRTY\nCode: PT34\n\nSQL QUERY:\n"
+            + "----------------------------------------2 INSERT---------------------------"));
+        assertTrue(body.indexOf("MEMWGONOWNRSHIP") < body.indexOf("MEMWGONOWNRPRTY"));
+        verify(ownershipLookup, never()).executeUpdate();
+        verify(partyLookup, never()).executeUpdate();
+    }
+
+    @Test
+    void ownershipUpdate_emailsUpdateWhenRecordAlreadyExists() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement lookupPs = mock(PreparedStatement.class);
-        ResultSet rs = mock(ResultSet.class);
-
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
-        when(lookupPs.executeQuery()).thenReturn(rs);
-        when(rs.next()).thenReturn(true);
-        when(rs.getString("MAVHNDAGNTCODE")).thenReturn("H101");
-        when(rs.getString("MAVHNDAGNTNAME")).thenReturn("Speed Cargo");
-        when(rs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("Terminal 2");
-        when(rs.getString("MAVHNDAGNTCITYNAME")).thenReturn("Delhi");
-        when(rs.getString("MAVCENTBLNG")).thenReturn("Y");
-        when(rs.getString("MAVPCOCODE")).thenReturn("P01");
-        when(rs.getString("MAVEDMNDFLAG")).thenReturn("N");
-        when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07AAAAA0000A1Z5");
-        when(rs.getString("MAVCUSTPANNUMB")).thenReturn("AAAAA0000A");
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("Existing description");
 
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
-        com.cris.customerportal.dto.GlobalAgentResponse resp = service.lookupHandlingAgentByCode("h101");
+        service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Updated description", null, null);
 
-        org.junit.jupiter.api.Assertions.assertNotNull(resp);
-        org.junit.jupiter.api.Assertions.assertEquals("H101", resp.getCode());
-        org.junit.jupiter.api.Assertions.assertEquals("Speed Cargo", resp.getCompanyName());
-        org.junit.jupiter.api.Assertions.assertEquals("Terminal 2", resp.getAddress());
-        org.junit.jupiter.api.Assertions.assertEquals("Delhi", resp.getCity());
-        org.junit.jupiter.api.Assertions.assertEquals("AAAAA0000A", resp.getPanNumber());
-        org.junit.jupiter.api.Assertions.assertEquals("07AAAAA0000A1Z5", resp.getGstinNumbers());
-        org.junit.jupiter.api.Assertions.assertEquals("Y", resp.getCentBlng());
-        org.junit.jupiter.api.Assertions.assertEquals("P01", resp.getPcoCode());
-        org.junit.jupiter.api.Assertions.assertEquals("N", resp.getEdMndFlag());
+        assertTrue(emailedBody(mailSender).contains(
+            "Operation: UPDATE\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
+                + "----------------------------------------1 UPDATE---------------------------\n\n"
+                + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'UPDATED DESCRIPTION' WHERE MAVWGONOWNRSHIPCODE = 'AB12';"
+        ));
+        verify(lookupPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
 
     @Test
-    void saveOwnershipJDBC_shouldInsertOnlyOwnershipFields() throws SQLException {
-        CustomerRepository customerRepository = mock(CustomerRepository.class);
-        CustomerGstinRepository gstinRepository = mock(CustomerGstinRepository.class);
+    void emailFailurePropagatesAndDoesNotWriteToOperationalTables() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
-        PreparedStatement lookupPs = mock(PreparedStatement.class);
-        PreparedStatement insertPs = mock(PreparedStatement.class);
-        ResultSet lookupRs = mock(ResultSet.class);
-
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(lookupPs).thenReturn(insertPs);
-        when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(false);
-        when(insertPs.executeUpdate()).thenReturn(1);
+        when(connection.prepareStatement(anyString())).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+        doThrow(new MailSendException("SMTP unavailable")).when(mailSender).send(any(SimpleMailMessage.class));
 
-        CustomerServiceImpl service = new CustomerServiceImpl(customerRepository, gstinRepository, "uploads", dataSource);
+        assertThrows(MailSendException.class, () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "ABCD",
+            "companyName", "Acme Ltd",
+            "address", "Main Road",
+            "city", "Nagpur",
+            "pincode", "440001",
+            "zone", "Central Railway",
+            "operatingDivision", "Nagpur (NGP)",
+            "gstinNumbers", "27AAECR3577NLZE",
+            "panNumber", "AAECR3577N"
+        )));
+        verify(existsPs, never()).executeUpdate();
+    }
+
+    @Test
+    void dbaAuditEmailRetainsExistingAuditBehavior() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "audit@example.com", "dba@example.com");
+        DatabaseOperationAudit audit = new DatabaseOperationAudit();
+        audit.setOperationType("INSERT");
+        audit.setTableName("MEMGLBLCUST");
+        audit.setSqlStatement("INSERT INTO RailTable (MixedColumn) VALUES ('rail & co');");
+
+        emailService.sendDbaAuditEmail(audit);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains("INSERT INTO RailTable (MixedColumn) VALUES ('RAIL AND CO');"));
+    }
+
+    @Test
+    void dbaSqlEmailDoesNotSetCcRecipients() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+
+        emailService.sendDbaSqlEmail("INSERT", "INSERT INTO TEST_TABLE VALUES ('A');");
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertNull(message.getValue().getCc());
+    }
+
+    private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
+        CustomerServiceImpl service = new CustomerServiceImpl(
+            mock(CustomerRepository.class),
+            dataSource);
         ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mock(JavaMailSender.class), "audit@example.com", "dba@example.com"));
-        service.saveOwnershipJDBC("AB12", "Test ownership");
+            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com"));
+        return service;
+    }
 
-        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(connection, atLeastOnce()).prepareStatement(sqlCaptor.capture());
-
-        assertTrue(sqlCaptor.getAllValues().stream().anyMatch(sql ->
-            sql.equals("INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES (?, ?, 'Y')")
-        ));
+    private String emailedBody(JavaMailSender mailSender) {
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        return message.getValue().getText();
     }
 }

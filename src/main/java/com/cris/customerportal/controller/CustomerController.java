@@ -2,6 +2,7 @@ package com.cris.customerportal.controller;
 
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
+import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.service.CustomerService;
 import jakarta.validation.Valid;
@@ -14,9 +15,8 @@ import java.util.Map;
 import org.springframework.http.*; import org.springframework.web.bind.annotation.*; import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 @RestController @RequestMapping("/api/customers")
-@CrossOrigin("*")
 public class CustomerController { private final CustomerService service; public CustomerController(CustomerService s){service=s;}
- @PostMapping(value="/register", consumes=MediaType.MULTIPART_FORM_DATA_VALUE) public ResponseEntity<?> register(@Valid @RequestPart("customer") CustomerRegistrationRequest customer,@RequestPart("gstinFiles") java.util.List<MultipartFile> files){Long id=service.register(customer,files);return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success",true,"message","Customer registration submitted successfully","id",id));}
+ @PostMapping(value="/register", consumes=MediaType.MULTIPART_FORM_DATA_VALUE) public ResponseEntity<?> register(@Valid @RequestPart("customer") CustomerRegistrationRequest customer,@RequestPart("gstinFiles") java.util.List<MultipartFile> files){String code=service.register(customer,files);return ResponseEntity.ok(Map.of("success",true,"message","Request email sent to DBA. Database changes are pending DBA execution.","customerCode",code));}
  @GetMapping("/master-data") public Map<String,Object> master(){return Map.of("cities",Map.of("Delhi",new String[]{"110001","110002"},"Mumbai",new String[]{"400001","400002"},"Kolkata",new String[]{"700001","700002"},"Chennai",new String[]{"600001","600002"}),"divisionZones",Map.of("Northern Railway",new String[]{"Delhi","Ambala","Firozpur","Lucknow","Moradabad"},"Eastern Railway",new String[]{"Howrah","Sealdah","Asansol","Malda"},"Western Railway",new String[]{"Mumbai Central","Vadodara","Ratlam","Ahmedabad","Rajkot","Bhavnagar"},"Southern Railway",new String[]{"Chennai","Madurai","Palakkad","Salem","Thiruvananthapuram"},"Central Railway",new String[]{"Mumbai","Bhusawal","Nagpur","Pune","Solapur"},"North Central Railway",new String[]{"Prayagraj","Jhansi","Agra"},"South Central Railway",new String[]{"Secunderabad","Hyderabad","Vijayawada","Guntakal","Nanded"},"North Eastern Railway",new String[]{"Varanasi","Lucknow","Izzatnagar"},"North Western Railway",new String[]{"Jaipur","Ajmer","Bikaner","Jodhpur"}));}
  @GetMapping("/lookup") public CustomerLookupResponse lookup(@RequestParam String code){return service.lookupByCode(code);}
  @GetMapping("/old-lookup") public com.cris.customerportal.dto.OldCustomerResponse lookupOld(@RequestParam String code){return service.lookupOldCustomerByCode(code);}
@@ -35,9 +35,11 @@ public class CustomerController { private final CustomerService service; public 
                                       @RequestPart(value="panFile", required=false) MultipartFile panFile) {
   try {
    String code = service.registerNewEntryJDBC(formData);
-   return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success",true,"message","Customer registration submitted successfully","customerCode",code));
+   return ResponseEntity.ok(Map.of("success",true,"message","Request email sent to DBA. Database changes are pending DBA execution.","customerCode",code));
   } catch (IllegalArgumentException e) {
    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", e.getMessage()));
+  } catch (ResourceAlreadyExistsException e) {
+   return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("success", false, "message", e.getMessage()));
   } catch (Exception e) {
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Registration failed: " + e.getMessage()));
   }
@@ -47,7 +49,11 @@ public class CustomerController { private final CustomerService service; public 
  public ResponseEntity<?> oldUpdate(@RequestBody Map<String, String> payload) {
   try {
    service.updateOldCustomerJDBC(payload);
-   return ResponseEntity.ok(Map.of("success", true, "message", "Customer updated successfully"));
+   return ResponseEntity.ok(Map.of("success", true, "message", "Request email sent to DBA. Database changes are pending DBA execution."));
+  } catch (IllegalArgumentException e) {
+   return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+  } catch (ResourceNotFoundException e) {
+   return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "message", e.getMessage()));
   } catch (Exception e) {
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Update failed: " + e.getMessage()));
   }
@@ -93,10 +99,28 @@ public class CustomerController { private final CustomerService service; public 
     return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Ownership Code is required"));
    }
    service.saveOwnershipJDBC(code.trim(), desc);
-   return ResponseEntity.ok(Map.of("success", true, "message", "Ownership record saved successfully"));
+   return ResponseEntity.ok(Map.of("success", true, "message", "Request email sent to DBA. Database changes are pending DBA execution."));
+  } catch (IllegalArgumentException e) {
+   return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+  } catch (Exception e) {
+   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Could not send the request email: " + e.getMessage()));
+  }
+ }
+
+ @PostMapping("/ownership-submit")
+ public ResponseEntity<?> ownershipSubmit(@RequestBody Map<String, String> payload) {
+  try {
+   service.submitOwnershipJDBC(
+    payload.get("ownershipCode"),
+    payload.get("ownershipDesc"),
+    payload.get("partyCode"),
+    payload.get("partyDesc"));
+   return ResponseEntity.ok(Map.of("success", true, "message", "Request email sent to DBA. Database changes are pending DBA execution."));
+  } catch (IllegalArgumentException e) {
+   return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
   } catch (Exception e) {
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-    .body(Map.of("success", false, "message", e.getMessage()));
+    .body(Map.of("success", false, "message", "Could not send the request email: " + e.getMessage()));
   }
  }
 
@@ -126,11 +150,10 @@ public class CustomerController { private final CustomerService service; public 
     return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Ownership Party Code is required"));
    }
    service.saveOwnershipPartyJDBC(code.trim(), desc);
-   return ResponseEntity.ok(Map.of("success", true, "message", "Ownership Party record saved successfully"));
+   return ResponseEntity.ok(Map.of("success", true, "message", "Request email sent to DBA. Database changes are pending DBA execution."));
   } catch (Exception e) {
    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
     .body(Map.of("success", false, "message", e.getMessage()));
   }
  }
 }
-

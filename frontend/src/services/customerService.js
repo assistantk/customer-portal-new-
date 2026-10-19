@@ -324,6 +324,14 @@ export async function saveOwnershipJDBC(ownershipCode, ownershipDesc) {
   });
 }
 
+export async function submitOwnershipJDBC(ownershipCode, ownershipDesc, partyCode, partyDesc) {
+  return request(`${API}/customers/ownership-submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ownershipCode, ownershipDesc, partyCode, partyDesc }),
+  });
+}
+
 /* ---------- Ownership Section 2: MEMWGONOWNRPRTY ---------- */
 
 /**
