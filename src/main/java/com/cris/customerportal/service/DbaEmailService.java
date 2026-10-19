@@ -8,9 +8,9 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class DbaEmailService {
@@ -23,7 +23,7 @@ public class DbaEmailService {
     public DbaEmailService(
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
-            @Value("${app.dba-email:dbafois@cris.org.in}") String dbaEmail) {
+            @Value("${app.dba-email:sura767848@gmail.com}") String dbaEmail) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
@@ -34,22 +34,14 @@ public class DbaEmailService {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
-            message.setTo(dbaEmail);
-            List<String> ccRecipients = new ArrayList<>(List.of(
-                    "sharma.ashish@cris.org.in",
-                    "rajeevsiloiya@cris.org.in"));
-            if (fromEmail != null && !fromEmail.isBlank()
-                    && (dbaEmail == null || !fromEmail.equalsIgnoreCase(dbaEmail))
-                    && ccRecipients.stream().noneMatch(fromEmail::equalsIgnoreCase)) {
-                ccRecipients.add(fromEmail);
-            }
-            message.setCc(ccRecipients.toArray(new String[0]));
+            message.setTo(dbaEmail, "mondal.prasanta@cris.org.in");
+            message.setCc("mondal.prasanta@cris.org.in", "malhotra.poonam@cris.org.in");
             message.setSubject("Customer Registration Portal Database Query");
 
             String operation = audit.getOperationType() == null
                     ? "QUERY"
                     : audit.getOperationType().toUpperCase(Locale.ROOT);
-            String sql = formatStringLiterals(audit.getSqlStatement() == null ? "" : audit.getSqlStatement());
+            String sql = formatStringLiterals(toEmailSql(audit));
             String text = "Dear DBA Team,\n\n"
                     + "Kindly execute attached/below script on rfrn3t and training.\n\n"
                     + "SQL QUERY:\n"
@@ -63,7 +55,7 @@ public class DbaEmailService {
 
             message.setText(text);
             mailSender.send(message);
-            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to DBA and sender mailbox for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to DBA and CC recipient for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
@@ -88,6 +80,23 @@ public class DbaEmailService {
         audit.setCustomerCode(customerCode);
         audit.setSqlStatement(sql);
         sendDbaAuditEmail(audit);
+    }
+
+    private String toEmailSql(DatabaseOperationAudit audit) {
+        String sql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
+        String tableName = audit.getTableName();
+        if (!"INSERT".equalsIgnoreCase(audit.getOperationType())
+                || tableName == null
+                || (!"MEMGLBLCUST".equalsIgnoreCase(tableName)
+                    && !"MEMGLBLHNDGAGNT".equalsIgnoreCase(tableName))) {
+            return sql;
+        }
+
+        Pattern columnListInsert = Pattern.compile(
+                "^(\\s*INSERT\\s+INTO\\s+" + Pattern.quote(tableName) + ")\\s*\\([^)]*\\)(\\s+VALUES\\b.*)$",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Matcher matcher = columnListInsert.matcher(sql);
+        return matcher.matches() ? matcher.group(1) + matcher.group(2) : sql;
     }
 
     private String formatStringLiterals(String sql) {

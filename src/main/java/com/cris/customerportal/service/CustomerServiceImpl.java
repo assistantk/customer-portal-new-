@@ -366,15 +366,18 @@ public class CustomerServiceImpl implements CustomerService {
     for (int i = 0; i < insertParameters.size(); i++) {
         ps.setString(i + 1, insertParameters.get(i));
     }
-    ps.executeUpdate();
-    
-    // Send INSERT audit email asynchronously
-    final String finalCodeForEmail = finalCode;
-    final String finalTableForEmail = tableName;
-    final String finalSqlForEmail = formatBoundSql(sql, insertParameters);
-    java.util.concurrent.CompletableFuture.runAsync(() -> {
-        dbaEmailService.sendDbaQueryEmail("INSERT", finalTableForEmail, finalCodeForEmail, finalSqlForEmail);
-    });
+    int rowsAffected = ps.executeUpdate();
+    if (rowsAffected > 0) {
+     // Send INSERT audit email asynchronously only after a row is inserted.
+     final String finalCodeForEmail = finalCode;
+     final String finalTableForEmail = tableName;
+     final String finalSqlForEmail = "global".equals(type)
+         ? buildGlobalCustomerInsertEmailSql(insertParameters)
+         : formatBoundSql(sql, insertParameters);
+     java.util.concurrent.CompletableFuture.runAsync(() -> {
+         dbaEmailService.sendDbaQueryEmail("INSERT", finalTableForEmail, finalCodeForEmail, finalSqlForEmail);
+     });
+    }
     
     return finalCode;
    } catch (SQLException e) {
@@ -430,10 +433,10 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
- String type = formData.get("codeType");
- if (type != null) type = type.toLowerCase();
- if ("handling_agent".equals(type)) type = "handling";
- boolean isGlobal = !"handling".equals(type);
+   String type = formData.get("codeType");
+   if (type != null) type = type.toLowerCase();
+   if ("handling_agent".equals(type)) type = "handling";
+   boolean isGlobal = !"handling".equals(type);
 
   initDbColumns();
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
@@ -450,20 +453,32 @@ public class CustomerServiceImpl implements CustomerService {
   updateParameters.add(formData.get("gstinNumbers"));
   updateParameters.add(formData.get("customerCode"));
 
-  try (Connection conn = dataSource.getConnection();
-       PreparedStatement ps = conn.prepareStatement(sql)) {
-   for (int i = 0; i < updateParameters.size(); i++) {
-       ps.setString(i + 1, updateParameters.get(i));
+     try (PreparedStatement ps = conn.prepareStatement(sql)) {
+       for (int i = 0; i < updateParameters.size(); i++) {
+         ps.setString(i + 1, updateParameters.get(i));
+       }
+
+       int rowsUpdated = ps.executeUpdate();
+       if (rowsUpdated > 0 && !changedValues.isEmpty()) {
+         String emailAssignments = String.join(",\n    ", changedValues.keySet().stream()
+             .map(column -> column + " = ?")
+             .toList());
+         String emailSql = "UPDATE " + table + "\nSET " + emailAssignments
+             + "\nWHERE " + codeColumn + " = ?;";
+         List<String> emailParameters = new ArrayList<>(changedValues.values());
+         emailParameters.add(formData.get("customerCode"));
+         final String finalSqlForEmail = formatBoundSql(emailSql, emailParameters);
+         java.util.concurrent.CompletableFuture.runAsync(() ->
+             dbaEmailService.sendDbaQueryEmail("UPDATE", table, formData.get("customerCode"), finalSqlForEmail));
+       }
+     }
+   } catch (SQLException e) {
+     throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
    }
+ }
 
-   ps.executeUpdate();
-
-   final String finalSqlForEmail = formatBoundSql(sql, updateParameters);
-   java.util.concurrent.CompletableFuture.runAsync(() ->
-       dbaEmailService.sendDbaQueryEmail("UPDATE", table, formData.get("customerCode"), finalSqlForEmail));
-  } catch (SQLException e) {
-   throw new RuntimeException("Database error in updateOldCustomerJDBC connecting/committing: " + e.getMessage(), e);
-  }
+ private String normalizeNullableValue(String value) {
+   return value == null || value.isBlank() ? null : value;
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
@@ -710,6 +725,29 @@ public class CustomerServiceImpl implements CustomerService {
   private String formatSqlValue(String value) {
    if (value == null) return "NULL";
    return "'" + value.replace("'", "''") + "'";
+ }
+
+ private String buildGlobalCustomerInsertEmailSql(List<String> parameters) {
+   if (parameters.size() != 10) {
+    throw new IllegalArgumentException("Global customer INSERT requires 10 bound values.");
+   }
+   String companyName = parameters.get(1);
+   if (companyName != null) {
+    companyName = companyName.trim();
+    if (!companyName.regionMatches(true, 0, "M/S", 0, 3)) {
+     companyName = "M/S " + companyName;
+    }
+   }
+   return "INSERT INTO MEMGLBLCUST VALUES ("
+       + formatSqlValue(parameters.get(0)) + ", "
+       + formatSqlValue(companyName) + ", "
+       + formatSqlValue(parameters.get(2)) + ", "
+       + formatSqlValue(parameters.get(3)) + ", "
+       + "NULL, NULL, NULL, SYSDATE, "
+       + formatSqlValue(parameters.get(7)) + ", "
+       + "NULL, "
+       + formatSqlValue(parameters.get(8)) + ", "
+       + formatSqlValue(parameters.get(9)) + ");";
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOwnershipCustomerByCode(String customerCode) {
