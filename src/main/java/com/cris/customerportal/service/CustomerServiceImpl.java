@@ -32,6 +32,87 @@ public class CustomerServiceImpl implements CustomerService {
  private final DataSource dataSource;
  public CustomerServiceImpl(CustomerRepository repo, CustomerGstinRepository gstinRepo, @Value("${app.upload-dir:uploads/gstin}") String dir, DataSource dataSource) { this.repo=repo; this.gstinRepo=gstinRepo; this.uploadPath=Paths.get(dir).toAbsolutePath().normalize(); this.dataSource=dataSource;}
 
+ private volatile boolean columnsResolved = false;
+ private String glblCityCol = "MAVGNBLCUSTCITYNAME";
+ private String glblGstCol = "MAVCUSTGSTNUMB";
+ private String glblDateCol = "MADEDMNDDATE";
+
+ private String hndgCodeCol = "MAVHNDAGNTCODE";
+ private String hndgNameCol = "MAVHNDAGNTNAME";
+ private String hndgAddrCol = "MAVHNDAGNTADDRTEXT";
+ private String hndgCityCol = "MAVHNDAGNTCITYNAME";
+ private String hndgGstCol = "MAVCUSTGSTNUMB";
+ private String hndgDateCol = "MADEDMNDDATE";
+
+ private synchronized void initDbColumns() {
+  if (columnsResolved) return;
+  try (Connection conn = dataSource.getConnection()) {
+   if (conn == null) {
+    columnsResolved = true;
+    return;
+   }
+   java.sql.DatabaseMetaData meta = conn.getMetaData();
+   if (meta == null) {
+    columnsResolved = true;
+    return;
+   }
+
+   Set<String> glblCols = new HashSet<>();
+   try (ResultSet rs = meta.getColumns(null, "%", "MEMGLBLCUST", "%")) {
+    if (rs != null) {
+     while (rs.next()) {
+      String col = rs.getString("COLUMN_NAME");
+      if (col != null) glblCols.add(col.toUpperCase(Locale.ROOT));
+     }
+    }
+   }
+   if (!glblCols.isEmpty()) {
+    if (glblCols.contains("MAVGLBLCUSTCITYNAME")) glblCityCol = "MAVGLBLCUSTCITYNAME";
+    else if (glblCols.contains("MAVGNBLCUSTCITYNAME")) glblCityCol = "MAVGNBLCUSTCITYNAME";
+
+    if (glblCols.contains("MAVCUSTGSTNNUMB")) glblGstCol = "MAVCUSTGSTNNUMB";
+    else if (glblCols.contains("MAVCUSTGSTNUMB")) glblGstCol = "MAVCUSTGSTNUMB";
+
+    if (glblCols.contains("MADEDMDNDATE")) glblDateCol = "MADEDMDNDATE";
+    else if (glblCols.contains("MADEDMNDDATE")) glblDateCol = "MADEDMNDDATE";
+   }
+
+   Set<String> hndgCols = new HashSet<>();
+   try (ResultSet rs = meta.getColumns(null, "%", "MEMGLBLHNDGAGNT", "%")) {
+    if (rs != null) {
+     while (rs.next()) {
+      String col = rs.getString("COLUMN_NAME");
+      if (col != null) hndgCols.add(col.toUpperCase(Locale.ROOT));
+     }
+    }
+   }
+   if (!hndgCols.isEmpty()) {
+    if (hndgCols.contains("MAVHNDGAGNTCODE")) hndgCodeCol = "MAVHNDGAGNTCODE";
+    else if (hndgCols.contains("MAVHNDAGNTCODE")) hndgCodeCol = "MAVHNDAGNTCODE";
+
+    if (hndgCols.contains("MAVHNDGAGNTNAME")) hndgNameCol = "MAVHNDGAGNTNAME";
+    else if (hndgCols.contains("MAVHNDAGNTNAME")) hndgNameCol = "MAVHNDAGNTNAME";
+
+    if (hndgCols.contains("MAVHNDGAGNTADDRTEXT")) hndgAddrCol = "MAVHNDGAGNTADDRTEXT";
+    else if (hndgCols.contains("MAVHNDAGNTADDRTEXT")) hndgAddrCol = "MAVHNDAGNTADDRTEXT";
+
+    if (hndgCols.contains("MAVHNDGAGNTCITYNAME")) hndgCityCol = "MAVHNDGAGNTCITYNAME";
+    else if (hndgCols.contains("MAVHNDAGNTCITYNAME")) hndgCityCol = "MAVHNDAGNTCITYNAME";
+
+    if (hndgCols.contains("MAVCUSTGSTNNUMB")) hndgGstCol = "MAVCUSTGSTNNUMB";
+    else if (hndgCols.contains("MAVCUSTGSTNUMB")) hndgGstCol = "MAVCUSTGSTNUMB";
+
+    if (hndgCols.contains("MADEDMDNDATE")) hndgDateCol = "MADEDMDNDATE";
+    else if (hndgCols.contains("MADEDMNDDATE")) hndgDateCol = "MADEDMNDDATE";
+   }
+  } catch (Throwable t) {
+   // Fall back gracefully to defaults
+  } finally {
+   columnsResolved = true;
+  }
+ }
+
+
  @Override
  public Long register(CustomerRegistrationRequest request, List<MultipartFile> files) {
   CustomerRegistrationRequest r = request;
@@ -95,7 +176,12 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
-    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+    initDbColumns();
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+        + glblGstCol + " AS MAVCUSTGSTNUMB, "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
+        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
@@ -127,7 +213,12 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
   public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin) {
-    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, MAVCUSTGSTNUMB, MAVGNBLCUSTCITYNAME, TO_CHAR(MADEDMNDDATE, 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT FROM MEMGLBLCUST WHERE MAVCUSTGSTNUMB LIKE ?";
+    initDbColumns();
+    String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+        + glblGstCol + " AS MAVCUSTGSTNUMB, "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
+        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + "FROM MEMGLBLCUST WHERE " + glblGstCol + " LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
@@ -182,8 +273,9 @@ public class CustomerServiceImpl implements CustomerService {
   if (base.length() > 4) base = base.substring(0, 4);
   while (base.length() < 4) base += "X";
 
+  initDbColumns();
   String tableName = type.equals("global") ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : "MAVHNDAGNTCODE";
+  String colName = type.equals("global") ? "MAVGLBLCUSTCODE" : hndgCodeCol;
   String sql = "SELECT 1 FROM " + tableName + " WHERE " + colName + " = ?";
 
   String candidate = base;
@@ -230,11 +322,12 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
+  initDbColumns();
   String tableName = "global".equals(type) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
-  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDAGNTCODE";
-  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDAGNTNAME";
-  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDAGNTADDRTEXT";
-  String cityCol = "global".equals(type) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDAGNTCITYNAME";
+  String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : hndgCodeCol;
+  String nameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : hndgNameCol;
+  String addrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : hndgAddrCol;
+  String cityCol = "global".equals(type) ? glblCityCol : hndgCityCol;
   String sql;
   String companyName = firstValue(formData, "companyName", "customerName");
   if (companyName != null) companyName = companyName.trim();
@@ -250,8 +343,8 @@ public class CustomerServiceImpl implements CustomerService {
       ? DivisionDesignationResolver.resolve(formData.get("operatingDivision"))
       : formData.get("operatingDivision");
   sql = "global".equals(type)
-      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, MADEDMNDDATE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MADEDMNDDATE) VALUES (?, ?, ?, ?, SYSDATE)";
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + hndgDateCol + ") VALUES (?, ?, ?, ?, SYSDATE)";
 
   while (true) {
     String finalCode = (providedCode != null && !providedCode.isEmpty()) ? providedCode.trim().toUpperCase(Locale.ROOT) : generateUniqueCodeJDBC(companyName, type);
@@ -342,11 +435,12 @@ public class CustomerServiceImpl implements CustomerService {
  if ("handling_agent".equals(type)) type = "handling";
  boolean isGlobal = !"handling".equals(type);
 
+  initDbColumns();
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
   // Both global and handling paths now update NAME, ADDRTEXT, CITYNAME, MAVCUSTPANNUMB, MAVCUSTGSTNUMB
   String sql = isGlobal
-      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, MAVGNBLCUSTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVGLBLCUSTCODE = ?"
-      : "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = ?, MAVHNDAGNTADDRTEXT = ?, MAVHNDAGNTCITYNAME = ?, MAVCUSTPANNUMB = ?, MAVCUSTGSTNUMB = ? WHERE MAVHNDAGNTCODE = ?";
+      ? "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ?, MAVGLBLCUSTADDRTEXT = ?, " + glblCityCol + " = ?, MAVCUSTPANNUMB = ?, " + glblGstCol + " = ? WHERE MAVGLBLCUSTCODE = ?"
+      : "UPDATE MEMGLBLHNDGAGNT SET " + hndgNameCol + " = ?, " + hndgAddrCol + " = ?, " + hndgCityCol + " = ?, MAVCUSTPANNUMB = ?, " + hndgGstCol + " = ? WHERE " + hndgCodeCol + " = ?";
 
   List<String> updateParameters = new ArrayList<>();
   updateParameters.add(formData.get("companyName"));
@@ -373,10 +467,16 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
+    initDbColumns();
     // SELECT all columns needed for the Old User Handling Agent fetch/edit flow
-    String sql = "SELECT MAVHNDAGNTCODE, MAVHNDAGNTNAME, MAVHNDAGNTADDRTEXT, MAVHNDAGNTCITYNAME,"
-        + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MAVCUSTGSTNUMB, MAVCUSTPANNUMB"
-        + " FROM MEMGLBLHNDGAGNT WHERE MAVHNDAGNTCODE = ?";
+    String sql = "SELECT " + hndgCodeCol + " AS MAVHNDAGNTCODE, "
+        + hndgNameCol + " AS MAVHNDAGNTNAME, "
+        + hndgAddrCol + " AS MAVHNDAGNTADDRTEXT, "
+        + hndgCityCol + " AS MAVHNDAGNTCITYNAME,"
+        + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, "
+        + hndgGstCol + " AS MAVCUSTGSTNUMB, "
+        + "MAVCUSTPANNUMB"
+        + " FROM MEMGLBLHNDGAGNT WHERE " + hndgCodeCol + " = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, handlingCode == null ? null : handlingCode.trim().toUpperCase(Locale.ROOT));
