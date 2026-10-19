@@ -1,0 +1,50 @@
+[Unit]
+Description=CRIS Customer Registration Portal Spring Boot Backend
+Documentation=file:///opt/customer-portal/README.md
+After=network-online.target syslog.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=portal
+Group=portal
+
+# Application home and execution
+WorkingDirectory=/opt/customer-portal
+ExecStart=/usr/bin/java \
+    -Djava.security.egd=file:/dev/./urandom \
+    -Dserver.address=127.0.0.1 \
+    -Dserver.port=8080 \
+    -Dapp.upload-dir=/var/portal-uploads \
+    -jar /opt/customer-portal/customer-portal.jar
+
+# Load sensitive environment variables from secure root-managed file
+# File permissions must be 0600 (readable only by root and systemd manager)
+EnvironmentFile=/etc/customer-portal/customer-portal.env
+
+# Restart policy
+Restart=always
+RestartSec=10s
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+
+# Sandboxing and Security Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+# Allowed read/write paths for the portal user
+ReadWritePaths=/var/portal-uploads /var/log/customer-portal
+
+# Logging configuration
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=customer-portal
+
+[Install]
+WantedBy=multi-user.target
