@@ -72,23 +72,23 @@ function generateCodeFromName(name) {
 function Field({ label, name, icon: Icon, form, setForm, error, readOnly, optional = false, ...rest }) {
     return <div className="field"><label htmlFor={name}>{label}{optional ? ' (Optional)' : <> <b>*</b></>}</label><div className={'control ' + (error ? 'invalid' : '')}><Icon size={15} /><input id={name} name={name} value={form[name]} readOnly={readOnly} onChange={e => setForm({ ...form, [name]: e.target.value })} {...rest} /></div>{error && <small className="error">{error}</small>}</div>;
 }
-function Select({ label, name, icon: Icon, options, form, setForm, error, disabled, onValueChange, formatOption = value => value }) {
-    return <div className="field"><label htmlFor={name}>{label} <b>*</b></label><div className={'control select ' + (error ? 'invalid' : '')}><Icon size={15} /><select id={name} value={form[name]} disabled={disabled} onChange={e => onValueChange ? onValueChange(e.target.value) : setForm({ ...form, [name]: e.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(v => <option key={v} value={v}>{formatOption(v)}</option>)}</select><ChevronDown size={14} /></div>{error && <small className="error">{error}</small>}</div>;
+function Select({ label, name, icon: Icon, options, form, setForm, error, disabled, onValueChange, optional = false, formatOption = value => value }) {
+    return <div className="field"><label htmlFor={name}>{label}{optional ? ' (Optional)' : <> <b>*</b></>}</label><div className={'control select ' + (error ? 'invalid' : '')}><Icon size={15} /><select id={name} value={form[name]} disabled={disabled} onChange={e => onValueChange ? onValueChange(e.target.value) : setForm({ ...form, [name]: e.target.value })}><option value="">Select {label.toLowerCase()}</option>{options.map(v => <option key={v} value={v}>{formatOption(v)}</option>)}</select><ChevronDown size={14} /></div>{error && <small className="error">{error}</small>}</div>;
 }
-function DivisionSelect({ options, form, setForm, error, disabled }) {
+function DivisionSelect({ options, form, setForm, error, disabled, optional = false }) {
     const [open, setOpen] = useState(false);
     const choose = division => { setForm(prev => ({ ...prev, operatingDivision: division })); setOpen(false); };
     const selectedDivision = options.includes(form.operatingDivision) ? form.operatingDivision : '';
-    return <div className="field zone-field"><label id="division-label">Division <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision || 'Select division'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+    return <div className="field zone-field"><label id="division-label">Division{optional ? ' (Optional)' : <> <b>*</b></>}</label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision || 'Select division'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
-function ZoneSelect({ options, form, setForm, error }) {
+function ZoneSelect({ options, form, setForm, error, optional = false }) {
     const [open, setOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const choose = zone => { setForm(prev => ({ ...prev, zone, operatingDivision: '' })); setSearchTerm(''); setOpen(false); };
     const toggleOpen = () => { setOpen(current => !current); if (open) setSearchTerm(''); };
     const filteredOptions = options.filter(zone => zone.toLowerCase().includes(searchTerm.toLowerCase()));
-    return <div className="field zone-field"><label id="zone-label">Zone <b>*</b></label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="zone-label" aria-expanded={open} onClick={toggleOpen}><Globe size={15} /><span>{form.zone || 'Select zone'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Zone options"><div className="zone-search"><Search size={14} /><input type="search" aria-label="Search zones" placeholder="Search zone" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div><button type="button" className="zone-option" onClick={() => choose('')}>Select zone</button>{filteredOptions.length ? filteredOptions.map(zone => <button type="button" className="zone-option" role="option" aria-selected={form.zone === zone} key={zone} onClick={() => choose(zone)}>{zone}</button>) : <div className="zone-empty">No zones found</div>}</div>}{error && <small className="error">{error}</small>}</div>;
+    return <div className="field zone-field"><label id="zone-label">Zone{optional ? ' (Optional)' : <> <b>*</b></>}</label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="zone-label" aria-expanded={open} onClick={toggleOpen}><Globe size={15} /><span>{form.zone || 'Select zone'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Zone options"><div className="zone-search"><Search size={14} /><input type="search" aria-label="Search zones" placeholder="Search zone" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div><button type="button" className="zone-option" onClick={() => choose('')}>Select zone</button>{filteredOptions.length ? filteredOptions.map(zone => <button type="button" className="zone-option" role="option" aria-selected={form.zone === zone} key={zone} onClick={() => choose(zone)}>{zone}</button>) : <div className="zone-empty">No zones found</div>}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
 export default function CustomerRegistration() {
@@ -391,7 +391,8 @@ export default function CustomerRegistration() {
             return !Object.keys(e).length;
         }
         // Required field checks - exclude globalCustomerCode/handlingAgentCode from required
-        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'pincode', 'panNumber', 'operatingDivision', 'zone'];
+        const requiredFields = ['companyName', 'customerCode', 'address', 'city', 'panNumber'];
+        if (mode === 'new') requiredFields.push('operatingDivision', 'zone', 'pincode');
         requiredFields.forEach(k => { if (!form[k]) e[k] = 'This field is required' });
         if (form.address && form.address.length > 100) e.address = 'Address cannot exceed 100 characters.';
         if (form.email?.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Invalid email';
@@ -404,9 +405,9 @@ export default function CustomerRegistration() {
             let stateSet = new Set();
             let gstinSet = new Set();
             gstins.forEach((g, i) => {
-                if (!g.state) e[`gstin_${i}_state`] = 'State is required';
-                else if (stateSet.has(g.state)) e[`gstin_${i}_state`] = 'State already added';
-                else stateSet.add(g.state);
+                if (!g.state && mode === 'new') e[`gstin_${i}_state`] = 'State is required';
+                else if (g.state && stateSet.has(g.state)) e[`gstin_${i}_state`] = 'State already added';
+                else if (g.state) stateSet.add(g.state);
 
                 const normalizedGstin = normalizeDocumentNumber(g.gstin);
                 if (!g.gstin) e[`gstin_${i}_gstin`] = 'GSTIN is required';
@@ -415,7 +416,7 @@ export default function CustomerRegistration() {
                 else if (normalizedGstin.slice(2, 12) !== normalizedPan) e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
                 else gstinSet.add(normalizedGstin);
 
-                if (!g.file && !g.existingFileName) {
+                if (!g.file && !g.existingFileName && mode === 'new') {
                     e[`gstin_${i}_file`] = 'GSTIN file is required';
                 } else if (g.file) {
                     const fe = checkFile(g.file);
@@ -729,7 +730,7 @@ export default function CustomerRegistration() {
                                             <input id={`gstin-${index}`} name="gstin" value={g.gstin} maxLength="15" placeholder={g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'} onChange={e => handleGstinChange(index, { gstin: e.target.value })} />
                                             <button type="button" className={'gstin-upload-btn' + (g.scanStatus === 'success' || g.file || g.existingFileName ? ' has-file' : '')} disabled={g.scanning} onClick={() => fileRefs.current[index]?.click()} title={g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')} aria-label={`Upload GSTIN for GSTIN ${index + 1}`}>
                                                 <Paperclip size={13} />
-                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : 'Upload GSTIN')}</span>
+                                                <span className="gstin-upload-text">{g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : (mode === 'old' ? 'Upload GSTIN (Optional)' : 'Upload GSTIN'))}</span>
                                                 {(g.file || g.existingFileName) && <span className="gstin-upload-file"><FileText size={11} />{g.file ? g.file.name : g.existingFileName}</span>}
                                             </button>
                                         </div>
@@ -742,7 +743,7 @@ export default function CustomerRegistration() {
                                         {!errors[`gstin_${index}_gstin`] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.' && <small className="error">PAN number in GSTIN does not match the PAN entered above.</small>}
                                         {errors[`gstin_${index}_file`] && <small className="error">{errors[`gstin_${index}_file`]}</small>}
                                     </div>
-                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} />
+                                    <Select label="State" name="state" icon={MapPin} options={INDIAN_STATES} form={g} onValueChange={val => handleGstinChange(index, { state: val })} error={errors[`gstin_${index}_state`]} optional={mode === 'old'} />
                                 </div>
                             </div>
                         ))}
@@ -875,11 +876,11 @@ export default function CustomerRegistration() {
                     {!errors.address && addressStatus === 'extraction-failed' && <small className="address-status error" style={{ color: 'var(--danger, #dc2626)', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> Unable to extract address from GSTIN PDF. Please verify manually.</small>}
                 </div>
                 <Field label="City" name="city" icon={MapPin} placeholder="Enter city" form={form} setForm={setForm} error={errors.city} />
-                <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} />
+                <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} optional={mode === 'old'} />
 
                 {/* Row 3: Zone | Division | Email */}
-                <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} />
-                <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} />
+                <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} optional={mode === 'old'} />
+                <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} optional={mode === 'old'} />
                 <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} optional />
 
                 {/* Row 4: Mobile */}

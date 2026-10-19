@@ -510,6 +510,10 @@ public class CustomerServiceImpl implements CustomerService {
       new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim().toUpperCase(Locale.ROOT), executableSql)));
  }
 
+ private String normalizeNullableValue(String value) {
+   return value == null || value.isBlank() ? null : value;
+ }
+
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
     initDbColumns();
     // SELECT all columns needed for the Old User Handling Agent fetch/edit flow
