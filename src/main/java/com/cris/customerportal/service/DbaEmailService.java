@@ -8,12 +8,9 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
-<<<<<<< HEAD
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-=======
->>>>>>> f946c0b91e72793ad96fc0999c835b0a15b1f37c
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,11 +26,7 @@ public class DbaEmailService {
     public DbaEmailService(
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
-<<<<<<< HEAD
             @Value("${app.dba-email:mondal.prasanta@cris.org.in}") String dbaEmail) {
-=======
-            @Value("${app.dba-email:sura767848@gmail.com}") String dbaEmail) {
->>>>>>> f946c0b91e72793ad96fc0999c835b0a15b1f37c
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
@@ -85,6 +78,10 @@ public class DbaEmailService {
 
     public void sendDbaSqlEmail(String operation, String sql) {
         sendDbaSqlEmail(List.of(new SqlRequest(operation, null, null, sql)));
+    }
+
+    public void sendDbaQueryEmail(String operation, String table, String customerCode, String sql) {
+        sendDbaSqlEmail(List.of(new SqlRequest(operation, table, customerCode, sql)));
     }
 
     public void sendDbaSqlEmail(Collection<SqlRequest> requests) {
