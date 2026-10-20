@@ -79,7 +79,7 @@ function DivisionSelect({ options, form, setForm, error, disabled, optional = fa
     const [open, setOpen] = useState(false);
     const choose = division => { setForm(prev => ({ ...prev, operatingDivision: division })); setOpen(false); };
     const selectedDivision = options.includes(form.operatingDivision) ? form.operatingDivision : '';
-    return <div className="field zone-field"><label id="division-label">Division{optional ? ' (Optional)' : <> <b>*</b></>}</label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision || 'Select division'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="Division options"><button type="button" className="zone-option" onClick={() => choose('')}>Select division</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
+    return <div className="field zone-field"><label id="division-label">SR.DCM/{optional ? ' (Optional)' : <> <b>*</b></>}</label><button type="button" className={'control zone-trigger ' + (error ? 'invalid' : '')} aria-labelledby="division-label" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}><Globe size={15} /><span>{selectedDivision || 'Select SR.DCM/'}</span><ChevronDown size={14} /></button>{open && <div className="zone-menu" role="listbox" aria-label="SR.DCM/ options"><button type="button" className="zone-option" onClick={() => choose('')}>Select SR.DCM/</button>{options.map(division => <button type="button" className="zone-option" role="option" aria-selected={form.operatingDivision === division} key={division} onClick={() => choose(division)}>{division}</button>)}</div>}{error && <small className="error">{error}</small>}</div>;
 }
 
 function ZoneSelect({ options, form, setForm, error, optional = false }) {
@@ -880,7 +880,7 @@ export default function CustomerRegistration() {
                 <Field label="City" name="city" icon={MapPin} placeholder="Enter city" form={form} setForm={setForm} error={errors.city} optional={mode === 'ownership'} />
                 <Field label="Pincode" name="pincode" icon={Mail} inputMode="numeric" maxLength="6" placeholder="Enter pincode" form={form} setForm={setForm} error={errors.pincode} optional={mode === 'old' || mode === 'ownership'} />
 
-                {/* Row 3: Zone | Division | Email */}
+                {/* Row 3: Zone | SR.DCM/ | Email */}
                 <ZoneSelect options={zones} form={form} setForm={setForm} error={errors.zone} optional={mode === 'old' || mode === 'ownership'} />
                 <DivisionSelect options={divisions} form={form} setForm={setForm} error={errors.operatingDivision} disabled={!form.zone} optional={mode === 'old' || mode === 'ownership'} />
                 <Field label="Email" name="email" icon={Mail} type="email" placeholder="Enter email address" form={form} setForm={setForm} error={errors.email} optional />

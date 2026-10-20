@@ -139,7 +139,7 @@ export default function VerificationScreen() {
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Company Name</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Address</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>PAN</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Division</th>
+                                        <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>SR.DCM/</th>
                                         <th style={{ padding: '12px 16px', fontWeight: '600', color: '#ffffff' }}>Date</th>
                                     </tr>
                                 </thead>
