@@ -353,3 +353,23 @@ export async function saveOwnershipPartyJDBC(partyCode, partyDesc) {
     body: JSON.stringify({ partyCode, partyDesc }),
   });
 }
+
+/* ---------- Ownership Duplicate Checks ---------- */
+
+/**
+ * Check if an ownership code already exists in MEMWGONOWNRSHIP (Section 1).
+ * Returns { duplicate: true } if the code is a duplicate.
+ */
+export async function checkOwnershipDuplicate(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/ownership-check?code=${encodeURIComponent(trimmed)}`);
+}
+
+/**
+ * Check if an ownership party code already exists in MEMWGONOWNRPRTY (Section 2).
+ * Returns { duplicate: true } if the code is a duplicate.
+ */
+export async function checkOwnershipPartyDuplicate(code) {
+  const trimmed = code.trim().toUpperCase();
+  return request(`${API}/customers/ownership-party-check?code=${encodeURIComponent(trimmed)}`);
+}

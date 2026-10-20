@@ -18,8 +18,12 @@ public interface CustomerService {
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);
   void saveOwnershipJDBC(String ownershipCode, String ownershipDesc);
   void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc);
+  /** Returns true if the code already exists in MEMWGONOWNRSHIP (duplicate check). */
+  boolean checkOwnershipDuplicate(String ownershipCode);
   // Ownership Party (MEMWGONOWNRPRTY)
   java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode);
   java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode);
   void saveOwnershipPartyJDBC(String partyCode, String partyDesc);
+  /** Returns true if the code already exists in MEMWGONOWNRPRTY (duplicate check). */
+  boolean checkOwnershipPartyDuplicate(String partyCode);
 }

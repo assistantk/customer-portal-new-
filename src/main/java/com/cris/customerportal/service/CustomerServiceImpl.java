@@ -600,6 +600,21 @@ public class CustomerServiceImpl implements CustomerService {
   submitOwnershipJDBC(ownershipCode, ownershipDesc, null, null);
  }
 
+ public boolean checkOwnershipDuplicate(String ownershipCode) {
+  if (ownershipCode == null || ownershipCode.isBlank()) return false;
+  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, ownershipCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    return rs.next() && rs.getInt(1) > 0;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] checkOwnershipDuplicate SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while checking ownership code: " + e.getMessage(), e);
+  }
+ }
+
  public void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc) {
   boolean hasOwnership = ownershipCode != null && !ownershipCode.isBlank();
   boolean hasParty = partyCode != null && !partyCode.isBlank();
@@ -687,6 +702,21 @@ public class CustomerServiceImpl implements CustomerService {
 
  public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
   submitOwnershipJDBC(null, null, partyCode, partyDesc);
+ }
+
+ public boolean checkOwnershipPartyDuplicate(String partyCode) {
+  if (partyCode == null || partyCode.isBlank()) return false;
+  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, partyCode.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    return rs.next() && rs.getInt(1) > 0;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] checkOwnershipPartyDuplicate SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while checking ownership party code: " + e.getMessage(), e);
+  }
  }
 
  private String generateOwnershipPartySql(String partyCode, String partyDesc) {
