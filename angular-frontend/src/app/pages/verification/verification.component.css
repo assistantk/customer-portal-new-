@@ -1,0 +1,1046 @@
+* {
+    box-sizing: border-box
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', Roboto, Arial, sans-serif;
+    color: #0f172a;
+    background: #f8fafc
+}
+
+.app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: radial-gradient(circle at 50% 5%, #fff 0, #edf7ff 48%, #dbeeff 100%)
+}
+
+header {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 34px;
+    background: linear-gradient(110deg, #123a93, #3179ed);
+    color: #fff;
+    box-shadow: 0 2px 8px #7094c555;
+    position: relative;  /* Ensure header stacks above the watermark */
+    z-index: 1;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-weight: bold;
+    font-size: 16px
+}
+
+.seal {
+    height: 68px;
+    width: 68px;
+    margin-top: 12px;
+    border-radius: 50%;
+    background: #db3135;
+    border: 3px solid #ef7979;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    box-shadow: 0 5px 8px #123a9355
+}
+
+.seal img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover
+}
+
+.cris {
+    background: white;
+    border-radius: 5px;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center
+}
+
+.cris img {
+    display: block;
+    width: 88px;
+    height: auto
+}
+
+main {
+  display: flex;
+  justify-content: center;   /* horizontal centering */
+  align-items: center;       /* vertical centering */
+  min-height: 100vh;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.card {
+    background: #ffffff;
+    border: 3px solid #3b82f6;
+    border-top: 4px solid #3b82f6;
+    border-radius: 24px;
+    padding: 24px 32px 20px;
+    box-shadow: 0 8px 30px -6px rgb(0 0 0 / 0.12), 0 4px 12px -4px rgb(0 0 0 / 0.08);
+    margin: auto;
+    width: min(95vw, 1500px);
+    display: flex;
+    flex-direction: column;
+}
+
+.card.mode-old,
+.card.mode-new {
+    padding-top: 14px;
+    padding-bottom: 12px;
+}
+
+.card.mode-old .card-head,
+.card.mode-new .card-head {
+    min-height: 64px;
+    padding-bottom: 4px;
+}
+
+.card.mode-old .rule,
+.card.mode-new .rule {
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+
+.card.mode-old .grid,
+.card.mode-new .grid {
+    row-gap: 10px;
+}
+
+.card.mode-old label,
+.card.mode-new label {
+    margin-bottom: 4px;
+}
+
+.card.mode-old .control,
+.card.mode-new .control {
+    height: 40px;
+}
+
+.card.mode-old .actions,
+.card.mode-new .actions {
+    margin-top: 14px;
+    padding-top: 10px;
+}
+
+.card-head,
+.title-icon,
+.actions {
+    display: flex;
+    align-items: center
+}
+
+.card-head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0px;
+  flex-wrap: wrap;
+  min-height: 80px;
+  padding-bottom: 8px;
+}
+
+.card-head .railways-banner {
+  justify-self: center;
+  position: absolute;
+  left: 50%;
+  top: 25%;
+  transform: translate(-50%, -50%);  /* center both horizontally AND vertically */
+}
+
+.card-head .railways-banner img {
+  height: 68px;
+  width: auto;
+  display: block;
+}
+
+
+.card-head .title-icon {
+  display: flex;
+  align-items: flex-start;      /* icon aligns with top of heading, not center of block */
+  gap: 12px;
+  justify-self: start;
+}
+
+.card-head .title-icon svg {
+  flex-shrink: 0;
+  margin-top: 2px;              /* optical alignment with heading text baseline */
+}
+
+.card-head .title-icon h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.card-head .title-icon p {
+  margin: 4px 0 0;
+  line-height: 1.3;
+}
+
+
+.card-head .mode-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  justify-self: end;
+}
+
+.card-head .mode-tab {
+  display: flex;
+  align-items: center;          /* icon+text centered within each button only */
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.title-icon {
+    gap: 10px
+}
+
+.title-icon>svg {
+    padding: 8px;
+    width: 38px;
+    height: 38px;
+    background: #eff6ff;
+    color: #3b82f6;
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+h1 {
+    font-size: 16px;
+    margin: 0
+}
+
+p {
+    margin: 2px 0 0;
+    color: #697586;
+    font-size: 11px
+}
+
+.new {
+    border: 1px solid #bfdbfe;
+    background: #fff;
+    color: #2563eb;
+    padding: 6px 13px;
+    border-radius: 6px;
+    font: 600 13px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rule {
+    border-bottom: 1px dotted #dce4eb;
+    margin: 8px 0 10px;
+    margin-top: 8px;
+}
+
+/* ===== Three-column grid ===== */
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px 24px;
+}
+
+.full {
+    grid-column: 1/-1
+}
+
+.span-2 {
+    grid-column: span 2;
+}
+
+.field {
+    min-width: 0
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: #1e293b;
+}
+
+label b {
+    color: #ef4444
+}
+
+.control {
+    height: 44px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px 0 8px;
+    color: #94a3b8;
+    background: #fff;
+}
+
+.control>svg:first-child {
+    background: #eff6ff;
+    color: #3b82f6;
+    width: 18px;
+    height: 18px;
+    padding: 6px;
+    border-radius: 6px;
+    box-sizing: content-box;
+    margin-right: 8px;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+.control input,
+.control select {
+    font: 14px 'Inter', Arial, sans-serif;
+    width: 100%;
+    border: 0;
+    outline: 0;
+    color: #334155;
+    background: transparent
+}
+
+.control input::placeholder {
+    color: #99a5b4
+}
+
+.select {
+    position: relative
+}
+
+.select select {
+    appearance: none;
+    padding-right: 17px
+}
+
+.select>svg:last-child {
+    position: absolute;
+    right: 8px;
+    pointer-events: none
+}
+
+.control.invalid,
+.drop-error {
+    border-color: #e25050
+}
+
+.error {
+    color: #c73333;
+    font: 11px Arial;
+    display: block;
+    margin-top: 2px
+}
+
+.gstin-verified {
+    color: #126c38;
+    font: 11px Arial;
+    display: block;
+    margin-top: 2px
+}
+
+.hidden {
+    display: none
+}
+
+/* ===== PAN Card Upload (inline inside input) ===== */
+.pan-control {
+    position: relative;
+}
+
+.pan-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 6px;
+    padding: 3px 10px;
+    border: 1px dashed #93c5fd;
+    border-radius: 4px;
+    background: #f0f7ff;
+    color: #2563eb;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.pan-upload-btn:hover {
+    background: #dbeafe;
+    border-color: #3b82f6;
+}
+
+.pan-upload-btn.has-file {
+    border-style: solid;
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.pan-upload-btn > svg {
+    flex-shrink: 0;
+}
+
+.pan-upload-label {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.pan-scan-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    margin-top: 3px;
+}
+
+.pan-scan-status.scanning {
+    color: #2563eb;
+}
+
+.pan-scan-status.success {
+    color: #15803d;
+}
+
+.pan-scan-status.warn {
+    color: #b45309;
+}
+
+.pan-scan-status > svg {
+    flex-shrink: 0;
+}
+
+/* ===== Actions / Footer ===== */
+.actions {
+    justify-content: space-between;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px dotted #dce4eb;
+}
+
+.secure {
+    font: 11px Arial;
+    color: #6b7785;
+    display: flex;
+    align-items: center;
+    gap: 5px
+}
+
+.secure svg {
+    width: 14px;
+    color: #377be3
+}
+
+.actions button {
+    height: 40px;
+    border-radius: 8px;
+    padding: 0 20px;
+    font: bold 14px Arial;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.reset {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    margin-right: 8px;
+}
+
+.reset:hover {
+    background: #f1f5f9;
+}
+
+.reset svg,
+.submit svg {
+    width: 14px;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.submit {
+    border: 0;
+    background: #2563eb;
+    color: white;
+}
+
+.submit:hover {
+    background: #1d4ed8;
+}
+
+.submit:disabled {
+    opacity: .7;
+    cursor: wait
+}
+
+.notice {
+    margin: 6px 0;
+    padding: 7px 10px;
+    border-radius: 5px;
+    background: #fff3cd;
+    color: #7d5e00;
+    font: 12px Arial
+}
+
+.success {
+    background: #e7f7ed;
+    color: #126c38
+}
+
+footer {
+    height: 30px;
+    background: #050505;
+    color: #fff;
+    text-align: center;
+    padding: 8px;
+    font-size: 11px
+}
+
+/* ===== Mode Tabs ===== */
+.mode-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 3px;
+}
+
+.mode-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border: none;
+    border-radius: 5px;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    background: transparent;
+    color: #64748b;
+    transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.mode-tab-ownership {
+    --mode-color: #b42318;
+    --mode-light: #fff1f0;
+    --mode-hover: #ffe0dd;
+}
+
+.mode-tab-old {
+    --mode-color: #18794e;
+    --mode-light: #edf9f1;
+    --mode-hover: #d8f2e1;
+}
+
+.mode-tab-new {
+    --mode-color: #1d4ed8;
+    --mode-light: #eff6ff;
+    --mode-hover: #dbeafe;
+}
+
+.mode-tab:not(.active) {
+    color: var(--mode-color);
+    background: var(--mode-light);
+    box-shadow: inset 0 0 0 1px var(--mode-color);
+}
+
+.mode-tab:hover {
+    background: var(--mode-hover);
+}
+
+.mode-tab.active {
+    background: var(--mode-color);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px var(--mode-color), 0 1px 3px rgb(15 23 42 / 0.22);
+}
+
+/* ===== Lookup Error ===== */
+.lookup-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding: 7px 12px;
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    font: 12px 'Inter', Arial, sans-serif;
+}
+
+/* ===== Info Banner ===== */
+.info-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    margin-bottom: 8px;
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    font: 12px 'Inter', Arial, sans-serif;
+}
+
+/* ===== Code Type Toggle (inside Customer Code field) ===== */
+.code-type-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.code-type-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 5px;
+    background: #fff;
+    color: #2563eb;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.code-type-btn:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+    background: #f8faff;
+}
+
+.code-type-btn.active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+
+/* ===== Inline Field Status (spinner / checkmark inside input) ===== */
+.field-status {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* ===== Generated Code Field ===== */
+.generated-code-control {
+    position: relative;
+}
+
+.generated-code-control input {
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #1e40af !important;
+}
+
+.code-status {
+    display: flex;
+    align-items: center;
+    margin-left: 8px;
+}
+
+.code-ok {
+    color: #16a34a;
+}
+
+.code-confirmed {
+    color: #16a34a;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    display: block;
+    margin-top: 2px;
+}
+
+/* ===== Spinner Animation ===== */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spin {
+    animation: spin 0.8s linear infinite;
+}
+
+/* ===== Ownership Divider ===== */
+.ownership-divider {
+    height: 3px;
+    background-color: #3b82f6;
+    margin: 24px -32px 16px -32px;
+}
+
+.gstins-container.ownership-mode {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+}
+
+/* ===== GSTIN Section ===== */
+.gstins-container {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dotted #dce4eb;
+}
+
+.gstins-container > .grid {
+    grid-template-columns: 1fr 1fr;
+}
+
+.gstins-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.gstins-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #1e293b;
+}
+
+.add-gstin-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font: 600 11px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-gstin-btn:hover {
+    background: #dbeafe;
+}
+
+/* ===== GSTIN Cards — Three-column grid ===== */
+.gstin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.gstin-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.gstin-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.gstin-card-head h4 {
+    margin: 0;
+    font-size: 12px;
+    color: #475569;
+    font-weight: 700;
+}
+
+.remove-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: #fef2f2;
+    color: #ef4444;
+    border: 1px solid #fecaca;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+}
+
+.remove-btn:hover {
+    background: #fee2e2;
+}
+
+/* Inside GSTIN cards, use single-column stacked layout */
+.gstin-card .grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.gstin-control {
+    position: relative;
+}
+
+.gstin-control input {
+    min-width: 0;
+}
+
+.gstin-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    max-width: 150px;
+    margin-left: 6px;
+    padding: 3px 7px;
+    border: 1px dashed #93c5fd;
+    border-radius: 4px;
+    background: #f0f7ff;
+    color: #2563eb;
+    font: 600 10px 'Inter', Arial, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.gstin-upload-btn:hover {
+    background: #dbeafe;
+    border-color: #3b82f6;
+}
+
+.gstin-upload-btn.has-file {
+    border-style: solid;
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.gstin-upload-btn > svg {
+    flex-shrink: 0;
+}
+
+.gstin-upload-text {
+    flex-shrink: 0;
+}
+
+.gstin-upload-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    opacity: 0.9;
+}
+
+.gstin-upload-file svg {
+    flex-shrink: 0;
+}
+
+.truncate {
+    display: inline-block;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+
+/* ===== Zone & Division side-by-side row ===== */
+.zone-division-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+/* ===== Railways banner compact ===== */
+.railways-banner {
+    margin-top: 0px;
+    margin-bottom: 0;
+}
+
+.railways-banner img {
+    height: 40px;
+}
+
+/* ===== Responsive: Tablet (2 columns) ===== */
+@media (max-width: 1024px) {
+    .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .gstins-container > .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .span-2 {
+        grid-column: 1 / -1;
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+        width: min(95vw, 1000px);
+        padding: 20px 24px 18px;
+    }
+
+    .ownership-divider {
+        margin-left: -24px;
+        margin-right: -24px;
+    }
+}
+
+/* ===== Responsive: Mobile (1 column) ===== */
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gstins-container > .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card-head {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .card-head .railways-banner {
+        position: static;
+        transform: none;
+    }
+
+    .card {
+        width: 100%;
+        padding: 16px 16px 12px;
+        border-radius: 16px;
+        min-height: auto;
+    }
+
+    .ownership-divider {
+        margin-left: -16px;
+        margin-right: -16px;
+    }
+}
+
+/* ===== Responsive: Mobile (1 column) ===== */
+@media (max-width: 600px) {
+    header {
+        height: 50px;
+        padding: 0 12px
+    }
+
+    .brand span {
+        font-size: 11px
+    }
+
+    .seal {
+        width: 45px;
+        height: 45px;
+        margin-top: 0
+    }
+
+    .card-head .railways-banner {
+        grid-area: logo;
+        justify-self: end;
+    }
+
+    .card {
+        width: 100%;
+        padding: 14px 14px 12px;
+        border-radius: 10px;
+    }
+
+    .ownership-divider {
+        margin-left: -14px;
+        margin-right: -14px;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 10px
+    }
+
+    .full,
+    .span-2 {
+        grid-column: auto
+    }
+
+    .gstin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .zone-division-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .actions {
+        gap: 10px;
+        align-items: flex-start;
+        flex-direction: column;
+        margin-top: 14px
+    }
+
+    .cris img {
+        width: 65px
+    }
+
+    main {
+        padding: 10px 8px
+    }
+
+    .mode-tabs {
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .gstin-upload-btn {
+        max-width: 132px;
+        padding-inline: 6px;
+    }
+
+    .gstin-upload-text {
+        max-width: 58px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+/* Zone search input inside dropdown */
+.zone-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.zone-search input {
+    border: none;
+    outline: none;
+    width: 100%;
+    font: 12px 'Inter', Arial, sans-serif;
+    color: #334155;
+}
+
+.zone-empty {
+    padding: 10px 12px;
+    color: #94a3b8;
+    font: 12px 'Inter', Arial, sans-serif;
+    text-align: center;
+}

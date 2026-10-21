@@ -1,0 +1,498 @@
+<main>
+    <form class="card mode-{{ mode }}" (ngSubmit)="submit($event)">
+        <div class="card-head">
+            <div class="title-icon">
+                <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <div>
+                    <h1>Customer Registration</h1>
+                    <p>{{ mode === 'ownership' ? 'Look up existing ownership record' : (mode === 'old' ? 'Look up existing customer record' : 'Register new customer account') }}</p>
+                </div>
+            </div>
+            <div class="railways-banner">
+                <img src="assets/indian-railways-logo.png" alt="Indian Railways" />
+            </div>
+            <div class="mode-tabs">
+                <button
+                    type="button"
+                    class="mode-tab mode-tab-ownership"
+                    [class.active]="mode === 'ownership'"
+                    (click)="switchMode('ownership')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Ownership
+                </button>
+                <button
+                    type="button"
+                    class="mode-tab mode-tab-old"
+                    [class.active]="mode === 'old'"
+                    (click)="switchMode('old')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg> Old User
+                </button>
+                <button
+                    type="button"
+                    class="mode-tab mode-tab-new"
+                    [class.active]="mode === 'new'"
+                    (click)="switchMode('new')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Entry
+                </button>
+            </div>
+        </div>
+
+        <!-- Notices -->
+        <div *ngIf="notice" [class]="notice.toLowerCase().includes('success') ? 'notice success' : 'notice'" role="alert">
+            {{ notice }}
+        </div>
+        <div *ngIf="mode === 'old' && lookupDone" class="info-banner">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Information loaded from previous registration. You may update fields and re-upload files before submitting.
+        </div>
+        <div *ngIf="mode === 'old' && lookupError" class="lookup-error">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> {{ lookupError }}
+        </div>
+
+        <!-- === State-wise GSTINs - hidden in ownership mode === -->
+        <div *ngIf="mode !== 'ownership'" class="gstins-container state-gstins-container">
+            <div class="gstins-header">
+                <h3>State-wise GSTINs</h3>
+                <button type="button" class="add-gstin-btn" (click)="addGstin()">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add GSTIN
+                </button>
+            </div>
+            <div class="gstin-grid">
+                <div *ngFor="let g of gstins; let i = index" class="gstin-card">
+                    <div class="gstin-card-head">
+                        <h4>GSTIN {{ i + 1 }}</h4>
+                        <button *ngIf="i > 0" type="button" class="remove-btn" (click)="removeGstin(i)">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        </button>
+                    </div>
+                    <div class="grid">
+                        <div class="field gstin-number-field">
+                            <label [attr.for]="'gstin-' + i">GSTIN No. <b>*</b></label>
+                            <div class="control gstin-control" [class.invalid]="errors['gstin_' + i + '_gstin'] || errors['gstin_' + i + '_file']">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                <input
+                                    [id]="'gstin-' + i"
+                                    name="gstin"
+                                    [value]="g.gstin"
+                                    maxlength="15"
+                                    [placeholder]="g.scanning ? 'Extracting GSTIN...' : 'Enter GSTIN Number'"
+                                    (input)="handleGstinChange(i, { gstin: $any($event.target).value })"
+                                    style="text-transform: uppercase;"
+                                />
+                                <button
+                                    type="button"
+                                    class="gstin-upload-btn"
+                                    [class.has-file]="g.scanStatus === 'success' || g.file || g.existingFileName"
+                                    [disabled]="g.scanning"
+                                    (click)="fileInput.click()"
+                                    [title]="g.file ? g.file.name : (g.existingFileName || 'Upload GSTIN Document')"
+                                    [attr.aria-label]="'Upload GSTIN for GSTIN ' + (i + 1)"
+                                >
+                                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                    <span class="gstin-upload-text">
+                                        {{ g.scanning ? 'Processing...' : (g.scanStatus === 'success' ? 'Uploaded' : (mode === 'old' ? 'Upload GSTIN (Optional)' : 'Upload GSTIN')) }}
+                                    </span>
+                                    <span *ngIf="g.file || g.existingFileName" class="gstin-upload-file">
+                                        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                        {{ g.file ? g.file.name : g.existingFileName }}
+                                    </span>
+                                </button>
+                            </div>
+                            <input
+                                #fileInput
+                                class="hidden"
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.jpe,.png"
+                                (change)="handleGstinFileChange(i, $event)"
+                            />
+                            <small *ngIf="g.scanning" class="gstin-scan-status scanning">
+                                <svg width="12" height="12" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Extracting GSTIN...
+                            </small>
+                            <small *ngIf="!g.scanning && g.scanStatus === 'success'" class="gstin-scan-status success">
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Uploaded - GSTIN auto-filled from document
+                            </small>
+                            <small *ngIf="!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error')" class="gstin-scan-status warn">
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.
+                            </small>
+                            <small *ngIf="errors['gstin_' + i + '_gstin'] && g.scanStatus !== 'notfound' && g.scanStatus !== 'error'" class="error">
+                                {{ errors['gstin_' + i + '_gstin'] }}
+                            </small>
+                            <small *ngIf="!errors['gstin_' + i + '_gstin'] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN matches PAN'" class="gstin-verified">
+                                GSTIN matches PAN
+                            </small>
+                            <small *ngIf="!errors['gstin_' + i + '_gstin'] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN does not match the PAN number.'" class="error">
+                                PAN number in GSTIN does not match the PAN entered above.
+                            </small>
+                            <small *ngIf="errors['gstin_' + i + '_file']" class="error">
+                                {{ errors['gstin_' + i + '_file'] }}
+                            </small>
+                        </div>
+
+                        <!-- State dropdown -->
+                        <div class="field">
+                            <label [attr.for]="'state-' + i">State{{ mode === 'old' ? ' (Optional)' : '' }} <b *ngIf="mode !== 'old'">*</b></label>
+                            <div class="control select" [class.invalid]="errors['gstin_' + i + '_state']">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                <select [id]="'state-' + i" [value]="g.state" (change)="handleGstinChange(i, { state: $any($event.target).value })">
+                                    <option value="">Select state</option>
+                                    <option *ngFor="let s of INDIAN_STATES" [value]="s">{{ s }}</option>
+                                </select>
+                                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <small *ngIf="errors['gstin_' + i + '_state']" class="error">{{ errors['gstin_' + i + '_state'] }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="gstins-bottom-separator" aria-hidden="true" style="height: 0; border-top: 1px solid #e5e7eb; width: 100%; margin: 12px 0 16px 0;"></div>
+        </div>
+
+        <!-- === Main Form: 3-column grid === -->
+        <div class="grid">
+            <!-- Row 1: Code | Address/Name | PAN -->
+            <div *ngIf="mode === 'old' || mode === 'ownership'" class="field">
+                <label [attr.for]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'">
+                    {{ mode === 'ownership' ? 'Ownership Code' : 'Customer Code' }} <b>*</b>
+                </label>
+                <div *ngIf="mode === 'old'" class="code-type-toggle">
+                    <button type="button" class="code-type-btn" [class.active]="codeType === 'GLOBAL'" (click)="handleOldCodeTypeChange('GLOBAL')">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Global Code
+                    </button>
+                    <button type="button" class="code-type-btn" [class.active]="codeType === 'HANDLING_AGENT'" (click)="handleOldCodeTypeChange('HANDLING_AGENT')">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Handling Agent Code
+                    </button>
+                </div>
+                <div class="control" [class.invalid]="mode === 'ownership' ? (errors['ownershipCode'] || ownSection1Duplicate) : errors['customerCode']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    <input
+                        [id]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'"
+                        [name]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'"
+                        [value]="mode === 'ownership' ? (form.ownershipCode || '') : form.customerCode"
+                        [placeholder]="mode === 'ownership' ? 'Enter ownership code' : (codeType === 'HANDLING_AGENT' ? 'Enter handling agent code' : 'Enter customer code')"
+                        (input)="mode === 'ownership' ? handleOwnershipCodeChange($any($event.target).value) : handleOldCodeChange($any($event.target).value)"
+                        style="text-transform: uppercase;"
+                        maxlength="4"
+                    />
+                    <!-- Ownership Section 1 status icons -->
+                    <svg *ngIf="mode === 'ownership' && ownSection1Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && ownSection1Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in MEMWGONOWNRSHIP" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === true" width="14" height="14" class="field-status code-ok" title="Found in MEMWGONOWNRSHIP" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === false" width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);" title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <!-- Old mode status icons -->
+                    <svg *ngIf="mode !== 'ownership' && lookupLoading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <svg *ngIf="mode !== 'ownership' && lookupDone && !lookupLoading" width="14" height="14" class="field-status code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <small *ngIf="mode === 'ownership' && errors['ownershipCode']" class="error">{{ errors['ownershipCode'] }}</small>
+                <small *ngIf="mode !== 'ownership' && errors['customerCode']" class="error">{{ errors['customerCode'] }}</small>
+                <small *ngIf="mode === 'ownership' && !errors['ownershipCode'] && ownSection1Found === true && !ownSection1Duplicate" style="color: var(--success,#16a34a); font-size: 0.78rem;">Record found in MEMWGONOWNRSHIP - address auto-filled.</small>
+                <small *ngIf="mode === 'ownership' && !errors['ownershipCode'] && ownSection1Found === false && !ownSection1Duplicate" style="color: var(--warning,#ca8a04); font-size: 0.78rem;">New code - will INSERT on submit.</small>
+                <small *ngIf="mode === 'ownership' && ownSection1Duplicate && !errors['ownershipCode']" class="error" style="display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Code already exists in MEMWGONOWNRSHIP. Duplicate entries are not allowed.
+                </small>
+            </div>
+
+            <!-- New mode Customer Code -->
+            <div *ngIf="mode === 'new'" class="field">
+                <label for="customerCode">Customer Code <b>*</b></label>
+                <div class="code-type-toggle">
+                    <button type="button" class="code-type-btn" [class.active]="codeType === 'GLOBAL'" (click)="handleNewCodeTypeChange('GLOBAL')">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Global Code
+                    </button>
+                    <button type="button" class="code-type-btn" [class.active]="codeType === 'HANDLING_AGENT'" (click)="handleNewCodeTypeChange('HANDLING_AGENT')">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Handling Agent Code
+                    </button>
+                </div>
+                <div class="control generated-code-control">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    <input id="customerCode" name="customerCode" [value]="form.customerCode" readonly placeholder="Auto-generated from company name" />
+                    <span class="code-status">
+                        <svg *ngIf="codeChecking" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <svg *ngIf="codeConfirmed && !codeChecking" width="14" height="14" class="code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </span>
+                </div>
+                <small *ngIf="codeConfirmed" class="code-confirmed">
+                    {{ codeType === 'GLOBAL' ? 'Global' : 'Handling Agent' }} Code "{{ form.customerCode }}" is available
+                </small>
+                <small *ngIf="lookupError && !codeConfirmed" class="error lookup-error">
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> {{ lookupError }}
+                </small>
+                <small *ngIf="errors['customerCode']" class="error">{{ errors['customerCode'] }}</small>
+            </div>
+
+            <!-- Company Name (Old User) -->
+            <div *ngIf="mode === 'old'" class="field">
+                <label for="companyName">Company Name <b>*</b></label>
+                <div class="control" [class.invalid]="errors['companyName']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                    <input id="companyName" name="companyName" [(ngModel)]="form.companyName" placeholder="Enter company name" />
+                </div>
+                <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
+            </div>
+
+            <!-- Ownership Address (Ownership mode) -->
+            <div *ngIf="mode === 'ownership'" class="field">
+                <label for="ownershipAddress">Ownership Address <b>*</b></label>
+                <div class="control" [class.invalid]="errors['ownershipAddress']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                    <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress" placeholder="Enter ownership address" />
+                </div>
+                <small *ngIf="errors['ownershipAddress']" class="error">{{ errors['ownershipAddress'] }}</small>
+            </div>
+
+            <!-- Company Name (New Entry) -->
+            <div *ngIf="mode === 'new'" class="field">
+                <label for="companyName">Company Name <b>*</b></label>
+                <div class="control" [class.invalid]="errors['companyName']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                    <input
+                        id="companyName"
+                        name="companyName"
+                        [value]="form.companyName"
+                        placeholder="Enter company name"
+                        (input)="handleNewCompanyNameChange($any($event.target).value)"
+                    />
+                </div>
+                <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
+            </div>
+
+            <!-- PAN No. -->
+            <div class="field pan-field">
+                <label for="panNumber">PAN No.{{ mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode !== 'ownership'">*</b></label>
+                <div class="control pan-control" [class.invalid]="errors['panNumber']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    <input
+                        id="panNumber"
+                        name="panNumber"
+                        [value]="form.panNumber"
+                        maxlength="10"
+                        placeholder="Enter 10-character PAN No."
+                        (input)="handlePanChange($any($event.target).value)"
+                        style="text-transform: uppercase;"
+                    />
+                </div>
+                <small *ngIf="errors['panNumber']" class="error">{{ errors['panNumber'] }}</small>
+            </div>
+
+            <!-- Row 2: Address | City | Pincode -->
+            <div class="field">
+                <label for="address">Address{{ mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode !== 'ownership'">*</b></label>
+                <div class="control" [class.invalid]="errors['address']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <input
+                        id="address"
+                        name="address"
+                        [(ngModel)]="form.address"
+                        maxlength="100"
+                        placeholder="Enter complete business address"
+                        (input)="addressStatus = ''; (errors['address'] === 'Address cannot exceed 100 characters.' && form.address.length <= 100) ? (errors['address'] = '') : null"
+                    />
+                </div>
+                <small *ngIf="errors['address']" class="error">{{ errors['address'] }}</small>
+                <small
+                    *ngIf="!errors['address']"
+                    [style.color]="form.address && form.address.length > 90 ? (form.address.length >= 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)'"
+                    style="font-size: 0.75rem; margin-top: 2px; display: block; text-align: right;"
+                >
+                    {{ (form.address || '').length }}/100 characters
+                </small>
+                <small *ngIf="!errors['address'] && addressStatus === 'verified'" class="address-status success" style="color: var(--success, #16a34a); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Verified against GSTIN document
+                </small>
+                <small *ngIf="!errors['address'] && addressStatus === 'auto-filled'" class="address-status success" style="color: var(--success, #16a34a); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Auto-filled from GSTIN document
+                </small>
+                <small *ngIf="!errors['address'] && addressStatus === 'auto-corrected'" class="address-status warn" style="color: var(--warning, #ca8a04); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Auto-corrected based on GSTIN document
+                </small>
+                <small *ngIf="!errors['address'] && addressStatus === 'extraction-failed'" class="address-status error" style="color: var(--danger, #dc2626); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Unable to extract address from GSTIN PDF. Please verify manually.
+                </small>
+            </div>
+
+            <!-- City -->
+            <div class="field">
+                <label for="city">City{{ mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode !== 'ownership'">*</b></label>
+                <div class="control" [class.invalid]="errors['city']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <input id="city" name="city" [(ngModel)]="form.city" placeholder="Enter city" />
+                </div>
+                <small *ngIf="errors['city']" class="error">{{ errors['city'] }}</small>
+            </div>
+
+            <!-- Pincode -->
+            <div class="field">
+                <label for="pincode">Pincode{{ mode === 'old' || mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode === 'new'">*</b></label>
+                <div class="control" [class.invalid]="errors['pincode']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    <input id="pincode" name="pincode" [(ngModel)]="form.pincode" inputmode="numeric" maxlength="6" placeholder="Enter pincode" />
+                </div>
+                <small *ngIf="errors['pincode']" class="error">{{ errors['pincode'] }}</small>
+            </div>
+
+            <!-- Row 3: Zone | SR.DCM/ | Email -->
+            <div class="field zone-field">
+                <label id="zone-label">Zone{{ mode === 'old' || mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode === 'new'">*</b></label>
+                <button
+                    type="button"
+                    class="control zone-trigger"
+                    [class.invalid]="errors['zone']"
+                    aria-labelledby="zone-label"
+                    [attr.aria-expanded]="zoneOpen"
+                    (click)="toggleZoneMenu()"
+                >
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>{{ form.zone || 'Select zone' }}</span>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div *ngIf="zoneOpen" class="zone-menu" role="listbox" aria-label="Zone options">
+                    <div class="zone-search">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <input
+                            type="search"
+                            aria-label="Search zones"
+                            placeholder="Search zone"
+                            [(ngModel)]="zoneSearchTerm"
+                            [ngModelOptions]="{standalone: true}"
+                            (click)="$event.stopPropagation()"
+                        />
+                    </div>
+                    <button type="button" class="zone-option" (click)="chooseZone('')">Select zone</button>
+                    <button
+                        *ngFor="let z of filteredZones"
+                        type="button"
+                        class="zone-option"
+                        role="option"
+                        [attr.aria-selected]="form.zone === z"
+                        (click)="chooseZone(z)"
+                    >
+                        {{ z }}
+                    </button>
+                    <div *ngIf="!filteredZones.length" class="zone-empty">No zones found</div>
+                </div>
+                <small *ngIf="errors['zone']" class="error">{{ errors['zone'] }}</small>
+            </div>
+
+            <!-- Division dropdown (SR.DCM/) -->
+            <div class="field zone-field">
+                <label id="division-label">SR.DCM/{{ mode === 'old' || mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode === 'new'">*</b></label>
+                <button
+                    type="button"
+                    class="control zone-trigger"
+                    [class.invalid]="errors['operatingDivision']"
+                    aria-labelledby="division-label"
+                    [attr.aria-expanded]="divisionOpen"
+                    [disabled]="!form.zone"
+                    (click)="toggleDivisionMenu()"
+                >
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>{{ form.operatingDivision || 'Select SR.DCM/' }}</span>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div *ngIf="divisionOpen" class="zone-menu" role="listbox" aria-label="SR.DCM/ options">
+                    <button type="button" class="zone-option" (click)="chooseDivision('')">Select SR.DCM/</button>
+                    <button
+                        *ngFor="let div of divisions"
+                        type="button"
+                        class="zone-option"
+                        role="option"
+                        [attr.aria-selected]="form.operatingDivision === div"
+                        (click)="chooseDivision(div)"
+                    >
+                        {{ div }}
+                    </button>
+                </div>
+                <small *ngIf="errors['operatingDivision']" class="error">{{ errors['operatingDivision'] }}</small>
+            </div>
+
+            <!-- Email -->
+            <div class="field">
+                <label for="email">Email (Optional)</label>
+                <div class="control" [class.invalid]="errors['email']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    <input id="email" name="email" type="email" [(ngModel)]="form.email" placeholder="Enter email address" />
+                </div>
+                <small *ngIf="errors['email']" class="error">{{ errors['email'] }}</small>
+            </div>
+
+            <!-- Row 4: Mobile -->
+            <div class="field">
+                <label for="mobile">Mobile (Optional)</label>
+                <div class="control" [class.invalid]="errors['mobile']">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    <input id="mobile" name="mobile" [(ngModel)]="form.mobile" inputmode="numeric" maxlength="10" placeholder="Enter 10-digit number" />
+                </div>
+                <small *ngIf="errors['mobile']" class="error">{{ errors['mobile'] }}</small>
+            </div>
+        </div>
+
+        <!-- === Ownership Details (Section 2: MEMWGONOWNRPRTY) - shown only in ownership mode === -->
+        <div *ngIf="mode === 'ownership'" class="gstins-container" style="margin-top: 16px;">
+            <div class="gstins-header">
+                <h3>Ownership Details</h3>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem 0;">
+                <!-- Ownership Party Code -->
+                <div class="field">
+                    <label for="ownershipPartyCode">Ownership Code <b>*</b></label>
+                    <div class="control" [class.invalid]="errors['ownershipPartyCode'] || ownSection2Duplicate">
+                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        <input
+                            id="ownershipPartyCode"
+                            name="ownershipPartyCode"
+                            [value]="form.ownershipPartyCode || ''"
+                            placeholder="Enter ownership code"
+                            (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
+                            style="text-transform: uppercase;"
+                        />
+                        <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in MEMWGONOWNRPRTY" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status code-ok" title="Found in MEMWGONOWNRPRTY" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === false" width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);" title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <small *ngIf="errors['ownershipPartyCode']" class="error">{{ errors['ownershipPartyCode'] }}</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error" style="display: flex; align-items: center; gap: 4px;">
+                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Code already exists in MEMWGONOWNRPRTY. Duplicate entries are not allowed.
+                    </small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && !ownSection2Duplicate && ownSection2Found === true" style="color: var(--success,#16a34a); font-size: 0.78rem;">Record found in MEMWGONOWNRPRTY - address auto-filled.</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && !ownSection2Duplicate && ownSection2Found === false" style="color: var(--warning,#ca8a04); font-size: 0.78rem;">New code - will INSERT on submit.</small>
+                </div>
+
+                <!-- Ownership Party Address -->
+                <div class="field">
+                    <label for="ownershipPartyAddress">Ownership Address <b>*</b></label>
+                    <div class="control" [class.invalid]="errors['ownershipPartyAddress']">
+                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                        <input
+                            id="ownershipPartyAddress"
+                            name="ownershipPartyAddress"
+                            [(ngModel)]="form.ownershipPartyAddress"
+                            placeholder="Enter ownership address"
+                        />
+                    </div>
+                    <small *ngIf="errors['ownershipPartyAddress']" class="error">{{ errors['ownershipPartyAddress'] }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- OCR Auto-fill Notification -->
+        <div *ngIf="ocrAutoFillApplied" class="info-banner" role="status">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Please check the auto-filled details and verify that the information matches your uploaded document.
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+            <span class="secure">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                256-bit encryption
+            </span>
+            <div>
+                <button type="button" class="reset" (click)="reset()">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset
+                </button>
+                <button type="submit" class="submit" [disabled]="loading">
+                    <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <svg *ngIf="!loading" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    {{ loading ? 'Submitting...' : 'Submit Request' }}
+                </button>
+            </div>
+        </div>
+    </form>
+</main>
