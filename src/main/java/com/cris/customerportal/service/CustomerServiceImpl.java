@@ -576,7 +576,8 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
-  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
+  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP "
+      + "WHERE UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
@@ -602,7 +603,7 @@ public class CustomerServiceImpl implements CustomerService {
 
  public boolean checkOwnershipDuplicate(String ownershipCode) {
   if (ownershipCode == null || ownershipCode.isBlank()) return false;
-  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRSHIP WHERE MAVWGONOWNRSHIPCODE = ?";
+  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRSHIP WHERE UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, ownershipCode.trim().toUpperCase(Locale.ROOT));
@@ -680,7 +681,8 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
-  String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";
+  String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY "
+      + "WHERE UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
@@ -706,7 +708,7 @@ public class CustomerServiceImpl implements CustomerService {
 
  public boolean checkOwnershipPartyDuplicate(String partyCode) {
   if (partyCode == null || partyCode.isBlank()) return false;
-  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRPRTY WHERE MAVWGONOWNRPRTYCODE = ?";
+  String sql = "SELECT COUNT(*) FROM MEMWGONOWNRPRTY WHERE UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, partyCode.trim().toUpperCase(Locale.ROOT));

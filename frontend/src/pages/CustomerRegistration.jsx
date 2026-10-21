@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Building2, Tag, MapPin, FileText, Globe, Mail, Phone, ShieldCheck, RotateCcw, Send, UserRound, ChevronDown, Plus, Loader2, CheckCircle2, AlertCircle, Users, Search, Trash2, Paperclip } from 'lucide-react';
-import { getMasterData, lookupOldCustomerJDBC, lookupHandlingAgentJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, lookupOwnershipJDBC, lookupOwnershipPartyJDBC, submitOwnershipJDBC, checkOwnershipDuplicate, checkOwnershipPartyDuplicate } from '../services/customerService';
+import { getMasterData, lookupOldCustomerJDBC, lookupHandlingAgentJDBC, updateOldCustomerJDBC, generateUniqueCode, registerCustomer, lookupOwnershipJDBC, lookupOwnershipPartyJDBC, submitOwnershipJDBC } from '../services/customerService';
 import { extractGstinFromFile } from '../utils/panOcr';
 import indianRailwaysLogo from '../assets/indian-railways-logo.png';
 import crisLogo from '../assets/cris-logo.png';
@@ -118,14 +118,14 @@ export default function CustomerRegistration() {
     // ===== Ownership Section 1: MEMWGONOWNRSHIP (top form fields) =====
     const [ownSection1Loading, setOwnSection1Loading] = useState(false);
     const [ownSection1Found, setOwnSection1Found] = useState(null);
-    const [ownSection1Duplicate, setOwnSection1Duplicate] = useState(false); // true if code already exists in MEMWGONOWNRSHIP
+    const [ownSection1LookupError, setOwnSection1LookupError] = useState('');
     const ownSection1TimerRef = useRef(null);
     const ownSection1ReqRef = useRef(0);
 
     // ===== Ownership Section 2: MEMWGONOWNRPRTY (bottom "Ownership Details" panel) =====
     const [ownSection2Loading, setOwnSection2Loading] = useState(false);
     const [ownSection2Found, setOwnSection2Found] = useState(null);
-    const [ownSection2Duplicate, setOwnSection2Duplicate] = useState(false); // true if code already exists in MEMWGONOWNRPRTY
+    const [ownSection2LookupError, setOwnSection2LookupError] = useState('');
     const ownSection2TimerRef = useRef(null);
     const ownSection2ReqRef = useRef(0);
 
@@ -141,8 +141,8 @@ export default function CustomerRegistration() {
         setRemovedGstinIds([]);
         fileRefs.current.forEach(ref => { if (ref) ref.value = '' });
         // Reset ownership section states
-        setOwnSection1Loading(false); setOwnSection1Found(null); setOwnSection1Duplicate(false);
-        setOwnSection2Loading(false); setOwnSection2Found(null); setOwnSection2Duplicate(false);
+        setOwnSection1Loading(false); setOwnSection1Found(null); setOwnSection1LookupError('');
+        setOwnSection2Loading(false); setOwnSection2Found(null); setOwnSection2LookupError('');
     };
 
     const clearSelectedUploads = () => {
@@ -156,18 +156,15 @@ export default function CustomerRegistration() {
     const handleOwnershipCodeChange = (code) => {
         setForm(prev => ({ ...prev, ownershipCode: code, ownershipAddress: '' }));
         setOwnSection1Found(null);
-        setOwnSection1Duplicate(false);
+        setOwnSection1LookupError('');
+        setErrors(prev => ({ ...prev, ownershipCode: '' }));
         const reqId = ++ownSection1ReqRef.current;
         if (ownSection1TimerRef.current) clearTimeout(ownSection1TimerRef.current);
         if (code.trim().length > 0) {
             setOwnSection1Loading(true);
             ownSection1TimerRef.current = setTimeout(async () => {
                 try {
-                    // Run global customer lookup (for auto-filling company name) and duplicate check in parallel
-                    const [resp, dupResp] = await Promise.all([
-                        lookupOwnershipJDBC(code.trim()),
-                        checkOwnershipDuplicate(code.trim()),
-                    ]);
+                    const resp = await lookupOwnershipJDBC(code.trim());
                     if (reqId !== ownSection1ReqRef.current) return;
                     if (resp && resp.found && resp.data) {
                         setForm(prev => ({
@@ -179,18 +176,16 @@ export default function CustomerRegistration() {
                     } else {
                         setOwnSection1Found(false);
                     }
-                    // Duplicate means the code already exists in MEMWGONOWNRSHIP
-                    setOwnSection1Duplicate(dupResp && dupResp.duplicate === true);
                 } catch (err) {
                     if (reqId !== ownSection1ReqRef.current) return;
-                    setOwnSection1Found(false);
-                    setOwnSection1Duplicate(false);
+                    setOwnSection1LookupError(err instanceof Error ? err.message : 'Unable to verify Ownership Code.');
                 } finally {
                     if (reqId === ownSection1ReqRef.current) setOwnSection1Loading(false);
                 }
             }, 600);
         } else {
             setOwnSection1Loading(false);
+            setOwnSection1LookupError('');
         }
     };
 
@@ -198,18 +193,15 @@ export default function CustomerRegistration() {
     const handleOwnershipPartyCodeChange = (code) => {
         setForm(prev => ({ ...prev, ownershipPartyCode: code, ownershipPartyAddress: '' }));
         setOwnSection2Found(null);
-        setOwnSection2Duplicate(false);
+        setOwnSection2LookupError('');
+        setErrors(prev => ({ ...prev, ownershipPartyCode: '' }));
         const reqId = ++ownSection2ReqRef.current;
         if (ownSection2TimerRef.current) clearTimeout(ownSection2TimerRef.current);
         if (code.trim().length > 0) {
             setOwnSection2Loading(true);
             ownSection2TimerRef.current = setTimeout(async () => {
                 try {
-                    // Run global customer lookup (for auto-filling company name) and duplicate check in parallel
-                    const [resp, dupResp] = await Promise.all([
-                        lookupOwnershipPartyJDBC(code.trim()),
-                        checkOwnershipPartyDuplicate(code.trim()),
-                    ]);
+                    const resp = await lookupOwnershipPartyJDBC(code.trim());
                     if (reqId !== ownSection2ReqRef.current) return;
                     if (resp && resp.found && resp.data) {
                         setForm(prev => ({
@@ -221,18 +213,16 @@ export default function CustomerRegistration() {
                     } else {
                         setOwnSection2Found(false);
                     }
-                    // Duplicate means the code already exists in MEMWGONOWNRPRTY
-                    setOwnSection2Duplicate(dupResp && dupResp.duplicate === true);
                 } catch (err) {
                     if (reqId !== ownSection2ReqRef.current) return;
-                    setOwnSection2Found(false);
-                    setOwnSection2Duplicate(false);
+                    setOwnSection2LookupError(err instanceof Error ? err.message : 'Unable to verify Ownership Code.');
                 } finally {
                     if (reqId === ownSection2ReqRef.current) setOwnSection2Loading(false);
                 }
             }, 600);
         } else {
             setOwnSection2Loading(false);
+            setOwnSection2LookupError('');
         }
     };
 
@@ -404,10 +394,14 @@ export default function CustomerRegistration() {
         if (mode === 'ownership') {
             // Require both ownership records and their corresponding descriptions.
             if (!form.ownershipCode?.trim()) e.ownershipCode = 'Ownership Code is required';
-            else if (ownSection1Duplicate) e.ownershipCode = 'This Ownership Code already exists in MEMWGONOWNRSHIP. Duplicate entries are not allowed.';
+            else if (ownSection1Loading) e.ownershipCode = 'Please wait while the Ownership Code is being checked.';
+            else if (ownSection1LookupError) e.ownershipCode = ownSection1LookupError;
+            else if (ownSection1Found === null) e.ownershipCode = 'Could not verify Ownership Code. Please try again.';
             if (!form.ownershipAddress?.trim()) e.ownershipAddress = 'Ownership Address is required';
             if (!form.ownershipPartyCode?.trim()) e.ownershipPartyCode = 'Ownership Code is required';
-            else if (ownSection2Duplicate) e.ownershipPartyCode = 'This Ownership Code already exists in MEMWGONOWNRPRTY. Duplicate entries are not allowed.';
+            else if (ownSection2Loading) e.ownershipPartyCode = 'Please wait while the Ownership Code is being checked.';
+            else if (ownSection2LookupError) e.ownershipPartyCode = ownSection2LookupError;
+            else if (ownSection2Found === null) e.ownershipPartyCode = 'Could not verify Ownership Code. Please try again.';
             if (!form.ownershipPartyAddress?.trim()) e.ownershipPartyAddress = 'Ownership Address is required';
             setErrors(e);
             return !Object.keys(e).length;
@@ -788,7 +782,7 @@ export default function CustomerRegistration() {
                                 <button type="button" className={'code-type-btn' + (codeType === 'HANDLING_AGENT' ? ' active' : '')} onClick={() => handleOldCodeTypeChange('HANDLING_AGENT')}><Users size={13} /> Handling Agent Code</button>
                             </div>
                         )}
-                        <div className={'control ' + ((mode === 'ownership' ? (errors.ownershipCode || ownSection1Duplicate) : errors.customerCode) ? 'invalid' : '')}>
+                        <div className={'control ' + ((mode === 'ownership' ? errors.ownershipCode : errors.customerCode) ? 'invalid' : '')}>
                             <Tag size={15} />
                             <input
                                 id={mode === 'ownership' ? 'ownershipCode' : 'customerCode'}
@@ -800,17 +794,15 @@ export default function CustomerRegistration() {
                                 maxLength={4}
                             />
                             {mode === 'ownership' && ownSection1Loading && <Loader2 size={14} className="spin field-status" />}
-                            {mode === 'ownership' && !ownSection1Loading && ownSection1Duplicate && <AlertCircle size={14} className="field-status" style={{ color: 'var(--danger,#dc2626)' }} title="Duplicate: already exists in MEMWGONOWNRSHIP" />}
-                            {mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRSHIP" />}
-                            {mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
+                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRSHIP" />}
+                            {mode === 'ownership' && !ownSection1Loading && ownSection1Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
                             {mode !== 'ownership' && lookupLoading && <Loader2 size={14} className="spin field-status" />}
                             {mode !== 'ownership' && lookupDone && !lookupLoading && <CheckCircle2 size={14} className="field-status code-ok" />}
                         </div>
                         {mode === 'ownership' && errors.ownershipCode && <small className="error">{errors.ownershipCode}</small>}
                         {mode !== 'ownership' && errors.customerCode && <small className="error">{errors.customerCode}</small>}
-                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === true && !ownSection1Duplicate && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRSHIP - address auto-filled.</small>}
-                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === false && !ownSection1Duplicate && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
-                        {mode === 'ownership' && ownSection1Duplicate && !errors.ownershipCode && <small className="error" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> This Ownership Code already exists in MEMWGONOWNRSHIP. Duplicate entries are not allowed.</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRSHIP - address auto-filled.</small>}
+                        {mode === 'ownership' && !errors.ownershipCode && ownSection1Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
                     </div>
                 )}
 
@@ -921,7 +913,7 @@ export default function CustomerRegistration() {
                         {/* Ownership Party Code */}
                         <div className="field">
                             <label htmlFor="ownershipPartyCode">Ownership Code <b>*</b></label>
-                            <div className={'control ' + ((errors.ownershipPartyCode || ownSection2Duplicate) ? 'invalid' : '')}>
+                            <div className={'control ' + (errors.ownershipPartyCode ? 'invalid' : '')}>
                                 <Tag size={15} />
                                 <input
                                     id="ownershipPartyCode"
@@ -932,14 +924,12 @@ export default function CustomerRegistration() {
                                     style={{ textTransform: 'uppercase' }}
                                 />
                                 {ownSection2Loading && <Loader2 size={14} className="spin field-status" />}
-                                {!ownSection2Loading && ownSection2Duplicate && <AlertCircle size={14} className="field-status" style={{ color: 'var(--danger,#dc2626)' }} title="Duplicate: already exists in MEMWGONOWNRPRTY" />}
-                                {!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRPRTY" />}
-                                {!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
+                                {!ownSection2Loading && ownSection2Found === true && <CheckCircle2 size={14} className="field-status code-ok" title="Found in MEMWGONOWNRPRTY" />}
+                                {!ownSection2Loading && ownSection2Found === false && <AlertCircle size={14} className="field-status" style={{ color: 'var(--warning,#ca8a04)' }} title="New code - will INSERT" />}
                             </div>
                             {errors.ownershipPartyCode && <small className="error">{errors.ownershipPartyCode}</small>}
-                            {!errors.ownershipPartyCode && ownSection2Duplicate && <small className="error" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={12} /> This Ownership Code already exists in MEMWGONOWNRPRTY. Duplicate entries are not allowed.</small>}
-                            {!errors.ownershipPartyCode && !ownSection2Duplicate && ownSection2Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRPRTY - address auto-filled.</small>}
-                            {!errors.ownershipPartyCode && !ownSection2Duplicate && ownSection2Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === true && <small style={{ color: 'var(--success,#16a34a)', fontSize: '0.78rem' }}>Record found in MEMWGONOWNRPRTY - address auto-filled.</small>}
+                            {!errors.ownershipPartyCode && ownSection2Found === false && <small style={{ color: 'var(--warning,#ca8a04)', fontSize: '0.78rem' }}>New code - will INSERT on submit.</small>}
                         </div>
 
                         {/* Ownership Party Address */}

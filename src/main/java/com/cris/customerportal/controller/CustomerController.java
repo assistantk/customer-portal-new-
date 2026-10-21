@@ -78,7 +78,7 @@ public class CustomerController { private final CustomerService service; public 
  @GetMapping("/ownership-lookup")
  public ResponseEntity<?> ownershipLookup(@RequestParam String code) {
   try {
-   java.util.Map<String, String> result = service.lookupGlobalCustomerForOwnership(code);
+   java.util.Map<String, String> result = service.lookupOwnershipJDBC(code);
    if (result != null) {
     return ResponseEntity.ok(Map.of("success", true, "found", true, "data", result));
    } else {
@@ -129,7 +129,7 @@ public class CustomerController { private final CustomerService service; public 
  @GetMapping("/ownership-party-lookup")
  public ResponseEntity<?> ownershipPartyLookup(@RequestParam String code) {
   try {
-   java.util.Map<String, String> result = service.lookupGlobalCustomerForOwnershipParty(code);
+   java.util.Map<String, String> result = service.lookupOwnershipPartyJDBC(code);
    if (result != null) {
     return ResponseEntity.ok(Map.of("success", true, "found", true, "data", result));
    } else {

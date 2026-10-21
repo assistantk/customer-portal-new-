@@ -244,6 +244,57 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void ownershipSubmission_updatesExistingCodeInsteadOfInsertingIt() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("SCOR");
+        when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("SOUTH COAST RAILWAYS");
+
+        service(dataSource, mailSender).submitOwnershipJDBC("SCOR", "South Coast Railway", null, null);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'SOUTH COAST RAILWAY' WHERE MAVWGONOWNRSHIPCODE = 'SCOR';"
+        ));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
+        verify(connection).prepareStatement(contains("UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?"));
+        verify(lookupPs).setString(1, "SCOR");
+    }
+
+    @Test
+    void ownershipPartySubmission_updatesExistingCodeInsteadOfInsertingIt() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("SHLA");
+        when(lookupRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S SUSHILA TRANSPORT PVT LTD");
+
+        service(dataSource, mailSender).submitOwnershipJDBC(null, null, "SHLA", "Sushila Transport Pvt Ltd");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'SUSHILA TRANSPORT PVT LTD' "
+                + "WHERE MAVWGONOWNRPRTYCODE = 'SHLA';"
+        ));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
+        verify(connection).prepareStatement(contains("UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?"));
+        verify(lookupPs).setString(1, "SHLA");
+    }
+
+    @Test
     void ownershipSubmission_emailsBothTableStatementsTogetherWithoutWrites() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
