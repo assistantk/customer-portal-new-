@@ -156,4 +156,28 @@ public class CustomerController { private final CustomerService service; public 
     .body(Map.of("success", false, "message", e.getMessage()));
   }
  }
+
+  // ===== Duplicate Code Checks =====
+
+  @GetMapping("/ownership-check")
+  public ResponseEntity<?> ownershipCheck(@RequestParam String code) {
+   try {
+    boolean dup = service.checkOwnershipDuplicate(code);
+    return ResponseEntity.ok(Map.of("duplicate", dup));
+   } catch (Exception e) {
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+     .body(Map.of("success", false, "message", e.getMessage()));
+   }
+  }
+
+  @GetMapping("/ownership-party-check")
+  public ResponseEntity<?> ownershipPartyCheck(@RequestParam String code) {
+   try {
+    boolean dup = service.checkOwnershipPartyDuplicate(code);
+    return ResponseEntity.ok(Map.of("duplicate", dup));
+   } catch (Exception e) {
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+     .body(Map.of("success", false, "message", e.getMessage()));
+   }
+  }
 }
