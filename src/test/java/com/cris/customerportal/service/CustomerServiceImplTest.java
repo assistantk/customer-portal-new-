@@ -150,21 +150,23 @@ class CustomerServiceImplTest {
 
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
             "codeType", "handling_agent",
-            "customerCode", "H001",
-            "companyName", "Cargo Co",
-            "address", "Port Road",
-            "city", "Mumbai",
-            "pincode", "400001",
-            "zone", "Western Railway",
-            "operatingDivision", "Mumbai Central",
-            "gstinNumbers", "27AAAAA1111A1Z5",
-            "panNumber", "AAAAA1111A"
+            "customerCode", "JDPL",
+            "companyName", "M/S JINDAL PIPES LIMITED",
+            "address", "22ND MILE STONE, DELHI HAPUR ROAD",
+            "city", "PARBHANI",
+            "pincode", "431401",
+            "zone", "South Central Railway",
+            "operatingDivision", "Madurai (MDU)",
+            "gstinNumbers", "09AAACJ2055K1ZJ",
+            "panNumber", "AAACJ2055K"
         ));
 
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLHNDGAGNT (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MADEDMNDDATE) " +
-                "VALUES ('H001', 'CARGO CO', 'PORT ROAD', 'MUMBAI', SYSDATE);"
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', "
+                + "'22ND MILE STONE, DELHI HAPUR ROAD', 'PARBHANI', NULL, NULL, NULL, SYSDATE, "
+                + "'SR.DCM/MDU', NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K');"
         ));
+        assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
         verify(existsPs, never()).executeUpdate();
     }
 

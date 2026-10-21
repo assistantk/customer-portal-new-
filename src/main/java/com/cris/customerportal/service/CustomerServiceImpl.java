@@ -352,12 +352,10 @@ public class CustomerServiceImpl implements CustomerService {
 
    String address = formData.get("address");
 
-  String divisionDesignation = "global".equals(type)
-      ? DivisionDesignationResolver.resolve(formData.get("operatingDivision"))
-      : formData.get("operatingDivision");
+  String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
   sql = "global".equals(type)
       ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", " + hndgDateCol + ") VALUES (?, ?, ?, ?, SYSDATE)";
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", " + hndgGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)";
 
   String finalCode = (providedCode != null && !providedCode.isEmpty())
       ? providedCode.trim().toUpperCase(Locale.ROOT)
@@ -381,6 +379,13 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(address);
     insertParameters.add(formData.get("city"));
     if ("global".equals(type)) {
+        insertParameters.add(null);
+        insertParameters.add(null);
+        insertParameters.add(null);
+        insertParameters.add(divisionDesignation);
+        insertParameters.add(formData.get("gstinNumbers"));
+        insertParameters.add(formData.get("panNumber"));
+    } else {
         insertParameters.add(null);
         insertParameters.add(null);
         insertParameters.add(null);

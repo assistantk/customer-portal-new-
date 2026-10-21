@@ -134,13 +134,17 @@ public class DbaEmailService {
             return formatUpdateForEmail(sql, request.table()).toUpperCase(Locale.ROOT);
         }
         if (!"INSERT".equalsIgnoreCase(request.operation())
-                || !"MEMGLBLCUST".equalsIgnoreCase(request.table())) {
+                || (!"MEMGLBLCUST".equalsIgnoreCase(request.table())
+                    && !"MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {
             return sql.toUpperCase(Locale.ROOT);
         }
 
-        String insertPrefix = "INSERT INTO MEMGLBLCUST";
+        String table = "MEMGLBLCUST".equalsIgnoreCase(request.table())
+                ? "MEMGLBLCUST"
+                : "MEMGLBLHNDGAGNT";
+        String insertPrefix = "INSERT INTO " + table;
         if (!sql.regionMatches(true, 0, insertPrefix, 0, insertPrefix.length())) {
-            throw new IllegalArgumentException("Expected an INSERT statement for MEMGLBLCUST.");
+            throw new IllegalArgumentException("Expected an INSERT statement for " + table + ".");
         }
 
         int columnListStart = insertPrefix.length();
@@ -148,7 +152,7 @@ public class DbaEmailService {
             columnListStart++;
         }
         if (columnListStart >= sql.length() || sql.charAt(columnListStart) != '(') {
-            throw new IllegalArgumentException("Expected a column list in the MEMGLBLCUST INSERT statement.");
+            throw new IllegalArgumentException("Expected a column list in the " + table + " INSERT statement.");
         }
 
         int columnListEnd = findClosingParenthesis(sql, columnListStart);
@@ -157,7 +161,7 @@ public class DbaEmailService {
             valuesStart++;
         }
         if (!sql.regionMatches(true, valuesStart, "VALUES", 0, "VALUES".length())) {
-            throw new IllegalArgumentException("Expected VALUES after the MEMGLBLCUST INSERT column list.");
+            throw new IllegalArgumentException("Expected VALUES after the " + table + " INSERT column list.");
         }
 
         return insertPrefix + " " + sql.substring(valuesStart).toUpperCase(Locale.ROOT);
