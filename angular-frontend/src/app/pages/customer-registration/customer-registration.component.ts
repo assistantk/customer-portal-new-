@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CustomerService, GstinEntry, CustomerPayload } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails } from '../../services/pan-ocr.service';
+import { generateCustomerCode } from '../../services/customer-code-generator';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -52,8 +53,8 @@ export const divisionsByZone: Record<string, string[]> = {
   'Northeast Frontier Railway (NFR)': ['Alipurduar (APDJ)', 'Katihar (KIR)', 'Lumding (LMG)', 'Rangiya (RNY)', 'Tinsukia (TSK)'],
   'North Western Railway (NWR)': ['Jaipur (JP)', 'Ajmer (AII)', 'Bikaner (BKN)', 'Jodhpur (JU)'],
   'Southern Railway (SR)': ['Chennai (MAS)', 'Madurai (MDU)', 'Palakkad (PGT)', 'Salem (SA)', 'Tiruchchirapalli (TPJ)', 'Thiruvananthapuram (TVC)'],
-  'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Nanded (NED)'],
-  'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)', 'Vijayawada (BZA)', 'Guntur (GNT)', 'Guntakal (GTL)'],
+  'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Guntakal (GTL)', 'Guntur (GNT)', 'Vijayawada (BZA)', 'Nanded (NED)'],
+  'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)'],
   'South Eastern Railway (SER)': ['Adra (ADRA)', 'Chakradharpur (CKP)', 'Kharagpur (KGP)', 'Ranchi (RNC)'],
   'South East Central Railway (SECR)': ['Bilaspur (BSP)', 'Nagpur (NAG)', 'Raipur (R)'],
   'South Western Railway (SWR)': ['Hubballi (UBL)', 'Bengaluru (SBC)', 'Mysuru (MYS)'],
@@ -70,8 +71,6 @@ const normalizeDocumentNumber = (value: any) => String(value || '').replace(/\s+
 
 const normalizeAddress = (value: string) => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
-const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
-
 const addressesMatch = (left: string, right: string) => {
   const a = normalizeAddress(left || '');
   const b = normalizeAddress(right || '');
@@ -86,15 +85,6 @@ const addressesMatch = (left: string, right: string) => {
   const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
   return overlap / Math.max(aTokens.size, bTokens.size) >= 0.5;
 };
-
-function generateCodeFromName(name: string): string {
-  if (!name || !name.trim()) return '';
-  const words = name.trim().split(/\s+/);
-  const significant = words.filter(w => !STOP_WORDS.has(w.toLowerCase()));
-  if (significant.length === 0) return words.map(w => w[0]).join('').toUpperCase();
-  const parts = significant.map(w => (w === w.toUpperCase() && w.length <= 5) ? w : w[0]);
-  return parts.join('').toUpperCase().slice(0, 8);
-}
 
 @Component({
   selector: 'app-customer-registration',
@@ -113,7 +103,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   lookupLoading = false;
   lookupDone = false;
   lookupError = '';
-  codeChecking = false;
   codeConfirmed = false;
   addressStatus = '';
   ocrAutoFillApplied = false;
@@ -139,7 +128,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private ownSection2ReqId = 0;
 
   // Timers
-  private codeTimer: any = null;
   private lookupTimer: any = null;
   private lookupRequestId = 0;
 
@@ -156,7 +144,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
-    if (this.codeTimer) clearTimeout(this.codeTimer);
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
   }
 
@@ -190,7 +177,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.lookupDone = false;
     this.lookupError = '';
     this.codeConfirmed = false;
-    this.codeChecking = false;
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
     this.ocrAutoFillApplied = false;
@@ -404,32 +390,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   /* ===== New User: generate code from company name ===== */
   handleNewCompanyNameChange(newName: string): void {
     this.form.companyName = newName;
-    const code = generateCodeFromName(newName);
-    this.codeConfirmed = false;
-    if (this.codeTimer) clearTimeout(this.codeTimer);
-
-    if (code) {
-      this.form.customerCode = code;
-      this.codeChecking = true;
-      this.codeTimer = setTimeout(() => {
-        this.customerService.generateUniqueCode(newName, this.codeType).subscribe({
-          next: (unique) => {
-            this.codeChecking = false;
-            this.form.customerCode = unique;
-            this.codeConfirmed = true;
-          },
-          error: (err: any) => {
-            this.codeChecking = false;
-            console.error('Code verification error:', err);
-            this.codeConfirmed = false;
-            this.lookupError = 'Verify failed: ' + (err?.error?.message || err?.message || 'Unknown error');
-          }
-        });
-      }, 600);
-    } else {
-      this.form.customerCode = '';
-      this.codeChecking = false;
-    }
+    this.form.customerCode = generateCustomerCode(newName);
+    this.codeConfirmed = Boolean(this.form.customerCode);
+    delete this.errors['customerCode'];
+    this.lookupError = '';
   }
 
   handleNewCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
@@ -499,11 +463,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     });
 
     if (this.mode === 'new' && !this.codeConfirmed && this.form.companyName) {
-      if (this.codeChecking) {
-        e['customerCode'] = 'Please wait - code is being verified';
-      } else {
-        e['customerCode'] = 'Failed to verify code. Make sure the Java backend is running with the latest code.';
-      }
+      e['customerCode'] = 'Could not generate a customer code from the company name.';
     }
 
     this.errors = e;
@@ -631,6 +591,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
+  handleGstinStateChange(index: number, state: string): void {
+    this.handleGstinChange(index, { state });
+    const field = `gstin_${index}_state`;
+    if (state && this.gstins.some((gstin, currentIndex) => currentIndex !== index && gstin.state === state)) {
+      this.errors[field] = 'State already added';
+    } else if (this.errors[field]) {
+      delete this.errors[field];
+    }
+  }
+
   handlePanChange(value: string): void {
     this.form.panNumber = value;
     const normalizedPan = normalizeDocumentNumber(value);
@@ -746,7 +716,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }
     } catch (err) {
       console.error('GSTIN OCR scan failed:', err);
-      const message = 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+      const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
+        ? `${err.message} Please upload a shorter PDF.`
+        : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
     }

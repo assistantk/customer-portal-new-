@@ -375,9 +375,38 @@ function extractGstinDetails(text) {
     return {
         gstin,
         stateCode: gstin ? gstin.slice(0, 2) : null,
+        legalName: findLegalName(text),
         tradeName: findTradeName(text),
+        pan: findPan(text),
         ...address,
     };
+}
+
+export function findLegalName(text) {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    const labelPattern = /\blegal\s+name\s+of\s+business\b\s*[:\-]?\s*/ig;
+    const nextLabelPattern = /\b(?:trade\s+name|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
+
+    for (const match of normalized.matchAll(labelPattern)) {
+        const remaining = normalized.slice(match.index + match[0].length);
+        nextLabelPattern.lastIndex = 0;
+        const nextLabel = nextLabelPattern.exec(remaining);
+        const candidate = remaining.slice(0, nextLabel ? nextLabel.index : remaining.length)
+            .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
+            .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
+            .trim();
+        if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
+            return candidate;
+        }
+    }
+    return null;
+}
+
+export function findPan(text) {
+    const normalized = text.toUpperCase().replace(/\s+/g, ' ');
+    const labelPattern = /\b(?:permanent\s+account\s+number|pan(?:\s+(?:number|no\.?))?)\b\s*[:\-]?\s*([A-Z]{5}\s*\d{4}\s*[A-Z])\b/ig;
+    const match = labelPattern.exec(normalized);
+    return match ? match[1].replace(/\s/g, '') : null;
 }
 
 export function findTradeName(text) {
@@ -401,14 +430,28 @@ export function findTradeName(text) {
 }
 
 /**
- * Scans a GST certificate file (PDF or image) with OCR and returns detected GSTIN details.
+ * Scans a GST certificate file (PDF or image) and returns its detected registration details.
  * @param {File} file
- * @returns {Promise<{ gstin: string|null, stateCode: string|null, stateName: string|null }>}
+ * @returns {Promise<{
+ *   gstin: string|null, stateCode: string|null, stateName: string|null,
+ *   legalName: string|null, tradeName: string|null, pan: string|null,
+ *   address: string|null, city: string|null, pincode: string|null
+ * }>}
  */
 export async function extractGstinFromFile(file) {
     if (!file) return { gstin: null, stateCode: null, stateName: null };
 
-    let details = { gstin: null, stateCode: null, address: null, city: null, pincode: null, state: null };
+    let details = {
+        gstin: null,
+        stateCode: null,
+        legalName: null,
+        tradeName: null,
+        pan: null,
+        address: null,
+        city: null,
+        pincode: null,
+        state: null,
+    };
     const extension = file.name.split('.').pop()?.toLowerCase();
     const isPdf = file.type === 'application/pdf' || extension === 'pdf';
     let pdf;
@@ -440,7 +483,7 @@ export async function extractGstinFromFile(file) {
     }
     if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
 
-    if ((!isPdf || pdf) && (!details.gstin || !details.address || !details.tradeName)) {
+    if ((!isPdf || pdf) && (!details.gstin || !details.address || !details.legalName)) {
         let worker;
         let imageCanvas;
         try {
@@ -467,12 +510,15 @@ export async function extractGstinFromFile(file) {
                 }
                 if ((details.gstin || ocrDetails.gstin) &&
                     (details.address || ocrDetails.address) &&
-                    (details.tradeName || ocrDetails.tradeName)) break;
+                    (details.legalName || ocrDetails.legalName)) break;
             }
             const ocrDetails = extractGstinDetails(ocrPages.join('\n'));
             details = {
                 gstin: details.gstin || ocrDetails.gstin,
                 stateCode: details.stateCode || ocrDetails.stateCode,
+                legalName: details.legalName || ocrDetails.legalName,
+                tradeName: details.tradeName || ocrDetails.tradeName,
+                pan: details.pan || ocrDetails.pan,
                 address: details.address || ocrDetails.address,
                 city: details.city || ocrDetails.city,
                 pincode: details.pincode || ocrDetails.pincode,
@@ -500,6 +546,9 @@ export async function extractGstinFromFile(file) {
                 city: details.city || apiRes.city || null,
                 pincode: details.pincode || apiRes.pincode || null,
                 state: details.state || apiRes.state || null,
+                legalName: details.legalName || apiRes.legalName || null,
+                tradeName: details.tradeName || apiRes.tradeName || null,
+                pan: details.pan || apiRes.pan || null,
             };
         }
     }

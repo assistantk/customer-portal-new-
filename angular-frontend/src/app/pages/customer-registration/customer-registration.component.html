@@ -104,10 +104,10 @@
                                 (change)="handleGstinFileChange(i, $event)"
                             />
                             <small *ngIf="g.scanning" class="gstin-scan-status scanning">
-                                <svg width="12" height="12" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Extracting GSTIN...
+                                <svg width="12" height="12" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning with Tesseract OCR...
                             </small>
                             <small *ngIf="!g.scanning && g.scanStatus === 'success'" class="gstin-scan-status success">
-                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Uploaded - GSTIN auto-filled from document
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> OCR complete - GSTIN and available form fields auto-filled
                             </small>
                             <small *ngIf="!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error')" class="gstin-scan-status warn">
                                 <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected. Please upload a clearer document or enter the GSTIN manually.
@@ -131,7 +131,11 @@
                             <label [attr.for]="'state-' + i">State{{ mode === 'old' ? ' (Optional)' : '' }} <b *ngIf="mode !== 'old'">*</b></label>
                             <div class="control select" [class.invalid]="errors['gstin_' + i + '_state']">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                                <select [id]="'state-' + i" [value]="g.state" (change)="handleGstinChange(i, { state: $any($event.target).value })">
+                                <select
+                                    [id]="'state-' + i"
+                                    [ngModel]="g.state"
+                                    [ngModelOptions]="{ standalone: true }"
+                                    (ngModelChange)="handleGstinStateChange(i, $event)">
                                     <option value="">Select state</option>
                                     <option *ngFor="let s of INDIAN_STATES" [value]="s">{{ s }}</option>
                                 </select>
@@ -204,12 +208,11 @@
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     <input id="customerCode" name="customerCode" [value]="form.customerCode" readonly placeholder="Auto-generated from company name" />
                     <span class="code-status">
-                        <svg *ngIf="codeChecking" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        <svg *ngIf="codeConfirmed && !codeChecking" width="14" height="14" class="code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <svg *ngIf="codeConfirmed" width="14" height="14" class="code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     </span>
                 </div>
                 <small *ngIf="codeConfirmed" class="code-confirmed">
-                    {{ codeType === 'GLOBAL' ? 'Global' : 'Handling Agent' }} Code "{{ form.customerCode }}" is available
+                    {{ codeType === 'GLOBAL' ? 'Global' : 'Handling Agent' }} code "{{ form.customerCode }}" generated locally. Availability is checked when submitted.
                 </small>
                 <small *ngIf="lookupError && !codeConfirmed" class="error lookup-error">
                     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> {{ lookupError }}

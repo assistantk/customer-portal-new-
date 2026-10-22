@@ -23,8 +23,8 @@ const divisionsByZone = {
     'Northeast Frontier Railway (NFR)': ['Alipurduar (APDJ)', 'Katihar (KIR)', 'Lumding (LMG)', 'Rangiya (RNY)', 'Tinsukia (TSK)'],
     'North Western Railway (NWR)': ['Jaipur (JP)', 'Ajmer (AII)', 'Bikaner (BKN)', 'Jodhpur (JU)'],
     'Southern Railway (SR)': ['Chennai (MAS)', 'Madurai (MDU)', 'Palakkad (PGT)', 'Salem (SA)', 'Tiruchchirapalli (TPJ)', 'Thiruvananthapuram (TVC)'],
-    'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Nanded (NED)'],
-    'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)', 'Vijayawada (BZA)', 'Guntur (GNT)', 'Guntakal (GTL)'],
+    'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Guntakal (GTL)', 'Guntur (GNT)', 'Vijayawada (BZA)', 'Nanded (NED)'],
+    'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)'],
     'South Eastern Railway (SER)': ['Adra (ADRA)', 'Chakradharpur (CKP)', 'Kharagpur (KGP)', 'Ranchi (RNC)'],
     'South East Central Railway (SECR)': ['Bilaspur (BSP)', 'Nagpur (NAG)', 'Raipur (R)'],
     'South Western Railway (SWR)': ['Hubballi (UBL)', 'Bengaluru (SBC)', 'Mysuru (MYS)'],
@@ -42,23 +42,7 @@ const getGstinPanStatus = (gstin, pan) => {
     if (normalizedPan.length !== 10 || !panRe.test(normalizedPan)) return null;
     return normalizedGstin.slice(2, 12) === normalizedPan ? 'GSTIN matches PAN' : 'GSTIN does not match the PAN number.';
 };
-const normalizeAddress = value => value.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP_WORDS = new Set(['pvt', 'ltd', 'limited', 'private', 'company', 'co', 'inc', 'llp', 'the', 'and', 'of', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'by', 'with', 'group', 'enterprises', 'solutions', 'services', 'industries', 'corporation', 'corp']);
-
-const addressesMatch = (left, right) => {
-    const a = normalizeAddress(left || '');
-    const b = normalizeAddress(right || '');
-    if (!a || !b) return false;
-    const pinPattern = /\b[1-9][0-9]{5}\b/g;
-    const leftPin = a.match(pinPattern)?.[0];
-    const rightPin = b.match(pinPattern)?.[0];
-    if (leftPin && rightPin && leftPin !== rightPin) return false;
-    if (a === b || a.includes(b) || b.includes(a)) return true;
-    const aTokens = new Set(a.split(' ').filter(token => token.length > 2));
-    const bTokens = new Set(b.split(' ').filter(token => token.length > 2));
-    const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
-    return overlap / Math.max(aTokens.size, bTokens.size) >= 0.5;
-};
 
 function generateCodeFromName(name) {
     if (!name || !name.trim()) return '';
@@ -110,8 +94,8 @@ export default function CustomerRegistration() {
     // Track GSTINs that were removed during an Old User edit session
     const [removedGstinIds, setRemovedGstinIds] = useState([]);
     const fileRefs = useRef([]);
-    const formRef = useRef(form);
     const codeTimerRef = useRef(null);
+    const codeRequestRef = useRef(0);
     const lookupTimerRef = useRef(null);
     const lookupRequestRef = useRef(0);
 
@@ -130,9 +114,9 @@ export default function CustomerRegistration() {
     const ownSection2ReqRef = useRef(0);
 
     useEffect(() => { getMasterData().then(setData).catch(() => { }) }, []);
-    useEffect(() => { formRef.current = form; }, [form]);
-
     const reset = () => {
+        codeRequestRef.current++;
+        if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
         setForm(blank); setGstins([{ ...blankGstin }]); setErrors({}); setNotice('');
         setLookupDone(false); setLookupError('');
         setCodeConfirmed(false); setCodeChecking(false); setCodeType('GLOBAL');
@@ -344,9 +328,11 @@ export default function CustomerRegistration() {
 
     /* ===== New User: generate code from company name ===== */
     const handleNewCompanyNameChange = useCallback((newName) => {
+        const requestId = ++codeRequestRef.current;
         setForm(prev => ({ ...prev, companyName: newName }));
         const code = generateCodeFromName(newName);
         setCodeConfirmed(false);
+        setLookupError('');
         if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
         if (code) {
             setForm(prev => ({ ...prev, customerCode: code }));
@@ -354,14 +340,19 @@ export default function CustomerRegistration() {
             codeTimerRef.current = setTimeout(async () => {
                 try {
                     const unique = await generateUniqueCode(newName, codeType);
+                    if (requestId !== codeRequestRef.current) return;
+                    if (!/^[A-Z]{4}$/.test(unique)) {
+                        throw new Error('The generated customer code is invalid.');
+                    }
                     setForm(prev => ({ ...prev, customerCode: unique }));
                     setCodeConfirmed(true);
                 } catch (err) {
+                    if (requestId !== codeRequestRef.current) return;
                     console.error("Code verification error:", err);
                     setCodeConfirmed(false);
                     setLookupError("Verify failed: " + (err.message || 'Unknown error'));
                 } finally {
-                    setCodeChecking(false);
+                    if (requestId === codeRequestRef.current) setCodeChecking(false);
                 }
             }, 600);
         } else {
@@ -605,17 +596,30 @@ export default function CustomerRegistration() {
         setErrors(prev => ({ ...prev, [`gstin_${index}_file`]: '' }));
 
         try {
-            const { gstin, stateName, address, city, pincode, tradeName } = await extractGstinFromFile(selected);
-            if (index === 0 && tradeName && !formRef.current.companyName.trim()) {
+            const { gstin, stateName, address, city, pincode, legalName, pan } = await extractGstinFromFile(selected);
+            if (index === 0 && legalName) {
                 if (mode === 'new') {
-                    handleNewCompanyNameChange(tradeName);
+                    handleNewCompanyNameChange(legalName);
                 } else {
-                    setForm(prev => prev.companyName.trim() ? prev : { ...prev, companyName: tradeName });
+                    setForm(prev => ({ ...prev, companyName: legalName }));
                 }
-                setOcrAutoFillApplied(true);
             }
             const normalizedGstin = normalizeDocumentNumber(gstin);
-            const extractedPan = gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '';
+            const normalizedPan = normalizeDocumentNumber(pan);
+            const extractedPan = panRe.test(normalizedPan)
+                ? normalizedPan
+                : (gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '');
+            if (index === 0) {
+                setForm(prev => ({
+                    ...prev,
+                    ...(extractedPan ? { panNumber: extractedPan } : {}),
+                    ...(address ? { address } : {}),
+                    ...(city ? { city } : {}),
+                    ...(pincode ? { pincode } : {}),
+                }));
+                setOcrAutoFillApplied(true);
+                setAddressStatus(address ? 'auto-filled' : 'extraction-failed');
+            }
             if (!gstinRe.test(normalizedGstin)) {
                 const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
                 handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
@@ -638,12 +642,6 @@ export default function CustomerRegistration() {
                 updates.state = stateName;
             }
             handleGstinChange(index, updates);
-            setForm(prev => ({
-                ...prev,
-                panNumber: extractedPan,
-                ...(index === 0 && city ? { city } : {}),
-                ...(index === 0 && pincode ? { pincode } : {}),
-            }));
             setOcrAutoFillApplied(true);
             setErrors(prev => {
                 const next = { ...prev };
@@ -652,38 +650,6 @@ export default function CustomerRegistration() {
                 delete next.panNumber;
                 return next;
             });
-
-            if (index === 0) {
-                if (address) {
-                    let shouldUpdate = true;
-                    let isMatch = false;
-
-                    if (form.address || form.city || form.pincode) {
-                        isMatch = form.address ? addressesMatch(form.address, address) : false;
-                        if (isMatch) {
-                            shouldUpdate = false;
-                            setAddressStatus('verified');
-                        } else {
-                            shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
-                        }
-                    }
-
-                    if (shouldUpdate) {
-                        setAddressStatus(!form.address ? 'auto-filled' : 'auto-corrected');
-                        setForm(prev => {
-                            let nextForm = { ...prev, address: address };
-                            if (pincode) nextForm.pincode = pincode;
-                            if (city) nextForm.city = city;
-                            return nextForm;
-                        });
-                    } else if (!isMatch && form.address) {
-                        // User chose not to auto-fill and it didn't match
-                        setAddressStatus('');
-                    }
-                } else {
-                    setAddressStatus('extraction-failed');
-                }
-            }
         } catch (err) {
             console.error('GSTIN OCR scan failed:', err);
             const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
@@ -953,7 +919,7 @@ export default function CustomerRegistration() {
 
             {ocrAutoFillApplied && (
                 <div className="info-banner" role="status">
-                    <CheckCircle2 size={16} /> Please check the auto-filled details and verify that the information matches your uploaded document.
+                    <CheckCircle2 size={16} /> GST certificate processed. Please verify the auto-filled details.
                 </div>
             )}
             <div className="actions"><span className="secure"><ShieldCheck /> 256-bit encryption</span><div><button type="button" className="reset" onClick={reset}><RotateCcw /> Reset</button><button className="submit" disabled={loading}><Send />{loading ? 'Submitting...' : 'Submit Request'}</button></div></div>

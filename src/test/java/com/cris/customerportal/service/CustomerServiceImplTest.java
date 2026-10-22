@@ -1,6 +1,8 @@
 package com.cris.customerportal.service;
 
 import com.cris.customerportal.audit.DatabaseOperationAudit;
+import com.cris.customerportal.controller.AuthController;
+import com.cris.customerportal.dto.AuthUserDto;
 import com.cris.customerportal.repository.CustomerRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -8,6 +10,9 @@ import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -59,10 +64,8 @@ class CustomerServiceImplTest {
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20APEPA6196G1Z9', 'APEPA6196G');"
         ));
-        assertTrue(body.contains("\n\n----------------------------------------\n\nPrasanta Mondal\n"
-            + "Chief Manager / FOIS\n"
-            + "Centre for Railway information systems\n"
-            + "Mob:-8130797454"));
+        assertTrue(body.contains("\n\n----------------------------------------\n\n"
+            + "UserID: Not available\nEmail ID: Not available"));
         verify(existsPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("INSERT"));
     }
@@ -408,6 +411,30 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertArrayEquals(new String[]{"malhotra.poonam@cris.org.in"}, message.getValue().getCc());
+    }
+
+    @Test
+    void dbaSqlEmailUsesAuthenticatedUserIdAndEmailInFooter() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.getSession(true).setAttribute(
+            AuthController.AUTH_SESSION_KEY,
+            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "rail.user@example.org"));
+        request.getSession(false).setAttribute("CURRENT_OPERATING_DIVISION", "Nagpur (NGP)");
+        ServletRequestAttributes requestAttributes = new ServletRequestAttributes(request);
+        RequestContextHolder.setRequestAttributes(requestAttributes);
+
+        try {
+            emailService.sendDbaSqlEmail("INSERT", "INSERT INTO TEST_TABLE VALUES ('A');");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(
+            "UserID: SR.DCM/NCP\nEmail ID: rail.user@example.org"));
     }
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {

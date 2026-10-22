@@ -415,7 +415,9 @@ public class CustomerServiceImpl implements CustomerService {
     }
    String executableSql = formatBoundSql(sql, insertParameters) + ";";
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-   emailRequests.add(new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql));
+   String userId = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
+   String emailId = formData.get("email");
+   emailRequests.add(new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql, userId, emailId));
    dbaEmailService.sendDbaSqlEmail(emailRequests);
    return finalCode;
  }

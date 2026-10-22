@@ -1,13 +1,18 @@
 package com.cris.customerportal.service;
 
 import com.cris.customerportal.audit.DatabaseOperationAudit;
+import com.cris.customerportal.controller.AuthController;
+import com.cris.customerportal.dto.AuthUserDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.stereotype.Service;
 
+import javax.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -54,7 +59,8 @@ public class DbaEmailService {
                     + "Prasanta Mondal\n"
                     + "Chief Manager / FOIS\n"
                     + "Centre for Railway Information Systems\n"
-                    + "Mob:-8130797454";
+                    + "Mob:-8130797454\n\n"
+                    + userFooter();
 
             message.setText(text);
             mailSender.send(message);
@@ -98,6 +104,8 @@ public class DbaEmailService {
         StringBuilder body = new StringBuilder("Dear DBA Team,\n"
                 + "Kindly execute attached/below script on rfrn3t and training.\n\n");
         int index = 1;
+        String resolvedUserId = null;
+        String resolvedEmailId = null;
         for (SqlRequest request : requests) {
             body.append("Operation: ")
                     .append(request.operation().toUpperCase(Locale.ROOT))
@@ -107,6 +115,12 @@ public class DbaEmailService {
             }
             if (request.code() != null) {
                 body.append("Code: ").append(request.code()).append('\n');
+            }
+            if (request.userId() != null && !request.userId().trim().isEmpty()) {
+                resolvedUserId = request.userId().trim();
+            }
+            if (request.emailId() != null && !request.emailId().trim().isEmpty()) {
+                resolvedEmailId = request.emailId().trim();
             }
             body.append("\nSQL QUERY:\n")
                     .append("----------------------------------------")
@@ -123,9 +137,95 @@ public class DbaEmailService {
         body.append("Prasanta Mondal\n"
                 + "Chief Manager / FOIS\n"
                 + "Centre for Railway information systems\n"
-                + "Mob:-8130797454");
+                + "Mob:-8130797454\n\n");
+        body.append(buildUserFooter(resolvedUserId, resolvedEmailId));
         message.setText(body.toString());
         mailSender.send(message);
+    }
+
+    private String userFooter() {
+        return buildUserFooter(null, null);
+    }
+
+    private String buildUserFooter(String providedUserId, String providedEmailId) {
+        String userId = firstNonBlank(providedUserId, resolveUserIdFromRequest());
+        String emailId = firstNonBlank(providedEmailId, resolveUserEmailFromSession(), resolveUserEmailFromRequest());
+
+        StringBuilder footer = new StringBuilder();
+        footer.append("UserID: ").append(userId == null ? "Not available" : userId).append("\n");
+        footer.append("Email ID: ").append(emailId == null ? "Not available" : emailId);
+        return footer.toString();
+    }
+
+    private String resolveUserIdFromRequest() {
+        Object requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            return null;
+        }
+
+        HttpSession session = ((ServletRequestAttributes) requestAttributes)
+                .getRequest()
+                .getSession(false);
+        if (session == null) {
+            return null;
+        }
+        Object rawDivision = session.getAttribute("CURRENT_OPERATING_DIVISION");
+        if (!(rawDivision instanceof String)) {
+            return null;
+        }
+
+        return DivisionDesignationResolver.resolve((String) rawDivision);
+    }
+
+    private String resolveUserEmailFromSession() {
+        Object requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            return null;
+        }
+
+        HttpSession session = ((ServletRequestAttributes) requestAttributes)
+                .getRequest()
+                .getSession(false);
+        Object sessionUser = session == null ? null : session.getAttribute(AuthController.AUTH_SESSION_KEY);
+        if (!(sessionUser instanceof AuthUserDto)) {
+            return null;
+        }
+
+        AuthUserDto user = (AuthUserDto) sessionUser;
+        return user.getEmail();
+    }
+
+    private String resolveUserEmailFromRequest() {
+        Object requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            return null;
+        }
+
+        HttpSession session = ((ServletRequestAttributes) requestAttributes)
+                .getRequest()
+                .getSession(false);
+        if (session == null) {
+            return null;
+        }
+        Object rawEmail = session.getAttribute("CURRENT_USER_EMAIL");
+        if (!(rawEmail instanceof String)) {
+            return null;
+        }
+        String email = ((String) rawEmail).trim();
+        return email.isEmpty() ? null : email;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private String valueOrNotAvailable(String value) {
+        return value == null || value.trim().isEmpty() ? "Not available" : value.trim();
     }
 
     /**
@@ -136,18 +236,28 @@ public class DbaEmailService {
         private final String table;
         private final String code;
         private final String sql;
+        private final String userId;
+        private final String emailId;
 
         public SqlRequest(String operation, String table, String code, String sql) {
+            this(operation, table, code, sql, null, null);
+        }
+
+        public SqlRequest(String operation, String table, String code, String sql, String userId, String emailId) {
             this.operation = operation;
             this.table = table;
             this.code = code;
             this.sql = sql;
+            this.userId = userId;
+            this.emailId = emailId;
         }
 
         public String operation() { return operation; }
         public String table() { return table; }
         public String code() { return code; }
         public String sql() { return sql; }
+        public String userId() { return userId; }
+        public String emailId() { return emailId; }
     }
 
     private String formatSqlForEmail(SqlRequest request) {

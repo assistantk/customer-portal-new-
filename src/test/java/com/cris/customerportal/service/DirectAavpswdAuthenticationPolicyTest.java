@@ -21,6 +21,7 @@ class DirectAavpswdAuthenticationPolicyTest {
         assertEquals("RAILUSER", authenticatedUser.getUserId());
         assertEquals("USER", authenticatedUser.getUserRole());
         assertEquals("RAILUSER", authenticatedUser.getUserName());
+        assertEquals("rail.user@example.org", authenticatedUser.getEmail());
     }
 
     @Test

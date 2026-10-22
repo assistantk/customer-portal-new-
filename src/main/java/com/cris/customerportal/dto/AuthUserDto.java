@@ -9,14 +9,20 @@ public class AuthUserDto implements Serializable {
     private String userName;
     private String userRole;
     private String isActive;
+    private String email;
 
     public AuthUserDto() {}
 
     public AuthUserDto(String userId, String userName, String userRole, String isActive) {
+        this(userId, userName, userRole, isActive, null);
+    }
+
+    public AuthUserDto(String userId, String userName, String userRole, String isActive, String email) {
         this.userId = userId;
         this.userName = userName;
         this.userRole = userRole;
         this.isActive = isActive;
+        this.email = email;
     }
 
     public String getUserId() { return userId; }
@@ -30,4 +36,7 @@ public class AuthUserDto implements Serializable {
 
     public String getIsActive() { return isActive; }
     public void setIsActive(String isActive) { this.isActive = isActive; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 }

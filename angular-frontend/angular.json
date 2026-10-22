@@ -33,6 +33,21 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "worker.min.js",
+                "input": "node_modules/tesseract.js/dist",
+                "output": "assets/tesseract-assets"
+              },
+              {
+                "glob": "tesseract-core*.wasm*",
+                "input": "node_modules/tesseract.js/node_modules/tesseract.js-core",
+                "output": "assets/tesseract-assets"
+              },
+              {
+                "glob": "pdf.worker.min.mjs",
+                "input": "node_modules/pdfjs-dist/build",
+                "output": "assets/pdfjs-assets"
               }
             ],
             "styles": [

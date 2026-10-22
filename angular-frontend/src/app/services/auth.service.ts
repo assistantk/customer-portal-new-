@@ -19,6 +19,7 @@ export interface AuthUserData {
   userName?: string;
   userRole?: string;
   isActive?: string;
+  email?: string;
 }
 
 export interface AuthResponse {

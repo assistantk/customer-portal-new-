@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
 
 export interface MasterData {
   cities: Record<string, string[]>;
@@ -81,18 +80,6 @@ export class CustomerService {
       params: { code: trimmed },
       withCredentials: true
     });
-  }
-
-  /* ---------- Code Generation (New User) ---------- */
-  generateUniqueCode(companyName: string, codeType = 'GLOBAL'): Observable<string> {
-    const type = codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
-    return this.http.post<any>(
-      `${this.API}/customers/new-generate-code?type=${type}`,
-      { companyName },
-      { withCredentials: true }
-    ).pipe(
-      map(resp => resp?.data?.code || resp?.code || '')
-    );
   }
 
   /* ---------- New Customer Registration ---------- */
