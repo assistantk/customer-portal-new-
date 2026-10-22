@@ -10,6 +10,7 @@ import { SignupComponent } from './pages/signup/signup.component';
 import { VerificationComponent } from './pages/verification/verification.component';
 import { CustomerRegistrationComponent } from './pages/customer-registration/customer-registration.component';
 import { LayoutComponent } from './layout/layout.component';
+import { NotificationComponent } from './components/notification/notification.component';
 import { AuthInterceptor } from './services/auth.interceptor';
 
 @NgModule({
@@ -19,7 +20,8 @@ import { AuthInterceptor } from './services/auth.interceptor';
     SignupComponent,
     VerificationComponent,
     CustomerRegistrationComponent,
-    LayoutComponent
+    LayoutComponent,
+    NotificationComponent
   ],
   imports: [
     BrowserModule,

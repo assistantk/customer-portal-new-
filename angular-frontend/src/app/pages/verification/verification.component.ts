@@ -1,5 +1,6 @@
-import { Component, OnInit } from "@angular/core";
+import { Component, OnInit, ChangeDetectorRef } from "@angular/core";
 import { FormBuilder, FormGroup } from "@angular/forms";
+import { finalize } from "rxjs";
 import { CustomerService } from "../../services/customer.service";
 
 @Component({
@@ -15,7 +16,10 @@ export class VerificationComponent implements OnInit {
   customers: any[] | null = null;
   error = "";
 
-  constructor(private customerService: CustomerService) {}
+  constructor(
+    private customerService: CustomerService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {}
 
@@ -46,29 +50,40 @@ export class VerificationComponent implements OnInit {
     this.loading = true;
     this.error = "";
     this.customers = null;
+    this.cdr.markForCheck();
 
     if (this.verificationType === "gstin") {
-      this.customerService.lookupCustomerByGstinJDBC(trimmedCode).subscribe({
-        next: (data) => {
+      this.customerService.lookupCustomerByGstinJDBC(trimmedCode).pipe(
+        finalize(() => {
           this.loading = false;
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: (data) => {
           this.customers = Array.isArray(data) ? data : [data];
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
           console.error("Lookup error:", err);
           this.error = err?.error?.message || err?.message || "Code not found.";
+          this.cdr.markForCheck();
         }
       });
     } else {
-      this.customerService.lookupOldCustomerJDBC(trimmedCode).subscribe({
-        next: (data) => {
+      this.customerService.lookupOldCustomerJDBC(trimmedCode).pipe(
+        finalize(() => {
           this.loading = false;
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: (data) => {
           this.customers = [data];
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
           console.error("Lookup error:", err);
           this.error = err?.error?.message || err?.message || "Code not found.";
+          this.cdr.markForCheck();
         }
       });
     }
@@ -78,5 +93,7 @@ export class VerificationComponent implements OnInit {
     this.code = "";
     this.customers = null;
     this.error = "";
+    this.loading = false;
+    this.cdr.markForCheck();
   }
 }
