@@ -916,26 +916,15 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       if (index === 0) {
         if (address) {
-          let shouldUpdate = true;
-          let isMatch = false;
-
-          if (this.form.address || this.form.city || this.form.pincode) {
-            isMatch = this.form.address ? addressesMatch(this.form.address, address) : false;
-            if (isMatch) {
-              shouldUpdate = false;
-              this.addressStatus = 'verified';
-            } else {
-              shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
-            }
-          }
-
-          if (shouldUpdate) {
+          if (this.form.address && addressesMatch(this.form.address, address)) {
+            // Existing address already matches — just mark it verified
+            this.addressStatus = 'verified';
+          } else {
+            // Silently auto-fill/correct — no confirmation popup
             this.addressStatus = !this.form.address ? 'auto-filled' : 'auto-corrected';
             this.form.address = address;
             if (pincode) this.form.pincode = pincode;
             if (city) this.form.city = city;
-          } else if (!isMatch && this.form.address) {
-            this.addressStatus = '';
           }
         } else {
           this.addressStatus = 'extraction-failed';
@@ -948,6 +937,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
+    } finally {
+      this.cdr.markForCheck();
     }
   }
 
