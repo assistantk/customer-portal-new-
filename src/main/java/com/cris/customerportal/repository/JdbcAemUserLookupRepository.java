@@ -15,11 +15,10 @@ import java.util.Optional;
 @Repository
 public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
 
-    private static final String FIND_BY_IDENTIFIER_SQL = """
-            SELECT AAVUSERID, AAVEMAILID, AAVPSWD
-            FROM TMS3T.AEM_USER
-            WHERE AAVUSERID = ? OR AAVEMAILID = ?
-            """;
+    private static final String FIND_BY_IDENTIFIER_SQL =
+            "SELECT AAVUSERID, AAVEMAILID, AAVPSWD" +
+            " FROM TMS3T.AEM_USER" +
+            " WHERE AAVUSERID = ? OR AAVEMAILID = ?";
 
     private final DataSource dataSource;
 

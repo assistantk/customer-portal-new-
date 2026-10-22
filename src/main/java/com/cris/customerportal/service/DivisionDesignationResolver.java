@@ -1,21 +1,24 @@
 package com.cris.customerportal.service;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class DivisionDesignationResolver {
-    private static final Map<String, String> DIVISION_CODES = Map.of(
-        "NAGPUR (NGP)", "NCP"
-    );
+    private static final Map<String, String> DIVISION_CODES;
+    static {
+        DIVISION_CODES = new HashMap<>();
+        DIVISION_CODES.put("NAGPUR (NGP)", "NCP");
+    }
     private static final Pattern DIVISION_CODE_PATTERN = Pattern.compile("\\(([^()]+)\\)\\s*$");
 
     private DivisionDesignationResolver() {
     }
 
     public static String resolve(String location) {
-        if (location == null || location.isBlank()) {
+        if (location == null || location.trim().isEmpty()) {
             return null;
         }
 

@@ -1,5 +1,6 @@
 package com.cris.customerportal.service;
 
+import java.util.Collections;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
@@ -146,7 +147,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public String generateUniqueCode(String baseCode) {
-  if(baseCode == null || baseCode.isBlank()) throw new IllegalArgumentException("Base code cannot be empty");
+  if(baseCode == null || baseCode.trim().isEmpty()) throw new IllegalArgumentException("Base code cannot be empty");
   String upper = baseCode.toUpperCase().trim();
   if(!repo.existsByCustomerCode(upper)) return upper;
   // Find all codes starting with this base and determine next available suffix
@@ -179,7 +180,7 @@ public class CustomerServiceImpl implements CustomerService {
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
      String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
-     if (amendmentDate != null && !amendmentDate.isBlank()) {
+     if (amendmentDate != null && !amendmentDate.trim().isEmpty()) {
          response.setCreationDate(amendmentDate);
      }
      
@@ -217,7 +218,7 @@ public class CustomerServiceImpl implements CustomerService {
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      
      String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
-     if (amendmentDate != null && !amendmentDate.isBlank()) {
+     if (amendmentDate != null && !amendmentDate.trim().isEmpty()) {
          response.setCreationDate(amendmentDate);
      }
      
@@ -234,7 +235,18 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
- private void validateFile(MultipartFile f) { if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required"); if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB"); String type=Optional.ofNullable(f.getContentType()).orElse(""); if(!Set.of("application/pdf").contains(type))throw new IllegalArgumentException("Only PDF files are allowed"); }
+ private static final Set<String> ALLOWED_CONTENT_TYPES;
+ static {
+  ALLOWED_CONTENT_TYPES = new HashSet<>();
+  ALLOWED_CONTENT_TYPES.add("application/pdf");
+ }
+
+ private void validateFile(MultipartFile f) {
+  if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required");
+  if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB");
+  String type = f.getContentType() != null ? f.getContentType() : "";
+  if(!ALLOWED_CONTENT_TYPES.contains(type))throw new IllegalArgumentException("Only PDF files are allowed");
+ }
 
  public String generateUniqueCodeJDBC(String companyName, String type) {
   String cleaned = (companyName != null ? companyName.replaceAll("[^A-Za-z]", "").toUpperCase() : "");
@@ -293,7 +305,7 @@ public class CustomerServiceImpl implements CustomerService {
  private String firstValue(java.util.Map<String, String> values, String... keys) {
   for (String key : keys) {
    String value = values.get(key);
-   if (value != null && !value.isBlank()) return value;
+   if (value != null && !value.trim().isEmpty()) return value;
   }
   return null;
  }
@@ -304,7 +316,8 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  for (String field : List.of("companyName", "address", "city", "pincode", "operatingDivision", "zone", "panNumber", "gstinNumbers")) {
+  List<String> requiredFields = Arrays.asList("companyName", "address", "city", "pincode", "operatingDivision", "zone", "panNumber", "gstinNumbers");
+  for (String field : requiredFields) {
    if (firstValue(formData, field) == null) {
     throw new IllegalArgumentException(field + " is required");
    }
@@ -318,20 +331,27 @@ public class CustomerServiceImpl implements CustomerService {
   if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
    throw new IllegalArgumentException("Enter a valid PAN number.");
   }
-  List<String> gstinNumbers = Arrays.stream(formData.get("gstinNumbers").split(","))
-      .map(String::trim)
-      .filter(value -> !value.isEmpty())
-      .toList();
-  if (gstinNumbers.isEmpty() || gstinNumbers.stream().anyMatch(value ->
-      !value.toUpperCase(Locale.ROOT).matches("^[A-Z0-9]{15}$"))) {
+  List<String> gstinNumbers = new ArrayList<>();
+  for (String g : formData.get("gstinNumbers").split(",")) {
+   String trimmed = g.trim();
+   if (!trimmed.isEmpty()) gstinNumbers.add(trimmed);
+  }
+  boolean anyInvalidGstin = false;
+  for (String g : gstinNumbers) {
+   if (!g.toUpperCase(Locale.ROOT).matches("^[A-Z0-9]{15}$")) {
+    anyInvalidGstin = true;
+    break;
+   }
+  }
+  if (gstinNumbers.isEmpty() || anyInvalidGstin) {
    throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
   }
   String email = formData.get("email");
-  if (email != null && !email.isBlank() && !email.trim().matches("^\\S+@\\S+\\.\\S+$")) {
+  if (email != null && !email.trim().isEmpty() && !email.trim().matches("^\\S+@\\S+\\.\\S+$")) {
    throw new IllegalArgumentException("Invalid email");
   }
   String mobile = formData.get("mobile");
-  if (mobile != null && !mobile.isBlank() && !mobile.trim().matches("^[6-9][0-9]{9}$")) {
+  if (mobile != null && !mobile.trim().isEmpty() && !mobile.trim().matches("^[6-9][0-9]{9}$")) {
    throw new IllegalArgumentException("Enter a valid 10-digit Indian mobile number.");
   }
 
@@ -394,8 +414,9 @@ public class CustomerServiceImpl implements CustomerService {
         insertParameters.add(formData.get("panNumber"));
     }
    String executableSql = formatBoundSql(sql, insertParameters) + ";";
-   dbaEmailService.sendDbaSqlEmail(List.of(
-       new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql)));
+   List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
+   emailRequests.add(new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql));
+   dbaEmailService.sendDbaSqlEmail(emailRequests);
    return finalCode;
  }
 
@@ -511,12 +532,13 @@ public class CustomerServiceImpl implements CustomerService {
   if (assignments.isEmpty()) throw new IllegalArgumentException("No changes detected for this record.");
   String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
       + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim().toUpperCase(Locale.ROOT)) + ";";
-  dbaEmailService.sendDbaSqlEmail(List.of(
-      new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim().toUpperCase(Locale.ROOT), executableSql)));
+  List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
+  emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim().toUpperCase(Locale.ROOT), executableSql));
+  dbaEmailService.sendDbaSqlEmail(emailRequests);
  }
 
  private String normalizeNullableValue(String value) {
-   return value == null || value.isBlank() ? null : value;
+   return value == null || value.trim().isEmpty() ? null : value;
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
@@ -607,7 +629,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public boolean checkOwnershipDuplicate(String ownershipCode) {
-  if (ownershipCode == null || ownershipCode.isBlank()) return false;
+  if (ownershipCode == null || ownershipCode.trim().isEmpty()) return false;
   String sql = "SELECT COUNT(*) FROM MEMWGONOWNRSHIP WHERE UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -622,8 +644,8 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc) {
-  boolean hasOwnership = ownershipCode != null && !ownershipCode.isBlank();
-  boolean hasParty = partyCode != null && !partyCode.isBlank();
+  boolean hasOwnership = ownershipCode != null && !ownershipCode.trim().isEmpty();
+  boolean hasParty = partyCode != null && !partyCode.trim().isEmpty();
   if (!hasOwnership && !hasParty) throw new IllegalArgumentException("At least one ownership code is required.");
 
   List<DbaEmailService.SqlRequest> statements = new ArrayList<>();
@@ -712,7 +734,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public boolean checkOwnershipPartyDuplicate(String partyCode) {
-  if (partyCode == null || partyCode.isBlank()) return false;
+  if (partyCode == null || partyCode.trim().isEmpty()) return false;
   String sql = "SELECT COUNT(*) FROM MEMWGONOWNRPRTY WHERE UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {

@@ -9,5 +9,5 @@ import org.springframework.http.*; import org.springframework.web.bind.MethodArg
  @ExceptionHandler({ResourceNotFoundException.class}) ResponseEntity<?> notFound(RuntimeException e){return error(HttpStatus.NOT_FOUND,e.getMessage());}
  @ExceptionHandler({IllegalArgumentException.class}) ResponseEntity<?> bad(RuntimeException e){return error(HttpStatus.BAD_REQUEST,e.getMessage());}
  @ExceptionHandler(Exception.class) ResponseEntity<?> general(Exception e){return error(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage() + " - " + Arrays.toString(e.getStackTrace()));}
- private ResponseEntity<?> error(HttpStatus s,String m){return ResponseEntity.status(s).body(Map.of("success",false,"message",m,"timestamp",Instant.now().toString()));}
+ private ResponseEntity<?> error(HttpStatus s,String m){Map<String,Object> body=new HashMap<>();body.put("success",false);body.put("message",m);body.put("timestamp",Instant.now().toString());return ResponseEntity.status(s).body(body);}
 }

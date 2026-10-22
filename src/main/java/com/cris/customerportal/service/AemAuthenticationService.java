@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
  * Authentication flow for users stored in TMS3T.AEM_USER.
  */
 @Service
-public final class AemAuthenticationService {
+public class AemAuthenticationService {
 
     private final AemUserLookupRepository userLookupRepository;
     private final AemAuthenticationPolicy authenticationPolicy;

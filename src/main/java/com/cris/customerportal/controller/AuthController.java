@@ -3,12 +3,13 @@ package com.cris.customerportal.controller;
 import com.cris.customerportal.dto.AuthUserDto;
 import com.cris.customerportal.dto.LoginRequest;
 import com.cris.customerportal.service.AuthService;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -30,10 +31,10 @@ public class AuthController {
         String password = loginRequest.getPassword();
 
         if (userId == null || userId.isEmpty() || password == null || password.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "User ID/Email and Password are required."
-            ));
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "User ID/Email and Password are required.");
+            return ResponseEntity.badRequest().body(body);
         }
 
         // Authenticate against TMS3T.AEM_USER.
@@ -48,11 +49,11 @@ public class AuthController {
         newSession.setAttribute(AUTH_SESSION_KEY, user);
         newSession.setMaxInactiveInterval(3600); // 1 hour session
 
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Login successful.",
-                "data", user
-        ));
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("message", "Login successful.");
+        body.put("data", user);
+        return ResponseEntity.ok(body);
     }
 
     @PostMapping("/logout")
@@ -61,10 +62,10 @@ public class AuthController {
         if (session != null) {
             session.invalidate();
         }
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Logged out successfully."
-        ));
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("message", "Logged out successfully.");
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping({"/session", "/me"})
@@ -73,17 +74,17 @@ public class AuthController {
         if (session != null) {
             AuthUserDto user = (AuthUserDto) session.getAttribute(AUTH_SESSION_KEY);
             if (user != null) {
-                return ResponseEntity.ok(Map.of(
-                        "success", true,
-                        "authenticated", true,
-                        "data", user
-                ));
+                Map<String, Object> body = new HashMap<>();
+                body.put("success", true);
+                body.put("authenticated", true);
+                body.put("data", user);
+                return ResponseEntity.ok(body);
             }
         }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                "success", false,
-                "authenticated", false,
-                "message", "Authentication required. Please log in."
-        ));
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("authenticated", false);
+        body.put("message", "Authentication required. Please log in.");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 }

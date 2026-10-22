@@ -77,11 +77,15 @@ public class DbaEmailService {
     }
 
     public void sendDbaSqlEmail(String operation, String sql) {
-        sendDbaSqlEmail(List.of(new SqlRequest(operation, null, null, sql)));
+        List<SqlRequest> requests = new ArrayList<>();
+        requests.add(new SqlRequest(operation, null, null, sql));
+        sendDbaSqlEmail(requests);
     }
 
     public void sendDbaQueryEmail(String operation, String table, String customerCode, String sql) {
-        sendDbaSqlEmail(List.of(new SqlRequest(operation, table, customerCode, sql)));
+        List<SqlRequest> requests = new ArrayList<>();
+        requests.add(new SqlRequest(operation, table, customerCode, sql));
+        sendDbaSqlEmail(requests);
     }
 
     public void sendDbaSqlEmail(Collection<SqlRequest> requests) {
@@ -124,7 +128,27 @@ public class DbaEmailService {
         mailSender.send(message);
     }
 
-    public record SqlRequest(String operation, String table, String code, String sql) {}
+    /**
+     * Value-object replacing the Java 16 record SqlRequest.
+     */
+    public static final class SqlRequest {
+        private final String operation;
+        private final String table;
+        private final String code;
+        private final String sql;
+
+        public SqlRequest(String operation, String table, String code, String sql) {
+            this.operation = operation;
+            this.table = table;
+            this.code = code;
+            this.sql = sql;
+        }
+
+        public String operation() { return operation; }
+        public String table() { return table; }
+        public String code() { return code; }
+        public String sql() { return sql; }
+    }
 
     private String formatSqlForEmail(SqlRequest request) {
         String sql = request.sql();

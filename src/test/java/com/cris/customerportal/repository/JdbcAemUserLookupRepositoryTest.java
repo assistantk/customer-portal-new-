@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 class JdbcAemUserLookupRepositoryTest {
@@ -54,8 +56,9 @@ class JdbcAemUserLookupRepositoryTest {
         assertEquals("stored-value", result.get().storedPassword());
         verify(statement).setString(1, "rail.user@example.org");
         verify(statement).setString(2, "rail.user@example.org");
-        verify(connection).prepareStatement(contains(
-                "SELECT AAVUSERID, AAVEMAILID, AAVPSWD FROM TMS3T.AEM_USER WHERE AAVUSERID = ? OR AAVEMAILID = ?"));
+        verify(connection).prepareStatement(argThat(sql ->
+        sql.replaceAll("\\s+", " ").trim().equals(
+                "SELECT AAVUSERID, AAVEMAILID, AAVPSWD FROM TMS3T.AEM_USER WHERE AAVUSERID = ? OR AAVEMAILID = ?")));
         verify(connection, never()).prepareStatement(contains("AAVOLDPSWD"));
     }
 

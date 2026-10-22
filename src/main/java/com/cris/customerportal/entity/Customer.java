@@ -1,6 +1,6 @@
 package com.cris.customerportal.entity;
 
-import jakarta.persistence.*;
+import javax.persistence.*;
 import java.time.Instant;
 
 @Entity @Table(name = "customers", uniqueConstraints = {@UniqueConstraint(columnNames = "customerCode")})
