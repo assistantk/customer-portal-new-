@@ -64,8 +64,11 @@ class CustomerServiceImplTest {
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20APEPA6196G1Z9', 'APEPA6196G');"
         ));
-        assertTrue(body.contains("\n\n----------------------------------------\n\n"
-            + "UserID: Not available\nEmail ID: Not available"));
+        assertTrue(body.contains("Prasanta Mondal\n"
+            + "Chief Manager / FOIS\n"
+            + "Centre for Railway information systems\n"
+            + "Mob:-8130797454\n\n"
+            + "UserID: SR.DCM/DHN\nEmail ID: Not available"));
         verify(existsPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("INSERT"));
     }

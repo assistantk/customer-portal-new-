@@ -37,7 +37,7 @@
         </div>
 
         <!-- Notices -->
-        <div *ngIf="notice" [class]="notice.toLowerCase().includes('success') ? 'notice success' : 'notice'" role="alert">
+        <div *ngIf="notice" [class]="notice.toLowerCase().includes('sent to dba') || notice.toLowerCase().includes('success') ? 'notice success' : 'notice'" role="alert">
             {{ notice }}
         </div>
         <div *ngIf="mode === 'old' && lookupDone" class="info-banner">
@@ -208,11 +208,12 @@
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     <input id="customerCode" name="customerCode" [value]="form.customerCode" readonly placeholder="Auto-generated from company name" />
                     <span class="code-status">
-                        <svg *ngIf="codeConfirmed" width="14" height="14" class="code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <svg *ngIf="codeChecking" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <svg *ngIf="codeConfirmed && !codeChecking" width="14" height="14" class="code-ok" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     </span>
                 </div>
-                <small *ngIf="codeConfirmed" class="code-confirmed">
-                    {{ codeType === 'GLOBAL' ? 'Global' : 'Handling Agent' }} code "{{ form.customerCode }}" generated locally. Availability is checked when submitted.
+                <small *ngIf="codeConfirmed && !codeChecking" class="code-confirmed">
+                    {{ codeType === 'GLOBAL' ? 'Global' : 'Handling Agent' }} Code "{{ form.customerCode }}" is available
                 </small>
                 <small *ngIf="lookupError && !codeConfirmed" class="error lookup-error">
                     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> {{ lookupError }}
@@ -480,6 +481,11 @@
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Please check the auto-filled details and verify that the information matches your uploaded document.
         </div>
 
+        <!-- Bottom Notice (visible right above the actions) -->
+        <div *ngIf="notice" [class]="notice.toLowerCase().includes('sent to dba') || notice.toLowerCase().includes('success') ? 'notice success' : 'notice'" role="alert" style="margin-top: 16px;">
+            {{ notice }}
+        </div>
+
         <!-- Actions -->
         <div class="actions">
             <span class="secure">
@@ -490,7 +496,7 @@
                 <button type="button" class="reset" (click)="reset()">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset
                 </button>
-                <button type="submit" class="submit" [disabled]="loading">
+                <button type="submit" class="submit" [disabled]="loading" (click)="submit($event)">
                     <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <svg *ngIf="!loading" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     {{ loading ? 'Submitting...' : 'Submit Request' }}

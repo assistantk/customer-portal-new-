@@ -104,9 +104,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   lookupDone = false;
   lookupError = '';
   codeConfirmed = false;
+  codeChecking = false;
   addressStatus = '';
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
+  private codeTimer: any = null;
+  private codeRequestId = 0;
 
   // Dropdown states
   zoneOpen = false;
@@ -145,6 +148,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
+    if (this.codeTimer) clearTimeout(this.codeTimer);
   }
 
   get zones(): string[] {
@@ -177,6 +181,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.lookupDone = false;
     this.lookupError = '';
     this.codeConfirmed = false;
+    this.codeChecking = false;
+    if (this.codeTimer) clearTimeout(this.codeTimer);
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
     this.ocrAutoFillApplied = false;
@@ -389,16 +395,46 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   /* ===== New User: generate code from company name ===== */
   handleNewCompanyNameChange(newName: string): void {
+    const requestId = ++this.codeRequestId;
     this.form.companyName = newName;
-    this.form.customerCode = generateCustomerCode(newName);
-    this.codeConfirmed = Boolean(this.form.customerCode);
-    delete this.errors['customerCode'];
+    const initialCode = generateCustomerCode(newName);
+    this.codeConfirmed = false;
     this.lookupError = '';
+    delete this.errors['customerCode'];
+    if (this.codeTimer) clearTimeout(this.codeTimer);
+
+    if (initialCode) {
+      this.form.customerCode = initialCode;
+      this.codeConfirmed = true;
+      this.codeChecking = true;
+      this.codeTimer = setTimeout(() => {
+        this.customerService.generateUniqueCode(newName, this.codeType).subscribe({
+          next: (uniqueCode) => {
+            if (requestId !== this.codeRequestId) return;
+            if (/^[A-Z]{4}$/.test(uniqueCode)) {
+              this.form.customerCode = uniqueCode;
+            }
+            this.codeConfirmed = true;
+            this.codeChecking = false;
+          },
+          error: (err) => {
+            if (requestId !== this.codeRequestId) return;
+            console.warn('Backend code verification note:', err);
+            this.codeConfirmed = Boolean(this.form.customerCode);
+            this.codeChecking = false;
+          }
+        });
+      }, 600);
+    } else {
+      this.form.customerCode = '';
+      this.codeConfirmed = false;
+      this.codeChecking = false;
+    }
   }
 
   handleNewCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
     this.codeType = newType;
-    if (this.mode === 'new' && this.form.companyName.trim()) {
+    if (this.mode === 'new' && this.form.companyName?.trim()) {
       this.handleNewCompanyNameChange(this.form.companyName);
     }
   }
@@ -443,6 +479,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const stateSet = new Set<string>();
     const gstinSet = new Set<string>();
     this.gstins.forEach((g, i) => {
+      if (this.mode === 'old' && this.gstins.length === 1 && !g.gstin?.trim() && !g.file && !g.state) {
+        return;
+      }
+
       if (!g.state && this.mode === 'new') e[`gstin_${i}_state`] = 'State is required';
       else if (g.state && stateSet.has(g.state)) e[`gstin_${i}_state`] = 'State already added';
       else if (g.state) stateSet.add(g.state);
@@ -462,19 +502,40 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }
     });
 
-    if (this.mode === 'new' && !this.codeConfirmed && this.form.companyName) {
-      e['customerCode'] = 'Could not generate a customer code from the company name.';
+    if (this.mode === 'new') {
+      if (!this.form.customerCode?.trim()) {
+        e['customerCode'] = 'Customer code is required';
+      } else if (this.codeChecking) {
+        e['customerCode'] = 'Please wait - code is being verified';
+      }
     }
 
     this.errors = e;
     return !Object.keys(e).length;
   }
 
-  submit(e: Event): void {
-    e.preventDefault();
+  submit(e?: Event): void {
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
+    if (this.loading) {
+      return;
+    }
     this.notice = '';
-    if (!this.validate()) return;
+
+    if (!this.validate()) {
+      const errorKeys = Object.keys(this.errors);
+      const firstErrorMsg = this.errors[errorKeys[0]] || 'Please check required fields.';
+      this.notice = `Validation Error: ${firstErrorMsg}`;
+      console.warn('Form validation failed:', this.errors);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return;
+    }
+
     this.loading = true;
+    console.log('Submitting customer registration in mode:', this.mode);
 
     if (this.mode === 'ownership') {
       this.customerService.submitOwnershipJDBC(
@@ -486,12 +547,22 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         next: (result) => {
           this.loading = false;
           this.notice = result.message || 'Request email sent to DBA. Database changes are pending DBA execution.';
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         },
         error: (err) => {
           this.loading = false;
           let msg = err?.error?.message || err?.message || 'Submission failed.';
+          if (typeof err?.error === 'string' && !err?.error?.message) {
+            msg = `Submission failed: ${err.statusText || 'Server error'}`;
+          }
           if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
           this.notice = msg;
+          console.error('Ownership submission error:', err);
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         }
       });
     } else if (this.mode === 'new') {
@@ -503,12 +574,22 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.notice = assignedCode
             ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`
             : (result.message || 'Request email sent to DBA. The database change is pending DBA execution.');
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         },
         error: (err) => {
           this.loading = false;
           let msg = err?.error?.message || err?.message || 'Registration failed.';
+          if (typeof err?.error === 'string' && !err?.error?.message) {
+            msg = `Registration failed: ${err.statusText || 'Server error'}`;
+          }
           if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
           this.notice = msg;
+          console.error('New registration submission error:', err);
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         }
       });
     } else {
@@ -517,6 +598,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.loading = false;
           this.clearSelectedUploads();
           this.notice = result.message || 'Request email sent to DBA. The database change is pending DBA execution.';
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
           this.removedGstinIds = [];
 
           // Refresh from DB
@@ -550,9 +634,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.loading = false;
+          console.error('Update old customer error:', err);
           let msg = err?.error?.message || err?.message || 'Update failed.';
           if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
           this.notice = msg;
+          if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       });
     }

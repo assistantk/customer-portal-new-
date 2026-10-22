@@ -140,7 +140,16 @@ public class DbaEmailService {
                 + "Mob:-8130797454\n\n");
         body.append(buildUserFooter(resolvedUserId, resolvedEmailId));
         message.setText(body.toString());
-        mailSender.send(message);
+
+        System.out.println("[DBA EMAIL] Initiating DBA notification email to " + dbaEmail + " (From: " + fromEmail + ", Requests: " + requests.size() + ")...");
+        try {
+            mailSender.send(message);
+            System.out.println("[DBA EMAIL] Email successfully dispatched to DBA (" + dbaEmail + ")");
+        } catch (Exception e) {
+            System.err.println("[DBA EMAIL ERROR] Failed to send DBA SQL notification email: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     private String userFooter() {
