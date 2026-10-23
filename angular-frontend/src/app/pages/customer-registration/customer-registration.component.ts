@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { finalize } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload } from '../../services/customer.service';
-import { PanOcrService, ExtractedGstinDetails } from '../../services/pan-ocr.service';
+import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
 
@@ -108,6 +108,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   codeConfirmed = false;
   codeChecking = false;
   addressStatus = '';
+  addressManuallyEdited = false;
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
   private codeTimer: any = null;
@@ -190,6 +191,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.codeTimer) clearTimeout(this.codeTimer);
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
+    this.addressManuallyEdited = false;
     this.ocrAutoFillApplied = false;
     this.removedGstinIds = [];
     this.zoneOpen = false;
@@ -424,12 +426,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             }
             this.codeConfirmed = true;
             this.codeChecking = false;
+            this.cdr.markForCheck();
           },
           error: (err) => {
             if (requestId !== this.codeRequestId) return;
             console.warn('Backend code verification note:', err);
             this.codeConfirmed = Boolean(this.form.customerCode);
             this.codeChecking = false;
+            this.cdr.markForCheck();
           }
         });
       }, 600);
@@ -850,6 +854,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     });
   }
 
+  handleAddressInput(): void {
+    this.addressManuallyEdited = true;
+    this.addressStatus = '';
+    if (this.errors['address'] === 'Address cannot exceed 100 characters.' && this.form.address.length <= 100) {
+      delete this.errors['address'];
+    }
+  }
+
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const selected = input.files?.[0];
@@ -865,14 +877,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     delete this.errors[`gstin_${index}_file`];
 
     try {
-      const { gstin, stateName, address, city, pincode, tradeName } = await this.panOcrService.extractGstinFromFile(selected);
+      const { gstin, stateName, address, city, pincode, tradeName, legalName, businessName } = await this.panOcrService.extractGstinFromFile(selected);
+      const extractedCompany = businessName || tradeName || legalName;
 
-      if (index === 0 && tradeName && !this.form.companyName.trim()) {
+      if (index === 0 && extractedCompany && (!this.form.companyName || !this.form.companyName.trim() || this.form.companyName === 'NA')) {
         if (this.mode === 'new') {
-          this.handleNewCompanyNameChange(tradeName);
+          this.handleNewCompanyNameChange(extractedCompany);
         } else {
-          this.form.companyName = tradeName;
+          this.form.companyName = extractedCompany;
         }
+        delete this.errors['companyName'];
         this.ocrAutoFillApplied = true;
       }
 
@@ -894,42 +908,49 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         return;
       }
 
+      const derivedState = stateName || (normalizedGstin ? getStateNameFromGstinCode(normalizedGstin.slice(0, 2)) : null);
       const updates: Partial<GstinEntry> = {
         gstin: normalizedGstin,
         scanning: false,
         scanStatus: 'success',
         scanError: ''
       };
-      if (stateName && (!this.gstins[index]?.state || this.gstins[index]?.state === '')) {
-        updates.state = stateName;
+      if (derivedState && (!this.gstins[index]?.state || this.gstins[index]?.state === '')) {
+        updates.state = derivedState;
       }
       this.handleGstinChange(index, updates);
 
       this.form.panNumber = extractedPan;
-      if (index === 0 && city) this.form.city = city;
-      if (index === 0 && pincode) this.form.pincode = pincode;
-      this.ocrAutoFillApplied = true;
-
-      delete this.errors[`gstin_${index}_gstin`];
-      delete this.errors[`gstin_${index}_state`];
       delete this.errors['panNumber'];
 
       if (index === 0) {
-        if (address) {
-          if (this.form.address && addressesMatch(this.form.address, address)) {
-            // Existing address already matches — just mark it verified
+        if (city && (!this.form.city || !this.form.city.trim())) {
+          this.form.city = city;
+          delete this.errors['city'];
+        }
+        if (pincode && (!this.form.pincode || !this.form.pincode.trim())) {
+          this.form.pincode = pincode;
+          delete this.errors['pincode'];
+        }
+        const cleanedAddress = cleanAndShortenAddress(address);
+        if (cleanedAddress && !this.addressManuallyEdited) {
+          if (this.form.address && addressesMatch(this.form.address, cleanedAddress)) {
             this.addressStatus = 'verified';
           } else {
-            // Silently auto-fill/correct — no confirmation popup
             this.addressStatus = !this.form.address ? 'auto-filled' : 'auto-corrected';
-            this.form.address = address;
-            if (pincode) this.form.pincode = pincode;
-            if (city) this.form.city = city;
+            this.form.address = cleanedAddress;
+            delete this.errors['address'];
+            if (pincode && (!this.form.pincode || !this.form.pincode.trim())) this.form.pincode = pincode;
+            if (city && (!this.form.city || !this.form.city.trim())) this.form.city = city;
           }
-        } else {
+        } else if (!cleanedAddress && !this.addressManuallyEdited) {
           this.addressStatus = 'extraction-failed';
         }
+        this.ocrAutoFillApplied = true;
       }
+
+      delete this.errors[`gstin_${index}_gstin`];
+      delete this.errors[`gstin_${index}_state`];
     } catch (err) {
       console.error('GSTIN OCR scan failed:', err);
       const message = err instanceof Error && err.message.startsWith('PDF exceeds the')

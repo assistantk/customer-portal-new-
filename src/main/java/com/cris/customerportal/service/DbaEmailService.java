@@ -49,7 +49,13 @@ public class DbaEmailService {
             String operation = audit.getOperationType() == null
                     ? "QUERY"
                     : audit.getOperationType().toUpperCase(Locale.ROOT);
-            String sql = formatStringLiterals(toEmailSql(audit));
+            String auditSql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
+            String sql = "INSERT".equalsIgnoreCase(audit.getOperationType())
+                    && "MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
+                    && auditSql.regionMatches(true, 0, "INSERT INTO MEMGLBLCUST", 0, "INSERT INTO MEMGLBLCUST".length())
+                    ? formatSqlForEmail(new SqlRequest(
+                            audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
+                    : formatStringLiterals(toEmailSql(audit));
             String text = "Dear DBA Team,\n\n"
                     + "Kindly execute attached/below script on rfrn3t and training.\n\n"
                     + "SQL QUERY:\n"
@@ -306,7 +312,30 @@ public class DbaEmailService {
             throw new IllegalArgumentException("Expected VALUES after the " + table + " INSERT column list.");
         }
 
-        return insertPrefix + " " + sql.substring(valuesStart).toUpperCase(Locale.ROOT);
+        String valuesPart = sql.substring(valuesStart);
+        if ("MEMGLBLCUST".equalsIgnoreCase(table)) {
+            return (insertPrefix + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
+        }
+        return (insertPrefix + " " + valuesPart).toUpperCase(Locale.ROOT);
+    }
+
+    private String compactSqlValues(String sql) {
+        StringBuilder sb = new StringBuilder(sql.length());
+        boolean inString = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                sb.append(c);
+                if (inString && i + 1 < sql.length() && sql.charAt(i + 1) == '\'') {
+                    sb.append(sql.charAt(++i));
+                } else {
+                    inString = !inString;
+                }
+            } else if (inString || !Character.isWhitespace(c)) {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private String formatUpdateForEmail(String sql, String table) {

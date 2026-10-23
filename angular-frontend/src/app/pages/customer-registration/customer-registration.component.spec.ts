@@ -1,4 +1,5 @@
 import { ChangeDetectorRef } from '@angular/core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
@@ -279,6 +280,42 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         'Submission Failed',
         'Could not send the request email: SMTP connection failed'
       );
+    });
+  });
+
+  describe('Address OCR autofill', () => {
+    it('keeps a manually edited address when OCR finishes', async () => {
+      component.mode = 'new';
+      component.form.companyName = 'Test Corporation';
+      component.form.address = 'Manual business address';
+      component.handleAddressInput();
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07ABCDE1234F1Z5',
+        address: 'Extracted address from GST certificate, 110001',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+      const file = new File(['pdf'], 'gst.pdf', { type: 'application/pdf' });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [file] }
+      } as unknown as Event);
+
+      expect(component.addressManuallyEdited).toBe(true);
+      expect(component.form.address).toBe('Manual business address');
+    });
+
+    it('rejects a manually entered address longer than 100 characters', () => {
+      component.mode = 'old';
+      component.form.companyName = 'Test Corporation';
+      component.form.customerCode = 'TEST';
+      component.form.address = 'A'.repeat(101);
+      component.form.city = 'Delhi';
+      component.form.panNumber = 'ABCDE1234F';
+
+      expect(component.validate()).toBe(false);
+      expect(component.errors['address']).toBe('Address cannot exceed 100 characters.');
     });
   });
 });

@@ -1,1 +1,29 @@
+# Maven build outputs
 /target/
+target/
+
+# Environment files
+.env
+.env.local
+
+# Node and Angular artifacts
+node_modules/
+dist/
+.angular/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+.metadata/
+.settings/
+.classpath
+.project
+
+# OS files
+Thumbs.db
+.DS_Store

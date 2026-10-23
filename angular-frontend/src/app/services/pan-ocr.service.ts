@@ -49,8 +49,9 @@ export function getStateNameFromGstinCode(code: string | null | undefined): stri
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const PIN_PATTERN = /\b[1-9][0-9]{5}\b/;
 const MAX_PDF_PAGES = 50;
-const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets/', document.baseURI).href;
-const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata/', document.baseURI).href;
+const baseUri = typeof document !== 'undefined' && document.baseURI ? document.baseURI : 'http://localhost/';
+const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets/', baseUri).href;
+const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata/', baseUri).href;
 const ADDRESS_BOUNDARY = /\b(?:date\s+of\s+liabil\w{2,}|date\s+of\s+valid\w{2,}|type\s+of\s+registration|status\s+of\s+registration|registration\s+status|additional\s+places?\s+of\s+business|details?\s+of\s+additional\s+places?\s+of\s+business)\b|\b\d{1,2}\s*[.)]?\s*(?=(?:date|type|status|principal|additional|nature|constitution)\b)/i;
 const ADDRESS_LABELS: Array<{ key: string; pattern: RegExp }> = [
   { key: 'building', pattern: /Building\s+No\.?\s*\/\s*Flat\s+No\.?/ig },
@@ -75,6 +76,8 @@ export interface ExtractedGstinDetails {
   pincode?: string | null;
   state?: string | null;
   tradeName?: string | null;
+  legalName?: string | null;
+  businessName?: string | null;
   stateName?: string | null;
 }
 
@@ -128,6 +131,105 @@ function cleanText(value: string): string {
     .replace(/[,;]\s*\./g, ',')
     .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, '')
     .trim();
+}
+
+export function cleanAndShortenAddress(address: string | null | undefined, maxLength = 100): string {
+  const limit = Number.isFinite(maxLength) ? Math.max(0, Math.floor(maxLength)) : 100;
+  if (!address?.trim() || limit === 0) return '';
+
+  let normalized = address
+    .replace(/\r\n?/g, '\n')
+    .replace(/[|;]/g, ',')
+    .replace(/\n+/g, ',')
+    .replace(/\s+/g, ' ')
+    .replace(/[,;:]\s*[,;:]+/g, ',')
+    .replace(/\.{2,}/g, '.')
+    .replace(/\s*,\s*/g, ', ')
+    .trim();
+
+  const pinLabel = /\b(?:pin\s*code|pincode)\b\s*[:\-]?\s*([1-9]\d{5})\b/i.exec(normalized);
+  const pinCandidates = [...normalized.matchAll(/\b[1-9]\d{5}\b/g)];
+  const trailingPin = [...pinCandidates].reverse().find(match => (
+    !normalized.slice(match.index! + match[0].length).replace(/[\s,.;:]+/g, '')
+  ));
+  const pin = pinLabel?.[1] || trailingPin?.[0] || '';
+  const pinMatch = pinLabel || trailingPin;
+  if (pinMatch) {
+    normalized = `${normalized.slice(0, pinMatch.index)}${normalized.slice(pinMatch.index! + pinMatch[0].length)}`;
+  }
+  normalized = normalized.replace(/\b(?:pin\s*code|pincode)\b\s*[:\-]?/gi, '');
+
+  const seen = new Set<string>();
+  const segments = normalized.split(',').map(segment => {
+    const withoutLabels = segment
+      .replace(/^\s*(?:address|registered\s+office|location)\s*[:\-]?\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const words: string[] = [];
+    let previousWord = '';
+    for (const word of withoutLabels.split(/\s+/)) {
+      const key = word.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+      if (key && key === previousWord) continue;
+      words.push(word);
+      previousWord = key;
+    }
+    const cleaned = words.join(' ').replace(/^[\s.,;:]+|[\s.,;:]+$/g, '').trim();
+    const key = cleaned.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (!key || seen.has(key)) return '';
+    seen.add(key);
+    return cleaned;
+  }).filter(Boolean);
+
+  const needsShortening = [...segments, ...(pin ? [pin] : [])].join(', ').length > limit;
+  const abbreviated = needsShortening
+    ? segments.map(segment => segment
+      .replace(/\bNEAR\b/gi, 'Nr')
+      .replace(/\bOPPOSITE(?:\s+TO)?\b/gi, 'Opp')
+      .replace(/\bROAD\b/gi, 'Rd')
+      .replace(/\bSTREET\b/gi, 'St')
+      .replace(/\bBUILDING\b/gi, 'Bldg')
+      .replace(/\bFLOOR\b/gi, 'Flr')
+      .trim())
+    : [...segments];
+  const isState = (segment: string) => KNOWN_STATES.some(state => state.toLowerCase() === segment.toLowerCase());
+  const removalPriority = (segment: string): number => {
+    if (/\b(?:near|nr|opposite|opp|behind)\b/i.test(segment)) return 0;
+    if (isState(segment)) return 2;
+    if (/\b(?:city|town|village|district)\b/i.test(segment)) return 3;
+    if (/\b(?:road|rd|street|st|locality|sector|colony|area|nagar)\b/i.test(segment)) return 4;
+    return 1;
+  };
+  const render = () => [...abbreviated, ...(pin ? [pin] : [])].join(', ');
+
+  while (render().length > limit && abbreviated.length > 1) {
+    let removeIndex = 1;
+    for (let index = 2; index < abbreviated.length; index++) {
+      const priority = removalPriority(abbreviated[index]);
+      const currentPriority = removalPriority(abbreviated[removeIndex]);
+      if (priority < currentPriority || (priority === currentPriority && index > removeIndex)) {
+        removeIndex = index;
+      }
+    }
+    abbreviated.splice(removeIndex, 1);
+  }
+
+  const result = render();
+  if (result.length <= limit) return result;
+
+  const pinSuffix = pin && pin.length < limit ? `, ${pin}` : '';
+  const addressBudget = Math.max(0, limit - pinSuffix.length);
+  const coreAddress = abbreviated[0] || '';
+  const words: string[] = [];
+  for (const word of coreAddress.split(/\s+/)) {
+    const candidate = [...words, word].join(' ');
+    if (candidate.length > addressBudget) break;
+    words.push(word);
+  }
+  let shortened = words.join(' ');
+  if (!shortened && coreAddress && addressBudget > 0) {
+    shortened = coreAddress.slice(0, addressBudget);
+  }
+  return `${shortened}${pinSuffix}`.slice(0, limit).trim();
 }
 
 function titleCase(value: string): string {
@@ -200,7 +302,7 @@ function parsePrincipalAddress(text: string): ParsedAddress {
     pincode,
   ].filter((part): part is string => Boolean(part)).map(titleCaseAddress);
   return {
-    address: cleanText(addressParts.join(', ')) || null,
+    address: cleanAndShortenAddress(addressParts.join(', ')) || null,
     city: city ? titleCaseAddress(city) : null,
     pincode,
     state: stateMatch?.name || null,
@@ -214,23 +316,49 @@ function findStateName(text: string): { name: string } | null {
   return { name: KNOWN_STATES.find(state => state.toLowerCase() === match[1].toLowerCase()) || titleCase(match[1]) };
 }
 
-function extractTradeName(text: string): string | null {
+function isInvalidBusinessName(name: string | null | undefined): boolean {
+  if (!name) return true;
+  const clean = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  return ['na', 'nil', 'null', 'none', 'notapplicable', 'notavailable', 'n/a'].includes(clean) || clean.length < 2;
+}
+
+function trimUnrelatedBusinessValue(value: string): string {
+  return value
+    .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
+    .replace(/\b(?:null|n\/a|na|not\s+applicable|not\s+available)\b/gi, '')
+    .replace(/\b(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b.*$/gi, '')
+    .replace(/\s*\d+\s*[\.\)]\s*$/g, '')
+    .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractFieldValue(text: string, labelPattern: RegExp, nextFieldPattern: RegExp): string | null {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  const labelPattern = /\b(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
-  const nextLabelPattern = /\b(?:legal\s+name(?:\s+of\s+business)?|trade\s+name|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
-  for (const match of normalized.matchAll(labelPattern)) {
-    const remaining = normalized.slice(match.index! + match[0].length);
-    nextLabelPattern.lastIndex = 0;
-    const nextLabel = nextLabelPattern.exec(remaining);
-    const candidate = remaining.slice(0, nextLabel ? nextLabel.index : remaining.length)
-      .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
-      .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
-      .trim();
+  const matches = [...normalized.matchAll(labelPattern)];
+  for (const match of matches) {
+    const start = match.index! + match[0].length;
+    const remaining = normalized.slice(start);
+    const boundaryIndex = remaining.search(nextFieldPattern);
+    const candidate = trimUnrelatedBusinessValue(remaining.slice(0, boundaryIndex >= 0 ? boundaryIndex : remaining.length));
+    if (isInvalidBusinessName(candidate)) continue;
     if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
       return candidate;
     }
   }
   return null;
+}
+
+function extractLegalName(text: string): string | null {
+  const labelPattern = /\b(?:\d+\s*[\.\)]\s*)?legal\s+name(?:\s+of\s+business)?\s*[:\-]?\s*/ig;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)]\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  return extractFieldValue(text, labelPattern, nextFieldPattern);
+}
+
+function extractTradeName(text: string): string | null {
+  const labelPattern = /\b(?:\d+\s*[\.\)]\s*)?(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)]\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
 export function extractGstinDetailsFromText(text: string): ExtractedGstinDetails {
@@ -244,10 +372,17 @@ export function extractGstinDetailsFromText(text: string): ExtractedGstinDetails
     }
   }
   const address = parsePrincipalAddress(text);
+  const legal = extractLegalName(text);
+  const trade = extractTradeName(text);
+  const businessName = legal || trade || null;
+  const tradeName = trade || legal || null;
+
   return {
     gstin,
     stateCode: gstin ? gstin.slice(0, 2) : null,
-    tradeName: extractTradeName(text),
+    tradeName: tradeName,
+    legalName: legal,
+    businessName,
     ...address,
   };
 }
@@ -347,7 +482,7 @@ export class PanOcrService {
     }
     if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
 
-    if ((!isPdf || pdf) && (!details.gstin || !details.address || !details.tradeName)) {
+    if ((!isPdf || pdf) && (!details.gstin || !details.address || !(details.tradeName || details.legalName))) {
       let worker: OcrWorker | null = null;
       let imageCanvas: HTMLCanvasElement | null = null;
       let preparedImage: File | HTMLCanvasElement | null = null;
@@ -377,7 +512,7 @@ export class PanOcrService {
             source.width = 0;
             source.height = 0;
           }
-          if ((details.gstin || ocrDetails.gstin) && (details.address || ocrDetails.address) && (details.tradeName || ocrDetails.tradeName)) break;
+          if ((details.gstin || ocrDetails.gstin) && (details.address || ocrDetails.address) && (details.tradeName || ocrDetails.tradeName || details.legalName || ocrDetails.legalName)) break;
         }
         const ocrDetails = extractGstinDetailsFromText(ocrPages.join('\n'));
         details = {
@@ -388,6 +523,8 @@ export class PanOcrService {
           pincode: details.pincode || ocrDetails.pincode,
           state: details.state || ocrDetails.state,
           tradeName: details.tradeName || ocrDetails.tradeName,
+          legalName: details.legalName || ocrDetails.legalName,
+          businessName: details.businessName || ocrDetails.businessName || details.tradeName || ocrDetails.tradeName,
         };
       } catch (error) {
         console.warn('Client-side GSTIN OCR failed; trying the document API:', error);
