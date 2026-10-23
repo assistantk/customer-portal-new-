@@ -43,7 +43,7 @@ public class DbaEmailService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(dbaEmail, "mondal.prasanta@cris.org.in");
-            message.setCc("mondal.prasanta@cris.org.in", "malhotra.poonam@cris.org.in");
+            message.setCc("mondal.prasanta@cris.org.in");
             message.setSubject("Customer Registration Portal Database Query");
 
             String operation = audit.getOperationType() == null
@@ -98,7 +98,6 @@ public class DbaEmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
-        message.setCc("malhotra.poonam@cris.org.in");
         message.setSubject("Customer Registration Portal Database Query");
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n"

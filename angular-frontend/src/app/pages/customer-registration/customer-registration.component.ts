@@ -1,7 +1,9 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { finalize } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
+import { NotificationService } from '../../services/notification.service';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -139,7 +141,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   constructor(
     private customerService: CustomerService,
-    private panOcrService: PanOcrService
+    private panOcrService: PanOcrService,
+    private notificationService: NotificationService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {}
@@ -178,6 +182,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.gstins = [{ ...blankGstin }];
     this.errors = {};
     this.notice = '';
+    this.loading = false;
     this.lookupDone = false;
     this.lookupError = '';
     this.codeConfirmed = false;
@@ -196,15 +201,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection2Loading = false;
     this.ownSection2Found = null;
     this.ownSection2Duplicate = false;
+    this.cdr.markForCheck();
   }
 
   clearSelectedUploads(): void {
     this.gstins = this.gstins.map(g => ({ ...g, file: null, scanning: false, scanStatus: 'idle', scanError: '' }));
+    this.cdr.markForCheck();
   }
 
   switchMode(newMode: 'ownership' | 'old' | 'new'): void {
     this.reset();
     this.mode = newMode;
+    this.cdr.markForCheck();
   }
 
   /* ===== Ownership Section 1: lookup in MEMWGONOWNRSHIP ===== */
@@ -514,9 +522,87 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return !Object.keys(e).length;
   }
 
+  private isSuccessfulResponse(result: any): boolean {
+    if (!result) return false;
+    if (result.success === false) return false;
+    if (result.success === true) return true;
+    if (typeof result.message === 'string' && /sent to dba/i.test(result.message)) {
+      return true;
+    }
+    if (result.customerCode) {
+      return true;
+    }
+    return false;
+  }
+
+  private extractErrorMessage(err: any): string {
+    if (!err) {
+      return 'Your request could not be submitted. Please try again.';
+    }
+
+    if (err.status === 0 || err.name === 'TimeoutError' || (err.message && /network|refused|failed to fetch/i.test(err.message))) {
+      return 'Unable to connect to the server. Please check your network connection and try again.';
+    }
+
+    if (err.status === 401) {
+      return 'Session expired or unauthorized. Please sign in again.';
+    }
+
+    if (err.status === 403) {
+      return 'You do not have permission to perform this action.';
+    }
+
+    let rawMsg = '';
+    if (typeof err.error === 'string') {
+      rawMsg = err.error;
+    } else if (err.error && typeof err.error.message === 'string') {
+      rawMsg = err.error.message;
+    } else if (typeof err.message === 'string') {
+      rawMsg = err.message;
+    }
+
+    if (rawMsg) {
+      if (rawMsg.includes('- [com.cris')) {
+        rawMsg = rawMsg.split('- [com.cris')[0].trim();
+      }
+      if (rawMsg.includes('Exception:')) {
+        const parts = rawMsg.split('Exception:');
+        rawMsg = parts[parts.length - 1].trim();
+      }
+      if (/ORA-\d+|PLS-\d+|SQLSyntaxErrorException/i.test(rawMsg)) {
+        rawMsg = 'A database processing error occurred. Please contact support or try again.';
+      }
+      if (rawMsg.length > 200) {
+        rawMsg = rawMsg.substring(0, 197) + '...';
+      }
+      if (rawMsg.trim()) {
+        return rawMsg.trim();
+      }
+    }
+
+    if (err.status === 400) {
+      return 'Invalid request data. Please check all fields and try again.';
+    }
+
+    if (err.status === 404) {
+      return 'Requested customer or endpoint could not be found.';
+    }
+
+    if (err.status === 409) {
+      return 'A customer with this code or information already exists.';
+    }
+
+    if (err.status >= 500) {
+      return 'An internal server error occurred while processing your request. Please try again later.';
+    }
+
+    return 'Your request could not be submitted. Please try again.';
+  }
+
   submit(e?: Event): void {
-    if (e && e.preventDefault) {
-      e.preventDefault();
+    if (e) {
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
     }
     if (this.loading) {
       return;
@@ -527,118 +613,173 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const errorKeys = Object.keys(this.errors);
       const firstErrorMsg = this.errors[errorKeys[0]] || 'Please check required fields.';
       this.notice = `Validation Error: ${firstErrorMsg}`;
+      this.notificationService.error('Validation Error', firstErrorMsg);
       console.warn('Form validation failed:', this.errors);
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
+      this.cdr.markForCheck();
       return;
     }
 
     this.loading = true;
+    this.cdr.markForCheck();
     console.log('Submitting customer registration in mode:', this.mode);
 
     if (this.mode === 'ownership') {
+      const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
+      const ownershipAddress = (this.form.ownershipAddress || '').trim();
+      const ownershipPartyCode = (this.form.ownershipPartyCode || '').trim().toUpperCase();
+      const ownershipPartyAddress = (this.form.ownershipPartyAddress || '').trim();
+
       this.customerService.submitOwnershipJDBC(
-        this.form.ownershipCode!.trim().toUpperCase(),
-        this.form.ownershipAddress?.trim() || '',
-        this.form.ownershipPartyCode?.trim().toUpperCase() || '',
-        this.form.ownershipPartyAddress?.trim() || ''
+        ownershipCode,
+        ownershipAddress,
+        ownershipPartyCode,
+        ownershipPartyAddress
+      ).pipe(
+        finalize(() => {
+          this.loading = false;
+          this.cdr.markForCheck();
+        })
       ).subscribe({
         next: (result) => {
-          this.loading = false;
-          this.notice = result.message || 'Request email sent to DBA. Database changes are pending DBA execution.';
+          if (this.isSuccessfulResponse(result)) {
+            this.notice = result?.message || 'Request email sent to DBA. Database changes are pending DBA execution.';
+            this.notificationService.success(
+              'Request Submitted Successfully',
+              'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
+            );
+          } else {
+            const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
+            this.notice = errorMsg;
+            this.notificationService.error('Submission Failed', errorMsg);
+          }
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
-          let msg = err?.error?.message || err?.message || 'Submission failed.';
-          if (typeof err?.error === 'string' && !err?.error?.message) {
-            msg = `Submission failed: ${err.statusText || 'Server error'}`;
-          }
-          if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
-          this.notice = msg;
           console.error('Ownership submission error:', err);
+          const errorMsg = this.extractErrorMessage(err);
+          this.notice = errorMsg;
+          this.notificationService.error('Submission Failed', errorMsg);
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
+          this.cdr.markForCheck();
         }
       });
     } else if (this.mode === 'new') {
-      this.customerService.registerCustomer({ ...this.form, codeType: this.codeType }, this.gstins).subscribe({
-        next: (result) => {
+      this.customerService.registerCustomer({ ...this.form, codeType: this.codeType }, this.gstins).pipe(
+        finalize(() => {
           this.loading = false;
-          const assignedCode = result.customerCode;
-          this.reset();
-          this.notice = assignedCode
-            ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`
-            : (result.message || 'Request email sent to DBA. The database change is pending DBA execution.');
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: (result) => {
+          if (this.isSuccessfulResponse(result)) {
+            const assignedCode = result?.customerCode;
+            this.reset();
+            this.notice = assignedCode
+              ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`
+              : (result?.message || 'Request email sent to DBA. The database change is pending DBA execution.');
+            this.notificationService.success(
+              'Request Submitted Successfully',
+              'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
+            );
+          } else {
+            const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
+            this.notice = errorMsg;
+            this.notificationService.error('Submission Failed', errorMsg);
+          }
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
-          let msg = err?.error?.message || err?.message || 'Registration failed.';
-          if (typeof err?.error === 'string' && !err?.error?.message) {
-            msg = `Registration failed: ${err.statusText || 'Server error'}`;
-          }
-          if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
-          this.notice = msg;
           console.error('New registration submission error:', err);
+          const errorMsg = this.extractErrorMessage(err);
+          this.notice = errorMsg;
+          this.notificationService.error('Submission Failed', errorMsg);
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
+          this.cdr.markForCheck();
         }
       });
     } else {
-      this.customerService.updateOldCustomerJDBC({ ...this.form, codeType: this.codeType }, this.gstins).subscribe({
-        next: (result) => {
+      this.customerService.updateOldCustomerJDBC({ ...this.form, codeType: this.codeType }, this.gstins).pipe(
+        finalize(() => {
           this.loading = false;
-          this.clearSelectedUploads();
-          this.notice = result.message || 'Request email sent to DBA. The database change is pending DBA execution.';
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: (result) => {
+          if (this.isSuccessfulResponse(result)) {
+            this.clearSelectedUploads();
+            this.notice = result?.message || 'Request email sent to DBA. The database change is pending DBA execution.';
+            this.notificationService.success(
+              'Request Submitted Successfully',
+              'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
+            );
+            this.removedGstinIds = [];
+
+            // Refresh from DB
+            const codeToRefresh = (this.form.customerCode || '').trim();
+            if (codeToRefresh) {
+              const refresh$ = this.codeType === 'HANDLING_AGENT'
+                ? this.customerService.lookupHandlingAgentJDBC(codeToRefresh)
+                : this.customerService.lookupOldCustomerJDBC(codeToRefresh);
+
+              refresh$.subscribe({
+                next: (refreshed: any) => {
+                  if (refreshed) {
+                    this.form.companyName = refreshed.companyName || this.form.companyName;
+                    this.form.address = refreshed.address || this.form.address;
+                    this.form.city = refreshed.city || this.form.city;
+                    this.form.panNumber = refreshed.panNumber || this.form.panNumber;
+                    this.form.email = refreshed.email || refreshed.emailId || this.form.email;
+                    this.form.mobile = refreshed.mobile || refreshed.phoneNumber || this.form.mobile;
+
+                    if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
+                      const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');
+                      const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
+                        ...blankGstin,
+                        gstinId: `old-${idx}`,
+                        gstin: g
+                      }));
+                      this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
+                    } else {
+                      this.gstins = [{ ...blankGstin }];
+                    }
+                    this.cdr.markForCheck();
+                  }
+                },
+                error: (refreshErr) => console.error('Refresh lookup error:', refreshErr)
+              });
+            }
+          } else {
+            const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
+            this.notice = errorMsg;
+            this.notificationService.error('Submission Failed', errorMsg);
+          }
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
-          this.removedGstinIds = [];
-
-          // Refresh from DB
-          const refresh$ = this.codeType === 'HANDLING_AGENT'
-            ? this.customerService.lookupHandlingAgentJDBC(this.form.customerCode.trim())
-            : this.customerService.lookupOldCustomerJDBC(this.form.customerCode.trim());
-
-          refresh$.subscribe({
-            next: (refreshed: any) => {
-              this.form.companyName = refreshed.companyName || this.form.companyName;
-              this.form.address = refreshed.address || this.form.address;
-              this.form.city = refreshed.city || this.form.city;
-              this.form.panNumber = refreshed.panNumber || this.form.panNumber;
-              this.form.email = refreshed.email || refreshed.emailId || this.form.email;
-              this.form.mobile = refreshed.mobile || refreshed.phoneNumber || this.form.mobile;
-
-              if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
-                const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');
-                const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
-                  ...blankGstin,
-                  gstinId: `old-${idx}`,
-                  gstin: g
-                }));
-                this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
-              } else {
-                this.gstins = [{ ...blankGstin }];
-              }
-            },
-            error: (refreshErr) => console.error('Refresh lookup error:', refreshErr)
-          });
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
           console.error('Update old customer error:', err);
-          let msg = err?.error?.message || err?.message || 'Update failed.';
-          if (msg.length > 200) msg = msg.split('- [com.cris')[0].substring(0, 150) + '...';
-          this.notice = msg;
-          if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+          const errorMsg = this.extractErrorMessage(err);
+          this.notice = errorMsg;
+          this.notificationService.error('Submission Failed', errorMsg);
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+          this.cdr.markForCheck();
         }
       });
     }
@@ -775,26 +916,15 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       if (index === 0) {
         if (address) {
-          let shouldUpdate = true;
-          let isMatch = false;
-
-          if (this.form.address || this.form.city || this.form.pincode) {
-            isMatch = this.form.address ? addressesMatch(this.form.address, address) : false;
-            if (isMatch) {
-              shouldUpdate = false;
-              this.addressStatus = 'verified';
-            } else {
-              shouldUpdate = window.confirm(`Address found in GST Certificate:\n${address}\n\nUse this GST address instead of manually entered data?`);
-            }
-          }
-
-          if (shouldUpdate) {
+          if (this.form.address && addressesMatch(this.form.address, address)) {
+            // Existing address already matches — just mark it verified
+            this.addressStatus = 'verified';
+          } else {
+            // Silently auto-fill/correct — no confirmation popup
             this.addressStatus = !this.form.address ? 'auto-filled' : 'auto-corrected';
             this.form.address = address;
             if (pincode) this.form.pincode = pincode;
             if (city) this.form.city = city;
-          } else if (!isMatch && this.form.address) {
-            this.addressStatus = '';
           }
         } else {
           this.addressStatus = 'extraction-failed';
@@ -807,6 +937,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
+    } finally {
+      this.cdr.markForCheck();
     }
   }
 
