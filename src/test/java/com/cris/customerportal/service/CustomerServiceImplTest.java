@@ -19,6 +19,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -62,7 +63,7 @@ class CustomerServiceImplTest {
             + "SQL QUERY:\n"
             + "----------------------------------------1 INSERT---------------------------\n\n"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DHN', NULL, '20APEPA6196G1Z9', 'APEPA6196G');"
+            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"
         ));
         assertTrue(body.contains("Prasanta Mondal\n"
             + "Chief Manager / FOIS\n"
@@ -101,9 +102,9 @@ class CustomerServiceImplTest {
         String body = emailedBody(mailSender);
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: ASEB"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', "
-                + "'FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014', 'PATNA', "
-                + "NULL, NULL, NULL, SYSDATE, 'SR.DCM/DNR', NULL, '10ABACA6462C1ZD', 'ABACA6462C');"
+            "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
+                + "'FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014','PATNA',"
+                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'10ABACA6462C1ZD','ABACA6462C');"
         ));
         assertFalse(body.contains("INSERT INTO MEMGLBLCUST ("));
         verify(existsPs, never()).executeUpdate();
@@ -136,9 +137,9 @@ class CustomerServiceImplTest {
         ));
 
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLCUST VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', "
-                + "'PATNA ROAD', 'PATNA', NULL, NULL, NULL, SYSDATE, 'SR.DCM/DNR', NULL, "
-                + "'10ABACA6462C1ZD', 'ABACA6462C');"
+            "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
+                + "'PATNA ROAD','PATNA',NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,"
+                + "'10ABACA6462C1ZD','ABACA6462C');"
         ));
     }
 
@@ -438,6 +439,86 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
             "UserID: SR.DCM/NCP\nEmail ID: rail.user@example.org"));
+    }
+
+    @Test
+    void dbaSqlEmailFormatsMemglblcustInsertWithoutUnnecessarySpaces() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+
+        List<DbaEmailService.SqlRequest> requests = List.of(
+            new DbaEmailService.SqlRequest(
+                "INSERT",
+                "MEMGLBLCUST",
+                "JPPB",
+                "INSERT INTO MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) VALUES ('JPPB', 'M/S JINDAL PARADIP PORT LIMITED', 'MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142', 'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');"
+            )
+        );
+
+        emailService.sendDbaSqlEmail(requests);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(
+            "INSERT INTO MEMGLBLCUST VALUES('JPPB','M/S JINDAL PARADIP PORT LIMITED','MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142','JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"
+        ));
+    }
+
+    @Test
+    void dbaSqlEmailUppercasesEveryMemglblcustInsertForMultipleCustomers() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        List<DbaEmailService.SqlRequest> requests = List.of(
+            new DbaEmailService.SqlRequest(
+                "INSERT", "memglblcust", "ab01",
+                "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'm/s alpha & beta', "
+                    + "'12 mixed Road, sector b', 'new town', null, null, null, sysdate, "
+                    + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');"
+            ),
+            new DbaEmailService.SqlRequest(
+                "INSERT", "MEMGLBLCUST", "cd02",
+                "insert into MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('cd02', 'o''brien services', "
+                    + "'main street, sector c', 'new delhi', null, null, null, sysdate, "
+                    + "'sr.dcm/ndls', null, 'gstindef456', 'pandef');"
+            )
+        );
+
+        emailService.sendDbaSqlEmail(requests);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        String body = message.getValue().getText();
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUST VALUES('AB01','M/S ALPHA & BETA','12 MIXED ROAD, SECTOR B',"
+                + "'NEW TOWN',NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
+        ));
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUST VALUES('CD02','O''BRIEN SERVICES','MAIN STREET, SECTOR C',"
+                + "'NEW DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/NDLS',NULL,'GSTINDEF456','PANDEF');"
+        ));
+    }
+
+    @Test
+    void dbaAuditEmailCompactsAndUppercasesMemglblcustInsertWithoutChangingValues() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "audit@example.com", "dba@example.com");
+        DatabaseOperationAudit audit = new DatabaseOperationAudit();
+        audit.setOperationType("INSERT");
+        audit.setTableName("MEMGLBLCUST");
+        audit.setSqlStatement(
+            "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'rail & road', "
+                + "'mixed case address', 'new town', null, null, null, sysdate, "
+                + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');"
+        );
+
+        emailService.sendDbaAuditEmail(audit);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(
+            "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL & ROAD','MIXED CASE ADDRESS','NEW TOWN',"
+                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
+        ));
     }
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
