@@ -286,7 +286,7 @@
                         [(ngModel)]="form.address"
                         maxlength="100"
                         placeholder="Enter complete business address"
-                        (input)="addressStatus = ''; (errors['address'] === 'Address cannot exceed 100 characters.' && form.address.length <= 100) ? (errors['address'] = '') : null"
+                        (input)="handleAddressInput()"
                     />
                 </div>
                 <small *ngIf="errors['address']" class="error">{{ errors['address'] }}</small>

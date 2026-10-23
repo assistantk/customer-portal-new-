@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { finalize } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload } from '../../services/customer.service';
-import { PanOcrService, ExtractedGstinDetails, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
+import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
 
@@ -108,6 +108,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   codeConfirmed = false;
   codeChecking = false;
   addressStatus = '';
+  addressManuallyEdited = false;
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
   private codeTimer: any = null;
@@ -190,6 +191,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.codeTimer) clearTimeout(this.codeTimer);
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
+    this.addressManuallyEdited = false;
     this.ocrAutoFillApplied = false;
     this.removedGstinIds = [];
     this.zoneOpen = false;
@@ -852,6 +854,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     });
   }
 
+  handleAddressInput(): void {
+    this.addressManuallyEdited = true;
+    this.addressStatus = '';
+    if (this.errors['address'] === 'Address cannot exceed 100 characters.' && this.form.address.length <= 100) {
+      delete this.errors['address'];
+    }
+  }
+
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const selected = input.files?.[0];
@@ -922,17 +932,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.form.pincode = pincode;
           delete this.errors['pincode'];
         }
-        if (address) {
-          if (this.form.address && addressesMatch(this.form.address, address)) {
+        const cleanedAddress = cleanAndShortenAddress(address);
+        if (cleanedAddress && !this.addressManuallyEdited) {
+          if (this.form.address && addressesMatch(this.form.address, cleanedAddress)) {
             this.addressStatus = 'verified';
           } else {
             this.addressStatus = !this.form.address ? 'auto-filled' : 'auto-corrected';
-            this.form.address = address;
+            this.form.address = cleanedAddress;
             delete this.errors['address'];
             if (pincode && (!this.form.pincode || !this.form.pincode.trim())) this.form.pincode = pincode;
             if (city && (!this.form.city || !this.form.city.trim())) this.form.city = city;
           }
-        } else {
+        } else if (!cleanedAddress && !this.addressManuallyEdited) {
           this.addressStatus = 'extraction-failed';
         }
         this.ocrAutoFillApplied = true;
