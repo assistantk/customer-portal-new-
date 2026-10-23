@@ -20,11 +20,37 @@ describe('GSTIN OCR text extraction', () => {
       gstin: '27AAPFU0939F1ZV',
       stateCode: '27',
       tradeName: 'ABC Industrial Supplies',
+      legalName: null,
+      businessName: 'ABC Industrial Supplies',
       address: '10, Sunrise Complex, Mg Road, Central Market, Pune, Maharashtra, 411001',
       city: 'Pune',
       pincode: '411001',
       state: 'Maharashtra',
     });
+  });
+
+  it('falls back to Legal Name when Trade Name is NA or missing', () => {
+    const text = [
+      'Registration Number: 07AABCS1429B1ZB',
+      '1. Legal Name: ACME LOGISTICS PRIVATE LIMITED',
+      '2. Trade Name, if any: NA',
+      '3. Constitution of Business: Private Limited Company',
+      'Address of Principal Place of Business',
+      'Building No./Flat No.: 42',
+      'Road/Street: Barakhamba Road',
+      'City/Town/Village: New Delhi',
+      'State: Delhi',
+      'PIN Code: 110001',
+    ].join('\n');
+
+    const details = extractGstinDetailsFromText(text);
+    expect(details.gstin).toBe('07AABCS1429B1ZB');
+    expect(details.stateCode).toBe('07');
+    expect(details.legalName).toBe('ACME LOGISTICS PRIVATE LIMITED');
+    expect(details.businessName).toBe('ACME LOGISTICS PRIVATE LIMITED');
+    expect(details.tradeName).toBe('ACME LOGISTICS PRIVATE LIMITED');
+    expect(details.city).toBe('New Delhi');
+    expect(details.pincode).toBe('110001');
   });
 
   it('corrects common OCR character confusions in GSTIN candidates', () => {

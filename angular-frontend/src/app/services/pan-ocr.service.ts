@@ -49,8 +49,9 @@ export function getStateNameFromGstinCode(code: string | null | undefined): stri
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const PIN_PATTERN = /\b[1-9][0-9]{5}\b/;
 const MAX_PDF_PAGES = 50;
-const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets/', document.baseURI).href;
-const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata/', document.baseURI).href;
+const baseUri = typeof document !== 'undefined' && document.baseURI ? document.baseURI : 'http://localhost/';
+const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets/', baseUri).href;
+const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata/', baseUri).href;
 const ADDRESS_BOUNDARY = /\b(?:date\s+of\s+liabil\w{2,}|date\s+of\s+valid\w{2,}|type\s+of\s+registration|status\s+of\s+registration|registration\s+status|additional\s+places?\s+of\s+business|details?\s+of\s+additional\s+places?\s+of\s+business)\b|\b\d{1,2}\s*[.)]?\s*(?=(?:date|type|status|principal|additional|nature|constitution)\b)/i;
 const ADDRESS_LABELS: Array<{ key: string; pattern: RegExp }> = [
   { key: 'building', pattern: /Building\s+No\.?\s*\/\s*Flat\s+No\.?/ig },
@@ -75,6 +76,8 @@ export interface ExtractedGstinDetails {
   pincode?: string | null;
   state?: string | null;
   tradeName?: string | null;
+  legalName?: string | null;
+  businessName?: string | null;
   stateName?: string | null;
 }
 
@@ -214,18 +217,47 @@ function findStateName(text: string): { name: string } | null {
   return { name: KNOWN_STATES.find(state => state.toLowerCase() === match[1].toLowerCase()) || titleCase(match[1]) };
 }
 
-function extractTradeName(text: string): string | null {
+function isInvalidBusinessName(name: string | null | undefined): boolean {
+  if (!name) return true;
+  const clean = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  return ['na', 'nil', 'null', 'none', 'notapplicable'].includes(clean) || clean.length < 2;
+}
+
+function extractLegalName(text: string): string | null {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  const labelPattern = /\b(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
-  const nextLabelPattern = /\b(?:legal\s+name(?:\s+of\s+business)?|trade\s+name|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
+  const labelPattern = /\b(?:1\s*[\.\)]\s*)?legal\s+name(?:\s+of\s+business)?\s*[:\-]?\s*/ig;
+  const nextLabelPattern = /\b(?:\d+\s*[\.\)]\s*)?(?:trade\s+name|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
   for (const match of normalized.matchAll(labelPattern)) {
     const remaining = normalized.slice(match.index! + match[0].length);
     nextLabelPattern.lastIndex = 0;
     const nextLabel = nextLabelPattern.exec(remaining);
     const candidate = remaining.slice(0, nextLabel ? nextLabel.index : remaining.length)
       .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
+      .replace(/\s*\d+\s*[\.\)]?\s*$/, '')
       .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
       .trim();
+    if (isInvalidBusinessName(candidate)) continue;
+    if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function extractTradeName(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const labelPattern = /\b(?:2\s*[\.\)]\s*)?(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
+  const nextLabelPattern = /\b(?:\d+\s*[\.\)]\s*)?(?:legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/ig;
+  for (const match of normalized.matchAll(labelPattern)) {
+    const remaining = normalized.slice(match.index! + match[0].length);
+    nextLabelPattern.lastIndex = 0;
+    const nextLabel = nextLabelPattern.exec(remaining);
+    const candidate = remaining.slice(0, nextLabel ? nextLabel.index : remaining.length)
+      .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
+      .replace(/\s*\d+\s*[\.\)]?\s*$/, '')
+      .replace(/^[\s:;,\-|?]+|[\s:;,\-|?]+$/g, '')
+      .trim();
+    if (isInvalidBusinessName(candidate)) continue;
     if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
       return candidate;
     }
@@ -244,10 +276,16 @@ export function extractGstinDetailsFromText(text: string): ExtractedGstinDetails
     }
   }
   const address = parsePrincipalAddress(text);
+  const trade = extractTradeName(text);
+  const legal = extractLegalName(text);
+  const businessName = trade || legal || null;
+
   return {
     gstin,
     stateCode: gstin ? gstin.slice(0, 2) : null,
-    tradeName: extractTradeName(text),
+    tradeName: businessName,
+    legalName: legal,
+    businessName,
     ...address,
   };
 }
@@ -347,7 +385,7 @@ export class PanOcrService {
     }
     if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
 
-    if ((!isPdf || pdf) && (!details.gstin || !details.address || !details.tradeName)) {
+    if ((!isPdf || pdf) && (!details.gstin || !details.address || !(details.tradeName || details.legalName))) {
       let worker: OcrWorker | null = null;
       let imageCanvas: HTMLCanvasElement | null = null;
       let preparedImage: File | HTMLCanvasElement | null = null;
@@ -377,7 +415,7 @@ export class PanOcrService {
             source.width = 0;
             source.height = 0;
           }
-          if ((details.gstin || ocrDetails.gstin) && (details.address || ocrDetails.address) && (details.tradeName || ocrDetails.tradeName)) break;
+          if ((details.gstin || ocrDetails.gstin) && (details.address || ocrDetails.address) && (details.tradeName || ocrDetails.tradeName || details.legalName || ocrDetails.legalName)) break;
         }
         const ocrDetails = extractGstinDetailsFromText(ocrPages.join('\n'));
         details = {
@@ -388,6 +426,8 @@ export class PanOcrService {
           pincode: details.pincode || ocrDetails.pincode,
           state: details.state || ocrDetails.state,
           tradeName: details.tradeName || ocrDetails.tradeName,
+          legalName: details.legalName || ocrDetails.legalName,
+          businessName: details.businessName || ocrDetails.businessName || details.tradeName || ocrDetails.tradeName,
         };
       } catch (error) {
         console.warn('Client-side GSTIN OCR failed; trying the document API:', error);
