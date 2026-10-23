@@ -405,7 +405,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaSqlEmailCopiesPoonamOnCc() {
+    void dbaSqlEmailDoesNotCopyPoonamOnCc() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
 
@@ -413,7 +413,7 @@ class CustomerServiceImplTest {
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
-        assertArrayEquals(new String[]{"malhotra.poonam@cris.org.in"}, message.getValue().getCc());
+        assertNull(message.getValue().getCc());
     }
 
     @Test
