@@ -10,7 +10,9 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(circle at 50% 5%, #fff 0, #edf7ff 48%, #dbeeff 100%);
+  background:
+    linear-gradient(rgb(15 23 42 / 35%), rgb(15 23 42 / 50%)),
+    url('/assets/railway-bg.jpeg') center / cover no-repeat;
   font-family: 'Inter', Roboto, Arial, sans-serif;
   color: #0f172a;
 }
