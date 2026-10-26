@@ -12,7 +12,7 @@
   flex-direction: column;
   background:
     linear-gradient(rgb(15 23 42 / 35%), rgb(15 23 42 / 50%)),
-    url('/assets/railway-bg.jpeg') center / cover no-repeat;
+    url('/FreightCodeWeb/assets/railway-bg.jpeg') center / cover no-repeat;
   font-family: 'Inter', Roboto, Arial, sans-serif;
   color: #0f172a;
 }

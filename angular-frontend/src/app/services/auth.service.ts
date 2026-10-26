@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, catchError, map, of, tap } from 'rxjs';
+import { API_BASE_URL } from './api-config';
 
 export interface LoginRequest {
   username: string;
@@ -32,7 +33,7 @@ export interface AuthResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly API = '/api/auth';
+  private readonly API = `${API_BASE_URL}/auth`;
   private currentUserSubject = new BehaviorSubject<AuthUserData | null>(null);
   public currentUser$ = this.currentUserSubject.asObservable();
   private sessionCheckedSubject = new BehaviorSubject<boolean>(false);
