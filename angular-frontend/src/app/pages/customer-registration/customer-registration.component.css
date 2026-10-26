@@ -36,8 +36,8 @@ main {
 
 .card.mode-old .card-head,
 .card.mode-new .card-head {
-    min-height: 64px;
-    padding-bottom: 4px;
+    min-height: 210px;
+    padding-bottom: 6px;
 }
 
 .card.mode-old .rule,
@@ -75,28 +75,37 @@ main {
 }
 
 .card-head {
-  position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 0px;
-  flex-wrap: wrap;
-  min-height: 80px;
+  gap: 16px;
+  min-height: 210px;
   padding-bottom: 8px;
 }
 
+.card-head .portal-logo-wrap,
 .card-head .railways-banner {
   justify-self: center;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.2));
 }
 
+.card-head .portal-logo,
 .card-head .railways-banner img {
-  height: 68px;
-  width: auto;
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  border-radius: 50%;
+  clip-path: circle(50% at 50% 50%);
   display: block;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.card-head .portal-logo:hover,
+.card-head .railways-banner img:hover {
+  transform: scale(1.04);
 }
 
 .card-head .title-icon {
@@ -814,22 +823,41 @@ label b {
     }
 }
 
-/* ===== Responsive: Mobile ===== */
+/* ===== Responsive: Mobile & Tablet Header ===== */
+@media (max-width: 860px) {
+    .card-head {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        text-align: center;
+    }
+    .card-head .title-icon {
+        justify-self: center;
+        align-items: center;
+        text-align: center;
+    }
+    .card-head .title-icon > svg {
+        margin-top: 0;
+    }
+    .card-head .portal-logo-wrap,
+    .card-head .railways-banner {
+        position: static;
+        transform: none;
+    }
+    .card-head .mode-tabs {
+        justify-self: center;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
 @media (max-width: 768px) {
     .grid {
         grid-template-columns: 1fr;
     }
     .gstin-grid {
         grid-template-columns: 1fr;
-    }
-    .card-head {
-        flex-direction: column;
-        align-items: center;
-        gap: 16px;
-    }
-    .card-head .railways-banner {
-        position: static;
-        transform: none;
     }
     .card {
         width: 100%;

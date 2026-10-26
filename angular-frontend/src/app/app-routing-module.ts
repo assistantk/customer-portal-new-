@@ -8,20 +8,19 @@ import { LayoutComponent } from './layout/layout.component';
 import { AuthGuard, NonAuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  { path: '', redirectTo: 'login', pathMatch: 'full' },
-  { path: 'login', component: LoginComponent, canActivate: [NonAuthGuard] },
-  { path: 'signup', component: SignupComponent, canActivate: [NonAuthGuard] },
+  { path: '', redirectTo: 'register', pathMatch: 'full' },
+  { path: 'login', redirectTo: 'register' },
+  { path: 'signup', redirectTo: 'register' },
   {
     path: '',
     component: LayoutComponent,
-    canActivate: [AuthGuard],
     children: [
       { path: '', redirectTo: 'register', pathMatch: 'full' },
       { path: 'register', component: CustomerRegistrationComponent },
       { path: 'verify', component: VerificationComponent }
     ]
   },
-  { path: '**', redirectTo: 'login' }
+  { path: '**', redirectTo: 'register' }
 ];
 
 @NgModule({
