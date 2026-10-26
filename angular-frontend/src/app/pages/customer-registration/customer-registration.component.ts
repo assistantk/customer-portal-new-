@@ -111,6 +111,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   addressManuallyEdited = false;
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
+  gstinCollapsed = false;
   private codeTimer: any = null;
   private codeRequestId = 0;
 
