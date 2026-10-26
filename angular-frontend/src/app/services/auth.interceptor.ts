@@ -15,7 +15,7 @@ export class AuthInterceptor implements HttpInterceptor {
   constructor(private authService: AuthService, private router: Router) {}
 
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
-    const isApiUrl = request.url.startsWith('/api') || request.url.includes('/api/');
+    const isApiUrl = request.url.startsWith('api/') || request.url.startsWith('/api') || request.url.includes('/api/');
     const authReq = isApiUrl
       ? request.clone({ withCredentials: true })
       : request;
