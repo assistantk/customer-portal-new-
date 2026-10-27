@@ -215,6 +215,11 @@ main {
     transition: transform 0.2s ease, filter 0.2s ease;
 }
 
+.card.mode-ownership .card-head img.portal-logo {
+    height: auto;
+    max-width: 100%;
+}
+
 .card-head .portal-logo:hover,
 .card-head .railways-banner img:hover {
     transform: scale(1.03);
@@ -468,6 +473,109 @@ label b {
 .notice.success {
     background: #e7f7ed;
     color: #126c38;
+}
+
+.delete-mode-panel {
+    width: min(100%, 760px);
+    margin: 0 auto 8px;
+}
+
+.delete-mode-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px dotted #dce4eb;
+}
+
+.delete-mode-heading h1 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.25;
+}
+
+.delete-mode-heading p {
+    margin: 5px 0 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.delete-mode-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.delete-mode-notice {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.delete-mode-notice.success {
+    border-color: #86efac;
+    background: #e7f7ed;
+    color: #126c38;
+}
+
+.delete-mode-notice.error {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.delete-mode-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+    gap: 16px;
+}
+
+.delete-mode-panel .field label {
+    margin-bottom: 6px;
+}
+
+.delete-mode-panel .control {
+    height: 44px;
+}
+
+.delete-mode-panel .submit {
+    min-height: 44px;
+    padding: 0 18px;
+    white-space: nowrap;
+}
+
+.delete-mode-confirmation {
+    display: grid;
+    gap: 16px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.delete-mode-reference {
+    margin: 0;
+    color: #334155;
+    overflow-wrap: anywhere;
+}
+
+.delete-mode-note {
+    margin: 22px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 /* ===== Mode Tabs ===== */
@@ -991,5 +1099,13 @@ label b {
         width: 100%;
         padding: 16px 16px 12px;
         border-radius: 16px;
+    }
+
+    .delete-mode-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .delete-mode-panel .submit {
+        justify-self: stretch;
     }
 }

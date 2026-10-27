@@ -7,7 +7,6 @@ import { GlobalCustomerCodeComponent } from './pages/global-customer-code/global
 import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling-agent-code.component';
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
-import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
 
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -20,7 +19,7 @@ const routes: Routes = [
       { path: '', redirectTo: 'register', pathMatch: 'full' },
       { path: 'register', component: CustomerRegistrationComponent },
       { path: 'verify', component: VerificationComponent },
-      { path: 'delete-request', component: DeleteRequestComponent },
+      { path: 'delete-request', component: CustomerRegistrationComponent },
       { path: '', redirectTo: 'registration', pathMatch: 'full' },
       { path: 'registration', component: CustomerRegistrationComponent },
       { path: 'register', redirectTo: 'registration', pathMatch: 'full' },

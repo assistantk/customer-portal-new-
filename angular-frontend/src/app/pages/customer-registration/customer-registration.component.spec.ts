@@ -18,6 +18,12 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       registerCustomer: vi.fn(),
       updateOldCustomerJDBC: vi.fn(),
       submitOwnershipJDBC: vi.fn(),
+      verifyDeleteRequest: vi.fn().mockReturnValue(of({
+        found: true,
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      })),
+      submitDeleteRequest: vi.fn().mockReturnValue(of({ message: 'Delete request sent.' })),
       lookupOldCustomerJDBC: vi.fn().mockReturnValue(of({})),
       lookupHandlingAgentJDBC: vi.fn().mockReturnValue(of({}))
     };
@@ -319,6 +325,36 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     });
   });
 
+  describe('Delete Request Mode', () => {
+    it('verifies a code and requires the company name to match before sending', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+
+      component.verifyDeleteCode();
+
+      expect(customerServiceMock.verifyDeleteRequest).toHaveBeenCalledWith('GLOBAL_CUSTOMER', 'ACME01');
+      expect(component.verifiedDeleteRecord).toEqual({
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      });
+
+      component.deleteCompanyName = 'Different Company';
+      component.sendDeleteRequest();
+      expect(customerServiceMock.submitDeleteRequest).not.toHaveBeenCalled();
+
+      component.deleteCompanyName = 'Acme Logistics';
+      component.sendDeleteRequest();
+      expect(customerServiceMock.submitDeleteRequest).toHaveBeenCalledWith(
+        'GLOBAL_CUSTOMER',
+        'ACME01',
+        'Acme Logistics'
+      );
+      expect(component.deleteSuccessMessage).toBe('Delete request sent.');
+    });
+  });
+
   describe('Code Type Toggle & Dynamic Logo Switching', () => {
     it('should default to GLOBAL codeType with Global Customer Code logo in old mode', () => {
       component.mode = 'old';
@@ -378,4 +414,3 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     });
   });
 });
-
