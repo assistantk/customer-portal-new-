@@ -143,6 +143,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
   gstinCollapsed = false;
+  ownershipLogoMissing = false;
   private codeTimer: any = null;
   private codeRequestId = 0;
 
@@ -263,12 +264,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   switchMode(newMode: 'ownership' | 'old' | 'new'): void {
-    if (newMode === 'ownership') {
-      this.openOwnershipCodeForm();
+    if (newMode === this.mode) {
       return;
     }
-    this.reset();
+
     this.mode = newMode;
+    this.ownershipLogoMissing = false;
     this.cdr.markForCheck();
   }
 
