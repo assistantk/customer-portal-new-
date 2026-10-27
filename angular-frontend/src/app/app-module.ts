@@ -9,6 +9,9 @@ import { LoginComponent } from './pages/login/login.component';
 import { SignupComponent } from './pages/signup/signup.component';
 import { VerificationComponent } from './pages/verification/verification.component';
 import { CustomerRegistrationComponent } from './pages/customer-registration/customer-registration.component';
+import { GlobalCustomerCodeComponent } from './pages/global-customer-code/global-customer-code.component';
+import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling-agent-code.component';
+import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { AuthInterceptor } from './services/auth.interceptor';
@@ -22,6 +25,9 @@ import { DeleteRequestComponent } from './pages/delete-request/delete-request.co
     VerificationComponent,
     DeleteRequestComponent,
     CustomerRegistrationComponent,
+    GlobalCustomerCodeComponent,
+    HandlingAgentCodeComponent,
+    OwnershipCodeComponent,
     LayoutComponent,
     NotificationComponent
   ],
