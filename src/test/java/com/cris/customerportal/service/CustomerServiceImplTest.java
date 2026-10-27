@@ -55,8 +55,8 @@ class CustomerServiceImplTest {
         ));
 
         String body = emailedBody(mailSender);
-        assertTrue(body.startsWith("Dear DBA Team,\n"
-            + "Kindly execute attached/below script on rfrn3t and training.\n\n"
+        assertTrue(body.startsWith("Dear DBA Team,\n\n"
+            + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
             + "Operation: INSERT\n"
             + "Table: MEMGLBLCUST\n"
             + "Code: MSBC\n\n"
@@ -65,13 +65,41 @@ class CustomerServiceImplTest {
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"
         ));
-        assertTrue(body.contains("Prasanta Mondal\n"
-            + "Chief Manager / FOIS\n"
-            + "Centre for Railway information systems\n"
-            + "Mob:-8130797454\n\n"
-            + "UserID: SR.DCM/DHN\nEmail ID: Not available"));
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: MSBC\n\nSQL QUERY:\n"));
+        assertFalse(body.contains("Prasanta Mondal"));
+        assertFalse(body.contains("Chief Manager / FOIS"));
+        assertFalse(body.contains("Centre for Railway"));
+        assertFalse(body.contains("8130797454"));
+        assertTrue(body.contains("UserID: SR.DCM/DHN\nEmail ID: Not available"));
         verify(existsPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("INSERT"));
+    }
+
+    @Test
+    void registerNewGlobalCustomer_rejectsBlankPincode() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "MSBC",
+            "companyName", "M/S BALAJI ENTERPRISES",
+            "address", "O'Brien Road",
+            "city", "Dhanbad",
+            "pincode", "",
+            "zone", "Central Railway",
+            "operatingDivision", "Dhanbad (DHN)",
+            "gstinNumbers", "20APEPA6196G1Z9",
+            "panNumber", "APEPA6196G"
+        )));
+        assertTrue(ex.getMessage().contains("pincode is required"));
     }
 
     @Test
@@ -439,6 +467,25 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
             "UserID: SR.DCM/NCP\nEmail ID: rail.user@example.org"));
+    }
+
+    @Test
+    void dbaSqlEmailUsesProfessionalDeleteTemplateWithoutSignature() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+
+        emailService.sendDbaSqlEmail("DELETE", "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'AB12';");
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertEquals("Request for DELETE – N/A – N/A", message.getValue().getSubject());
+        String body = message.getValue().getText();
+        assertTrue(body.contains("Dear DBA Team,\n\nKindly execute the attached/below script on rfrn3t and training.\n\n"));
+        assertTrue(body.contains("Operation: DELETE\n"));
+        assertTrue(body.contains("SQL QUERY:\n----------------------------------------1 DELETE---------------------------"));
+        assertFalse(body.contains("Prasanta Mondal"));
+        assertFalse(body.contains("Chief Manager / FOIS"));
+        assertFalse(body.contains("8130797454"));
     }
 
     @Test
