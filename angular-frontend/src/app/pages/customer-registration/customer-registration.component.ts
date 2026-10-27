@@ -476,7 +476,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     const requiredFields: (keyof CustomerPayload)[] = ['companyName', 'customerCode', 'address', 'city', 'panNumber'];
-    if (this.mode === 'new') requiredFields.push('operatingDivision', 'zone', 'pincode');
+    if (this.mode === 'new') requiredFields.push('operatingDivision', 'zone');
     requiredFields.forEach(k => {
       if (!this.form[k]) e[k] = 'This field is required';
     });

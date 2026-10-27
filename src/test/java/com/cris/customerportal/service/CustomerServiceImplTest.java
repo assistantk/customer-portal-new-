@@ -76,7 +76,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void registerNewGlobalCustomer_rejectsBlankPincode() throws SQLException {
+    void registerNewGlobalCustomer_allowsBlankPincode() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement existsPs = mock(PreparedStatement.class);
@@ -87,7 +87,7 @@ class CustomerServiceImplTest {
         when(existsPs.executeQuery()).thenReturn(existsRs);
         when(existsRs.next()).thenReturn(false);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+        assertDoesNotThrow(() -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
             "codeType", "global",
             "customerCode", "MSBC",
             "companyName", "M/S BALAJI ENTERPRISES",
@@ -99,7 +99,7 @@ class CustomerServiceImplTest {
             "gstinNumbers", "20APEPA6196G1Z9",
             "panNumber", "APEPA6196G"
         )));
-        assertTrue(ex.getMessage().contains("pincode is required"));
+        assertTrue(emailedBody(mailSender).contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: MSBC"));
     }
 
     @Test

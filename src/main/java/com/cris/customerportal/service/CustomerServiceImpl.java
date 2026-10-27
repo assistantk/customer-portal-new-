@@ -326,10 +326,7 @@ public class CustomerServiceImpl implements CustomerService {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
   String pincode = firstValue(formData, "pincode");
-  if (pincode == null || pincode.trim().isEmpty()) {
-   throw new IllegalArgumentException("pincode is required");
-  }
-  if (!pincode.trim().matches("^[1-9][0-9]{5}$")) {
+  if (pincode != null && !pincode.trim().isEmpty() && !pincode.trim().matches("^[1-9][0-9]{5}$")) {
    throw new IllegalArgumentException("Invalid pincode");
   }
   if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
