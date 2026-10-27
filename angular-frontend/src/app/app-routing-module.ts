@@ -20,7 +20,7 @@ const routes: Routes = [
       { path: '', redirectTo: 'register', pathMatch: 'full' },
       { path: 'register', component: CustomerRegistrationComponent },
       { path: 'verify', component: VerificationComponent },
-      { path: 'delete-request', component: DeleteRequestComponent }
+      { path: 'delete-request', component: DeleteRequestComponent },
       { path: '', redirectTo: 'registration', pathMatch: 'full' },
       { path: 'registration', component: CustomerRegistrationComponent },
       { path: 'register', redirectTo: 'registration', pathMatch: 'full' },
