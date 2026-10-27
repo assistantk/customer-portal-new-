@@ -16,6 +16,7 @@ main {
 }
 
 .card {
+    position: relative;
     background: #ffffff;
     border: 3px solid #3b82f6;
     border-top: 4px solid #3b82f6;
@@ -221,18 +222,26 @@ main {
     transform: scale(1.03);
 }
 
-.header-right-slot {
-    justify-self: end;
-    align-self: start;
-    margin-top: 10px;
+.card-head .portal-logo-fallback {
     display: flex;
     align-items: center;
+    justify-content: center;
+    color: #1d4ed8;
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 2px solid rgba(59, 130, 246, 0.45);
+    text-transform: uppercase;
+    text-align: center;
+    box-shadow: 0 8px 22px rgba(59, 130, 246, 0.15);
 }
 
-.mode-tabs-box {
-    display: inline-flex;
-    align-items: center;
-    background: transparent;
+.mode-navigation {
+    justify-self: end;
+    align-self: center;
+    width: 154px;
+    margin-right: 200px;
 }
 
 .header-main-divider {
@@ -466,23 +475,28 @@ label b {
 /* ===== Mode Tabs ===== */
 .mode-tabs {
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
     background: transparent;
-    border-radius: 8px;
     padding: 0;
 }
 
 .mode-tab {
     display: inline-flex;
+    width: 100%;
+    min-height: 42px;
     align-items: center;
+    justify-content: flex-start;
     gap: 5px;
-    padding: 6px 12px;
+    padding: 9px 12px;
     border: 1px solid transparent;
     border-radius: 6px;
     font: 600 12px 'Inter', Arial, sans-serif;
     cursor: pointer;
     background: #ffffff;
     transition: all 0.18s ease;
+    white-space: nowrap;
 }
 
 .mode-tab-ownership {
@@ -501,6 +515,12 @@ label b {
     --mode-color: #2563eb;
     --mode-light: #ffffff;
     --mode-hover: #eff6ff;
+}
+
+.mode-tab-delete {
+    --mode-color: #b91c1c;
+    --mode-light: #ffffff;
+    --mode-hover: #fef2f2;
 }
 
 .mode-tab:not(.active) {
@@ -911,7 +931,7 @@ label b {
 }
 
 /* ===== Responsive: Tablet ===== */
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
     .grid {
         grid-template-columns: 1fr 1fr;
     }
@@ -924,10 +944,27 @@ label b {
         width: min(95vw, 1000px);
         padding: 20px 24px 18px;
     }
+
+    .mode-navigation {
+        width: 100%;
+        justify-self: center;
+        margin-right: 0;
+    }
+
+    .mode-tabs {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .mode-tab {
+        width: auto;
+        min-height: 38px;
+    }
 }
 
 /* ===== Responsive: Mobile & Tablet Header ===== */
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
     .card-head {
         grid-template-columns: 1fr;
         justify-items: center;
@@ -941,9 +978,6 @@ label b {
         max-width: 400px;
     }
 
-    .header-right-slot {
-        justify-self: center;
-    }
 }
 
 @media (max-width: 768px) {
