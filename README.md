@@ -1,195 +1,162 @@
-# Customer Registration Portal - MASTER PROJECT DOCUMENTATION
+# CRIS Customer Registration Portal
 
-## 1. Project Overview
-The CRIS Customer Registration Portal is an enterprise web application designed to process and manage customer, handling agent, and wagon ownership registrations for Indian Railways' CRIS FOIS system. It allows users to register as a new entity (generating a unique 4-character Global Customer Code or Handling Agent Code), look up existing records to update information, manage wagon ownership codes, and run verification lookups against the CRIS Oracle database schema.
+The portal consists of an Angular single-page frontend and a Spring Boot REST backend. They are built and deployed as two independent WebLogic applications:
 
----
+| Application | WAR | Context root | Purpose |
+|---|---|---|---|
+| Angular frontend | `FreightCodeWeb.war` | `/FreightCodeWeb` | Static production application |
+| Spring Boot backend | `FreightCodeApi.war` | `/FreightCodeApi` | Authentication, customer APIs, and database-backed services |
 
-## 2. Technology Stack
-The application consists of the following active components:
+The expected same-origin URLs are:
 
-- **Frontend**: Angular 18+ (in [`angular-frontend/`](file:///e:/customer-portal-new-/angular-frontend))
-  - Styling: Vanilla CSS / Responsive Design System
-  - Client-side OCR: `pdfjs-dist` + `tesseract.js` with local assets and offline language data (`eng.traineddata`)
-  - Testing: Vitest (`npm test`)
-- **Backend**: Spring Boot 2.7.12 (in [`src/main/java/com/cris/customerportal/`](file:///e:/customer-portal-new-/src/main/java/com/cris/customerportal))
-  - Java 8+ compatibility
-  - Connectivity: JDBC (`PreparedStatement`) via `ojdbc8` (Oracle JDBC Driver)
-  - Security & Authentication: Database-backed sessions against `PORTAL_AUTH_USERS` with BCrypt password hashing
-  - Email Integration: Spring Mail (`JavaMailSender`) for sending DBA audit SQL emails with attachments
-- **Database**: CRIS Oracle Database
-- **Prototypes (Legacy Reference)**:
-  - `frontend/`: Earlier React/Vite prototype (preserved for reference).
-  - `backend/`: Earlier Node/Express/MySQL prototype (preserved for reference; not used in production).
+- Frontend: `http://host:port/FreightCodeWeb/`
+- Backend: `http://host:port/FreightCodeApi/`
+- Production API base: `/FreightCodeApi/api`
 
----
+## Technology and source layout
 
-## 3. Project Structure
-```
+- **Frontend:** Angular 22, TypeScript, RxJS, CSS; source in `angular-frontend/`.
+- **OCR:** `pdfjs-dist` and `tesseract.js`, running in the browser.
+- **Backend:** Spring Boot 2.7.12 and Java 8-compatible source; source in `src/main/java/`.
+- **Database:** Oracle via JDBC/JPA. Authentication looks up users in `TMS3T.AEM_USER`.
+- **Build:** npm/Angular CLI and the Maven wrapper (`mvnw.cmd`).
+- **Deployment:** Two separate WebLogic WARs built by `build-war.ps1`.
+
+```text
 customer-portal-new-/
-├── angular-frontend/               # Active Angular 18+ Application
-│   ├── public/assets/              # Logos and offline OCR tessdata (eng.traineddata)
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── components/         # Shared UI components (notifications, etc.)
-│   │   │   ├── layout/             # Header, navbar, and container layout
-│   │   │   ├── pages/              # Main route views:
-│   │   │   │   ├── customer-registration/ # New Entry, Old User, Ownership forms
-│   │   │   │   ├── login/          # User login page
-│   │   │   │   ├── signup/         # User registration page
-│   │   │   │   └── verification/   # Customer & GSTIN lookup screen
-│   │   │   └── services/           # Angular services:
-│   │   │       ├── auth.service.ts
-│   │   │       ├── customer.service.ts
-│   │   │       ├── pan-ocr.service.ts  # Client-side PDF/Image OCR
-│   │   │       └── notification.service.ts
-│   │   └── proxy.conf.json         # Development proxy routing /api/* to :8080
-│   └── package.json
-├── src/main/java/com/cris/customerportal/ # Active Spring Boot Backend
-│   ├── config/                     # AuthInterceptor, CorsConfig, Security
-│   ├── controller/                 # AuthController, CustomerController
-│   ├── dto/                        # Request and Response transfer objects
-│   ├── exception/                  # GlobalExceptionHandler
-│   ├── repository/                 # JDBC repositories (Auth, Customer, etc.)
-│   └── service/                    # Business services and DBA email generator
-├── src/main/resources/
-│   └── application.properties      # Spring datasource and mail configuration
-├── .env.example                    # Template for required environment variables
-├── pom.xml                         # Maven dependencies & build configuration
-└── README.md                       # This documentation
+├── angular-frontend/
+│   ├── deployment/WEB-INF/           # Frontend WAR descriptors
+│   ├── public/assets/                 # Logos, railway background, OCR assets
+│   ├── src/app/                       # Pages, layout, services, auth guards
+│   ├── src/environments/              # Development and production API base URLs
+│   └── src/proxy.conf.json            # Local Angular-to-Spring proxy
+├── src/main/java/com/cris/customerportal/
+│   ├── config/                        # CORS and authentication interceptor
+│   ├── controller/                    # Auth and customer REST controllers
+│   ├── repository/                    # Oracle/JDBC repositories
+│   └── service/                       # Authentication and business services
+├── src/main/webapp/WEB-INF/weblogic.xml # Backend context root
+├── pom.xml                            # Backend WAR build
+├── build-war.ps1                      # Builds both WARs
+└── dist/deployment/                   # Final frontend and backend WARs
 ```
 
----
+## Local development
 
-## 4. Key Application Features
+### Requirements
 
-1. **Authentication (`PORTAL_AUTH_USERS`)**:
-   - Secure login, signup, and session validation using cookie-based token validation.
-   - Protected routes (`AuthGuard`, `NonAuthGuard`) and automatic redirection.
+- Java 8 or later, using a JDK compatible with the installed Maven and target WebLogic.
+- Node.js/npm versions supported by the Angular dependencies in `angular-frontend/package.json`.
+- Oracle and SMTP connectivity for backend functions requiring those services.
 
-2. **Customer Registration (New Entry)**:
-   - Registration for new Global Customers or Handling Agents.
-   - Client-side GST PDF upload with automatic OCR (extracts GSTIN, PAN, Legal/Trade Name, State, Address, City, Pincode).
-   - Real-time unique 4-character code generation and database availability checking.
-   - Dispatches DBA approval email with SQL statements and multipart PDF attachments.
+Configure the variables listed in `.env.example` for local backend use. Use approved values and do not commit credentials.
 
-3. **Old User Update**:
-   - Customer or Agent lookup by code directly against Oracle.
-   - Pre-populates existing data and allows updates.
-   - Dispatches DBA approval update email.
+Start the Spring Boot backend from the repository root:
 
-4. **Wagon Ownership Management (`MEMWGONOWNRSHIP` & `MEMWGONOWNRPRTY`)**:
-   - Section 1: Wagon Ownership Code lookup, duplicate validation, and save.
-   - Section 2: Wagon Ownership Party Code lookup, duplicate validation, and save.
-   - Section 1 & 2 Combined Submit for DBA approval.
-
-5. **Verification Screen**:
-   - Customer Code lookup: exact match search.
-   - GSTIN lookup: search customer details by GSTIN.
-
----
-
-## 5. Database Schema & Form Mapping (CRIS Oracle)
-
-The application interacts with standard CRIS tables using `PreparedStatement` interfaces:
-
-| Application Form Field | CRIS Table | CRIS Column |
-| :--- | :--- | :--- |
-| Global Customer Code | `MEMGLBLCUST` | `MAVGLBLCUSTCODE` |
-| Handling Agent Code | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTCODE` |
-| Company Name (Global) | `MEMGLBLCUST` | `MAVGLBLCUSTNAME` |
-| Company Name (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTNAME` |
-| Address (Global) | `MEMGLBLCUST` | `MAVGLBLCUSTADDRTEXT` |
-| Address (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTADDRTEXT` |
-| City (Global) | `MEMGLBLCUST` | `MAVGNBLCUSTCITYNAME` |
-| City (Agent) | `MEMGLBLHNDGAGNT` | `MAVHNDGAGNTCITYNAME` |
-| PAN Number | `MEMGLBLCUST` | `MAVCUSTPANNUMB` |
-| GSTIN Numbers | `MEMGLBLCUST` | `MAVCUSTGSTNUMB` |
-| Operating Division (Global)| `MEMGLBLCUST` | `MAVIMPLREMK` (formatted as `SR.DCM/<DIV>`) |
-| Operating Division (Agent)| `MEMGLBLHNDGAGNT` | `MAVIMPLREMK` |
-| Wagon Ownership Code | `MEMWGONOWNRSHIP` | `MAVOWNRSHPCODE` |
-| Wagon Ownership Desc | `MEMWGONOWNRSHIP` | `MAVOWNRSHPDESC` |
-| Wagon Ownership Party Code | `MEMWGONOWNRPRTY` | `MAVOWNRPRTYCODE` |
-| Wagon Ownership Party Desc | `MEMWGONOWNRPRTY` | `MAVOWNRPRTYDESC` |
-| Portal Users | `PORTAL_AUTH_USERS` | `USER_ID`, `PASSWORD_HASH`, `USER_ROLE`, etc. |
-
----
-
-## 6. Development Setup & Execution
-
-### Prerequisites
-- Java JDK 8 or higher (e.g. OpenJDK 17/21/25)
-- Node.js 18+ and npm 9+
-- Access to CRIS Oracle Database (or local development instance)
-- Access to CRIS internal SMTP relay (or local test SMTP)
-
-### 1. Configure Environment Variables
-Copy `.env.example` to `.env` in the project root:
-```bash
-cp .env.example .env
-```
-Fill in the parameters:
-- `ORACLE_DB_URL`: e.g. `jdbc:oracle:thin:@//host:1521/servicename`
-- `ORACLE_DB_USERNAME`: Database username
-- `ORACLE_DB_PASSWORD`: Database password
-- `CRIS_SMTP_HOST`: Internal mail relay host
-- `CRIS_SMTP_PORT`: e.g. `25`
-- `CRIS_MAIL_USERNAME`: Sender email address
-- `CRIS_MAIL_PASSWORD`: Mail password
-
-### 2. Run the Spring Boot Backend
-From the root directory:
-
-**Windows PowerShell:**
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-25.0.2" # Adjust to your JDK path
 .\mvnw.cmd spring-boot:run
 ```
 
-**Linux / macOS:**
-```bash
-./mvnw spring-boot:run
-```
-The backend starts on port `http://localhost:8080`.
+By default, Spring Boot listens at `http://localhost:8080`.
 
-### 3. Run the Angular Frontend
-In a separate terminal:
-```bash
-cd angular-frontend
-npm install
+In another PowerShell terminal, start Angular:
+
+```powershell
+Set-Location .\angular-frontend
+npm ci
 npm start
 ```
-The frontend starts on `http://localhost:4200` with automated proxying of `/api/*` requests to `http://localhost:8080`.
 
----
+Angular listens at `http://localhost:4200`. The development environment uses `/api`; `src/proxy.conf.json` forwards those requests to `http://localhost:8080`. Angular uses hash routing, so client routes such as login can be refreshed without server-side SPA rewrite support.
 
-## 7. Testing & Build Commands
+## API and authentication
 
-### Frontend (Angular)
-```bash
-cd angular-frontend
+The `AuthController` is mapped at `/api/auth`:
 
-# Run unit tests (single run)
-npm test -- --watch=false
+| Method | Local path | Purpose |
+|---|---|---|
+| `POST` | `/api/auth/login` | Authenticates JSON `{"userId":"...","password":"..."}` and creates a server-side session on success |
+| `GET` | `/api/auth/session` | Checks the session; `/api/auth/me` is an alias |
+| `POST` | `/api/auth/logout` | Invalidates the current session |
 
-# Production build
-npm run build
+The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
+
+All frontend API services use the configured API base. Development uses `/api`; production uses `/FreightCodeApi/api`. The production frontend and backend share scheme, hostname, and port, so they are same-origin even though they have different context paths. Requests include credentials; WebLogic scopes the session cookie to the backend application context. No cross-origin proxy is required in production.
+
+Local route check:
+
+```powershell
+curl.exe -i "http://localhost:8080/api/auth/session"
 ```
 
-### Backend (Spring Boot)
-```bash
-# Compile and run backend tests
-.\mvnw.cmd test
+Expected with no session cookie: `401` and a Spring JSON response. Do not send real passwords or session cookies in shared logs or chats.
 
-# Package executable JAR
+## Build both deployment WARs
+
+From the repository root in PowerShell:
+
+```powershell
+.\build-war.ps1
+```
+
+The script performs `npm ci`, builds Angular with the production configuration, packages and checks the frontend WAR, runs the Maven backend package/tests, verifies the backend WAR contents, and copies both artifacts to:
+
+```text
+dist/deployment/FreightCodeWeb.war
+dist/deployment/FreightCodeApi.war
+```
+
+It stops with a nonzero exit code if a build or archive validation fails. The backend WAR is also generated at `target/FreightCodeApi.war`.
+
+Equivalent manual Windows commands:
+
+```powershell
+Set-Location .\angular-frontend
+npm ci
+npm run build -- --configuration production
+Set-Location ..
 .\mvnw.cmd clean package
 ```
 
----
+Use `build-war.ps1` to create both WARs and publish them together; the manual commands above only build the Angular bundle and backend WAR, not the frontend WAR.
 
-## 8. Client-Side OCR Details
-- Service: [`PanOcrService`](file:///e:/customer-portal-new-/angular-frontend/src/app/services/pan-ocr.service.ts)
-- Powered by `pdfjs-dist` (for direct PDF text layer parsing) and `tesseract.js` (for scanned PDFs and images).
-- Includes automatic fallback to `Legal Name` when `Trade Name` is absent or "NA".
-- Extracts GSTIN, validates 15-character format, derives embedded PAN (chars 3–12), extracts state from state code, and maps principal business address components into city and pincode.
-- Operates entirely inside the client browser without uploading documents to external OCR servers.
+## WebLogic deployment
+
+Deploy both WARs independently to the same Managed Server or cluster:
+
+1. Deploy `dist/deployment/FreightCodeApi.war`; confirm its effective context root is `/FreightCodeApi`.
+2. Deploy `dist/deployment/FreightCodeWeb.war`; confirm its effective context root is `/FreightCodeWeb`.
+3. Configure the Oracle and SMTP environment variables for the backend deployment/server.
+4. Confirm both deployments are **Active** and the frontend is served from the same origin as the backend.
+
+The Angular production base href is `/FreightCodeWeb/`, and its production API base is `/FreightCodeApi/api`. The frontend WAR has its own `WEB-INF/weblogic.xml`; the backend context is set in `src/main/webapp/WEB-INF/weblogic.xml`. Do not set `server.servlet.context-path` to a competing value in Spring configuration.
+
+Angular uses hash URLs (for example `/FreightCodeWeb/#/login`, `/FreightCodeWeb/#/register`). The server only needs to serve the frontend context's `index.html`; it does not need SPA rewrite rules.
+
+### Production smoke checks
+
+Replace the address below with the deployed origin:
+
+```powershell
+curl.exe -i "http://host:port/FreightCodeApi/api/auth/session"
+```
+
+Without a session, expect `401` with JSON. A WebLogic HTML `404` means the request is not reaching the Spring mapping; verify the backend WAR is active, the effective context root is `/FreightCodeApi`, and the URL is routed to the correct Managed Server.
+
+For an intentional login test, use a private trusted client with valid credentials and a cookie jar:
+
+```powershell
+curl.exe -i -c .\session-cookies.txt -X POST "http://host:port/FreightCodeApi/api/auth/login" `
+  -H "Content-Type: application/json" `
+  --data-raw '{"userId":"YOUR_USER_ID","password":"YOUR_PASSWORD"}'
+curl.exe -i -b .\session-cookies.txt "http://host:port/FreightCodeApi/api/auth/session"
+curl.exe -i -b .\session-cookies.txt -X POST "http://host:port/FreightCodeApi/api/auth/logout"
+```
+
+The expected successful statuses are login `200`, session `200`, and logout `200`. Delete the local cookie file after testing; never share it. Do not run logout against another user's session.
+
+## WebLogic compatibility and cookie settings
+
+Spring Boot 2.7.12 uses Spring Framework 5.3, Java 8-compatible bytecode, and the `javax.servlet` API. The Maven WAR excludes embedded Tomcat and its Servlet/EL APIs; WebLogic must supply the servlet container and EL implementation. The source repository does not specify the production WebLogic version, so confirm the actual WebLogic release and supported JDK/Servlet specifications with the server administrator. This Spring Boot line requires a Servlet 3.1-compatible container; Jakarta-only servlet containers are not compatible without upgrading/migrating the application.
+
+Session management remains container-backed. Deploying frontend and backend under distinct contexts on the same origin allows the browser to send the backend session cookie to `/FreightCodeApi` when API requests include credentials. For production, use HTTPS and confirm WebLogic's session-cookie `HttpOnly`, `Secure`, and `SameSite` settings match the organization's policy; do not force `Secure` cookies while serving over plain HTTP.

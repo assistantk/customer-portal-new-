@@ -316,7 +316,7 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  List<String> requiredFields = Arrays.asList("companyName", "address", "city", "pincode", "operatingDivision", "zone", "panNumber", "gstinNumbers");
+  List<String> requiredFields = Arrays.asList("companyName", "address", "city", "operatingDivision", "zone", "panNumber", "gstinNumbers");
   for (String field : requiredFields) {
    if (firstValue(formData, field) == null) {
     throw new IllegalArgumentException(field + " is required");
@@ -325,7 +325,8 @@ public class CustomerServiceImpl implements CustomerService {
   if (formData.get("address").length() > 100) {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
-  if (!formData.get("pincode").matches("^[1-9][0-9]{5}$")) {
+  String pincode = firstValue(formData, "pincode");
+  if (pincode != null && !pincode.trim().isEmpty() && !pincode.trim().matches("^[1-9][0-9]{5}$")) {
    throw new IllegalArgumentException("Invalid pincode");
   }
   if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {

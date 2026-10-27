@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, forkJoin, map, switchMap } from 'rxjs';
+import { API_BASE_URL } from './api-config';
 
 export interface MasterData {
   cities: Record<string, string[]>;
@@ -44,7 +45,7 @@ export interface CustomerPayload {
 
 @Injectable({ providedIn: 'root' })
 export class CustomerService {
-  private readonly API = '/api';
+  private readonly API = API_BASE_URL;
 
   constructor(private http: HttpClient) {}
 

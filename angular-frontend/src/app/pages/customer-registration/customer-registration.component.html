@@ -334,7 +334,7 @@
 
             <!-- Pincode -->
             <div class="field">
-                <label for="pincode">Pincode{{ mode === 'old' || mode === 'ownership' ? ' (Optional)' : '' }} <b *ngIf="mode === 'new'">*</b></label>
+                <label for="pincode">Pincode (Optional)</label>
                 <div class="control" [class.invalid]="errors['pincode']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                     <input id="pincode" name="pincode" [(ngModel)]="form.pincode" inputmode="numeric" maxlength="6" placeholder="Enter pincode" />

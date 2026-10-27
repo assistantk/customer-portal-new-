@@ -44,11 +44,14 @@ public class DbaEmailService {
             message.setFrom(fromEmail);
             message.setTo(dbaEmail, "mondal.prasanta@cris.org.in");
             message.setCc("mondal.prasanta@cris.org.in");
-            message.setSubject("Customer Registration Portal Database Query");
 
             String operation = audit.getOperationType() == null
                     ? "QUERY"
                     : audit.getOperationType().toUpperCase(Locale.ROOT);
+            String tableName = audit.getTableName();
+            String customerCode = audit.getCustomerCode();
+            message.setSubject(buildEmailSubject(operation, tableName, customerCode));
+
             String auditSql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
             String sql = "INSERT".equalsIgnoreCase(audit.getOperationType())
                     && "MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
@@ -56,17 +59,7 @@ public class DbaEmailService {
                     ? formatSqlForEmail(new SqlRequest(
                             audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
                     : formatStringLiterals(toEmailSql(audit));
-            String text = "Dear DBA Team,\n\n"
-                    + "Kindly execute attached/below script on rfrn3t and training.\n\n"
-                    + "SQL QUERY:\n"
-                    + "----------------------------------------1 " + operation + "---------------------------\n\n"
-                    + sql + "\n\n"
-                    + "---\n\n"
-                    + "Prasanta Mondal\n"
-                    + "Chief Manager / FOIS\n"
-                    + "Centre for Railway Information Systems\n"
-                    + "Mob:-8130797454\n\n"
-                    + userFooter();
+            String text = buildEmailBody(operation, tableName, customerCode, sql, userFooter());
 
             message.setText(text);
             mailSender.send(message);
@@ -104,10 +97,15 @@ public class DbaEmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
-        message.setSubject("Customer Registration Portal Database Query");
 
-        StringBuilder body = new StringBuilder("Dear DBA Team,\n"
-                + "Kindly execute attached/below script on rfrn3t and training.\n\n");
+        SqlRequest firstRequest = requests == null || requests.isEmpty() ? null : requests.iterator().next();
+        message.setSubject(buildEmailSubject(
+                firstRequest == null ? "QUERY" : firstRequest.operation(),
+                firstRequest == null ? null : firstRequest.table(),
+                firstRequest == null ? null : firstRequest.code()));
+
+        StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n");
         int index = 1;
         String resolvedUserId = null;
         String resolvedEmailId = null;
@@ -134,15 +132,11 @@ public class DbaEmailService {
                     .append(request.operation().toUpperCase(Locale.ROOT))
                     .append("---------------------------\n\n")
                     .append(formatSqlForEmail(request))
-                    .append("\n\n----------------------------------------\n\n");
+                    .append("\n\n");
             if (index++ < requests.size()) {
                 body.append('\n');
             }
         }
-        body.append("Prasanta Mondal\n"
-                + "Chief Manager / FOIS\n"
-                + "Centre for Railway information systems\n"
-                + "Mob:-8130797454\n\n");
         body.append(buildUserFooter(resolvedUserId, resolvedEmailId));
         message.setText(body.toString());
 
@@ -155,6 +149,32 @@ public class DbaEmailService {
             e.printStackTrace();
             throw e;
         }
+    }
+
+    private String buildEmailBody(String operation, String table, String code, String sql, String footer) {
+        String normalizedOperation = normalizeOperation(operation);
+        StringBuilder body = new StringBuilder();
+        body.append("Dear DBA Team,\n\n")
+                .append("Kindly execute the attached/below script on rfrn3t and training.\n\n")
+                .append("Operation: ").append(normalizedOperation).append('\n')
+                .append("Table: ").append(table == null || table.trim().isEmpty() ? "N/A" : table).append('\n')
+                .append("Code: ").append(code == null || code.trim().isEmpty() ? "N/A" : code).append("\n\n")
+                .append("SQL QUERY:\n")
+                .append("----------------------------------------1 ").append(normalizedOperation).append("---------------------------\n\n")
+                .append(sql)
+                .append("\n\n")
+                .append(footer == null ? "" : footer);
+        return body.toString();
+    }
+
+    private String buildEmailSubject(String operation, String table, String code) {
+        return "Request for " + normalizeOperation(operation)
+                + " – " + (table == null || table.trim().isEmpty() ? "N/A" : table)
+                + " – " + (code == null || code.trim().isEmpty() ? "N/A" : code);
+    }
+
+    private String normalizeOperation(String operation) {
+        return operation == null || operation.trim().isEmpty() ? "QUERY" : operation.trim().toUpperCase(Locale.ROOT);
     }
 
     private String userFooter() {

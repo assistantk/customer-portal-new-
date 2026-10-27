@@ -23,6 +23,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.userSub = this.authService.currentUser$.subscribe((user) => {
       this.currentUser = user;
     });
+    this.authService.checkSession().subscribe();
   }
 
   ngOnDestroy(): void {

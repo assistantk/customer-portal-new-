@@ -1,19 +1,17 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { LoginComponent } from './pages/login/login.component';
-import { SignupComponent } from './pages/signup/signup.component';
 import { VerificationComponent } from './pages/verification/verification.component';
 import { CustomerRegistrationComponent } from './pages/customer-registration/customer-registration.component';
 import { GlobalCustomerCodeComponent } from './pages/global-customer-code/global-customer-code.component';
 import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling-agent-code.component';
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
-import { AuthGuard, NonAuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  { path: '', redirectTo: 'registration', pathMatch: 'full' },
-  { path: 'login', redirectTo: 'registration' },
-  { path: 'signup', redirectTo: 'registration' },
+  { path: '', redirectTo: 'login', pathMatch: 'full' },
+  { path: 'login', component: LoginComponent },
+  { path: 'signup', redirectTo: 'register' },
   {
     path: '',
     component: LayoutComponent,
@@ -36,7 +34,7 @@ const routes: Routes = [
 ];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes)],
+  imports: [RouterModule.forRoot(routes, { useHash: true })],
   exports: [RouterModule]
 })
-export class AppRoutingModule {}
+export class AppRoutingModule { }
