@@ -43,6 +43,15 @@ export interface CustomerPayload {
   ownershipPartyAddress?: string;
 }
 
+export type DeleteRequestCodeType = 'GLOBAL_CUSTOMER' | 'HANDLING_AGENT';
+
+export interface DeleteRequestVerification {
+  success: boolean;
+  found: boolean;
+  code?: string;
+  companyName?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CustomerService {
   private readonly API = API_BASE_URL;
@@ -87,6 +96,22 @@ export class CustomerService {
       params: { code: trimmed },
       withCredentials: true
     });
+  }
+
+  verifyDeleteRequest(codeType: DeleteRequestCodeType, code: string): Observable<DeleteRequestVerification> {
+    return this.http.post<DeleteRequestVerification>(
+      `${this.API}/customers/delete-requests/verify`,
+      { codeType, code },
+      { withCredentials: true }
+    );
+  }
+
+  submitDeleteRequest(codeType: DeleteRequestCodeType, code: string, companyName: string): Observable<any> {
+    return this.http.post<any>(
+      `${this.API}/customers/delete-requests/submit`,
+      { codeType, code, companyName },
+      { withCredentials: true }
+    );
   }
 
   /* ---------- Direct Node Backend Customer Lookup ---------- */

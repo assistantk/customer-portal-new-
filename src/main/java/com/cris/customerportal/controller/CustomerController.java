@@ -67,21 +67,11 @@ public class CustomerController { private final CustomerService service; public 
  }
 
  @DeleteMapping("/global-delete")
- public ResponseEntity<?> deleteGlobalCustomer(@RequestParam String code) {
-  try {
-   service.deleteGlobalCustomerJDBC(code);
-   Map<String,Object> body=new HashMap<>();body.put("success",true);body.put("message","Global customer code deleted successfully");
-   return ResponseEntity.ok(body);
-  } catch (IllegalArgumentException e) {
-   Map<String,Object> body=new HashMap<>();body.put("success",false);body.put("message",e.getMessage());
-   return ResponseEntity.badRequest().body(body);
-  } catch (ResourceNotFoundException e) {
-   Map<String,Object> body=new HashMap<>();body.put("success",false);body.put("message",e.getMessage());
-   return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
-  } catch (Exception e) {
-   Map<String,Object> body=new HashMap<>();body.put("success",false);body.put("message","Delete failed: "+e.getMessage());
-   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
-  }
+ public ResponseEntity<?> disableDirectGlobalDelete() {
+  Map<String,Object> body=new HashMap<>();
+  body.put("success",false);
+  body.put("message","Direct deletion is disabled. Submit a Delete Request for DBA execution.");
+  return ResponseEntity.status(HttpStatus.GONE).body(body);
  }
 
  // ===== Ownership Section 1: MEMWGONOWNRSHIP =====

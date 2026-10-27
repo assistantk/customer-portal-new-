@@ -432,47 +432,6 @@ public class CustomerServiceImpl implements CustomerService {
   return "M/S " + companyName;
  }
 
- @Override
- public void deleteGlobalCustomerJDBC(String customerCode) {
-   String normalizedCode = customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT);
-   if (normalizedCode == null || normalizedCode.isEmpty()) {
-     throw new IllegalArgumentException("Global customer code is required");
-   }
-
-   try (Connection conn = dataSource.getConnection()) {
-     try (PreparedStatement deleteGstin = conn.prepareStatement("DELETE FROM MEMCUSTOMERGSTIN WHERE MAVCUSTOMERCODE IN (SELECT MAVCUSTOMERCODE FROM MEMCUSTOMER WHERE MAVGLBLCUSTCODE = ?)")) {
-       deleteGstin.setString(1, normalizedCode);
-       deleteGstin.executeUpdate();
-     }
-
-     try (PreparedStatement deleteCustomers = conn.prepareStatement("DELETE FROM MEMCUSTOMER WHERE MAVGLBLCUSTCODE = ?")) {
-       deleteCustomers.setString(1, normalizedCode);
-       deleteCustomers.executeUpdate();
-     }
-
-     try (PreparedStatement deleteCustomer = conn.prepareStatement("DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")) {
-       deleteCustomer.setString(1, normalizedCode);
-       int rowsAffected = deleteCustomer.executeUpdate();
-       if (rowsAffected == 0) {
-         throw new ResourceNotFoundException("No record found for this Global Customer Code.");
-       }
-     }
-
-     DatabaseOperationAudit audit = new DatabaseOperationAudit();
-     audit.setOperationType("DELETE");
-     audit.setPageName("Customer");
-     audit.setTableName("MEMGLBLCUST");
-     audit.setCustomerCode(normalizedCode);
-     audit.setCompanyName("Deleted global customer");
-     audit.setSqlStatement("DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = " + formatSqlValue(normalizedCode) + ";");
-     audit.setRowsAffected(1);
-     dbaEmailService.sendDbaAuditEmail(audit);
-   } catch (SQLException e) {
-     System.err.printf("[DB ERROR] deleteGlobalCustomerJDBC SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-     throw new RuntimeException("Database error while deleting global customer code: " + e.getMessage(), e);
-   }
- }
-
  public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
  String type = formData.get("codeType");
  if (type != null) type = type.trim().toLowerCase(Locale.ROOT);

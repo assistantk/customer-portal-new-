@@ -42,10 +42,11 @@ class JdbcAemUserLookupRepositoryTest {
     }
 
     @Test
-    void looksUpByEitherIdentifierAndReadsOnlyConfirmedAemColumns() throws SQLException {
+    void looksUpByEitherIdentifierAndReadsAemUserContactColumns() throws SQLException {
         when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString("AAVUSERID")).thenReturn("RAILUSER");
         when(resultSet.getString("AAVEMAILID")).thenReturn("rail.user@example.org");
+        when(resultSet.getString("AAVPHONENO")).thenReturn("9771429950");
         when(resultSet.getString("AAVPSWD")).thenReturn("stored-value");
 
         Optional<AemUserLookupResult> result = repository.findByIdentifier("rail.user@example.org");
@@ -53,12 +54,13 @@ class JdbcAemUserLookupRepositoryTest {
         assertTrue(result.isPresent());
         assertEquals("RAILUSER", result.get().userId());
         assertEquals("rail.user@example.org", result.get().email());
+        assertEquals("9771429950", result.get().phoneNumber());
         assertEquals("stored-value", result.get().storedPassword());
         verify(statement).setString(1, "rail.user@example.org");
         verify(statement).setString(2, "rail.user@example.org");
         verify(connection).prepareStatement(argThat(sql ->
         sql.replaceAll("\\s+", " ").trim().equals(
-                "SELECT AAVUSERID, AAVEMAILID, AAVPSWD FROM TMS3T.AEM_USER WHERE AAVUSERID = ? OR AAVEMAILID = ?")));
+                "SELECT AAVUSERID, AAVEMAILID, AAVPHONENO, AAVPSWD FROM TMS3T.AEM_USER WHERE AAVUSERID = ? OR AAVEMAILID = ?")));
         verify(connection, never()).prepareStatement(contains("AAVOLDPSWD"));
     }
 
