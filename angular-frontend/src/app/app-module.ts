@@ -12,6 +12,7 @@ import { CustomerRegistrationComponent } from './pages/customer-registration/cus
 import { LayoutComponent } from './layout/layout.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { AuthInterceptor } from './services/auth.interceptor';
+import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
 
 @NgModule({
   declarations: [
@@ -19,6 +20,7 @@ import { AuthInterceptor } from './services/auth.interceptor';
     LoginComponent,
     SignupComponent,
     VerificationComponent,
+    DeleteRequestComponent,
     CustomerRegistrationComponent,
     LayoutComponent,
     NotificationComponent

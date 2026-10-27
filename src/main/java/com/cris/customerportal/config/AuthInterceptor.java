@@ -28,9 +28,10 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // Check Admin-only operations (e.g. DELETE global customer)
+        // Deletion requests remain restricted to administrators, like the retired direct-delete endpoint.
         String requestUri = request.getRequestURI();
-        if (requestUri != null && requestUri.contains("/global-delete")) {
+        if (requestUri != null
+                && (requestUri.contains("/global-delete") || requestUri.contains("/delete-requests"))) {
             if (!"ADMIN".equalsIgnoreCase(user.getUserRole())) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json;charset=UTF-8");

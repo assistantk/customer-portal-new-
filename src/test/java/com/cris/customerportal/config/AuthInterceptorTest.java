@@ -97,4 +97,19 @@ class AuthInterceptorTest {
         assertTrue(allowed);
         verify(response, never()).setStatus(anyInt());
     }
+
+    @Test
+    void nonAdminUser_attemptDeleteRequest_isRejectedWith403() throws Exception {
+        AuthUserDto normalUser = new AuthUserDto("USR1", "Standard User", "USER", "Y");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(normalUser);
+        when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/submit");
+        when(request.getMethod()).thenReturn("POST");
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertFalse(allowed);
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
+        assertTrue(responseWriter.toString().contains("Administrator privileges required"));
+    }
 }

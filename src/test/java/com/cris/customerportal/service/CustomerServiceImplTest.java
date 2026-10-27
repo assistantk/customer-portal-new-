@@ -489,6 +489,20 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void dbaDeleteRequestEmailPreservesVerifiedCodeLiteral() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        String sql = "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''Neil';";
+
+        emailService.sendDbaQueryEmail("DELETE", "MEMGLBLCUST", "O'Neil", sql);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(sql));
+        assertTrue(message.getValue().getText().contains("Table: MEMGLBLCUST\nCode: O'Neil"));
+    }
+
+    @Test
     void dbaSqlEmailFormatsMemglblcustInsertWithoutUnnecessarySpaces() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");

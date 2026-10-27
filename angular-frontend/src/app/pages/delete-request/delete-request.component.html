@@ -1,0 +1,63 @@
+<main>
+  <section class="delete-card">
+    <header class="card-heading">
+      <div class="heading-icon" aria-hidden="true">×</div>
+      <div>
+        <h1>Delete Request</h1>
+        <p>Verify a code and submit a deletion request to the DBA.</p>
+      </div>
+    </header>
+
+    <div *ngIf="verificationMessage" class="notice notice-success" role="status">
+      {{ verificationMessage }}
+    </div>
+    <div *ngIf="errorMessage" class="notice notice-error" role="alert">
+      {{ errorMessage }}
+    </div>
+    <div *ngIf="successMessage" class="notice notice-success" role="status">
+      {{ successMessage }}
+    </div>
+
+    <form (submit)="verifyCode(); $event.preventDefault()" novalidate>
+      <div class="field">
+        <label for="deleteCodeType">Select Code Type</label>
+        <select id="deleteCodeType" name="codeType" [value]="codeType"
+                (change)="onCodeTypeChange($event)" [disabled]="verifying || submitting" required>
+          <option value="">Select a code type</option>
+          <option value="GLOBAL_CUSTOMER">Global Customer Code</option>
+          <option value="HANDLING_AGENT">Handling Agent Code</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="deleteCode">Code</label>
+        <input id="deleteCode" name="code" type="text" [value]="code"
+               (input)="onCodeChange($event)" maxlength="100"
+               autocomplete="off" [disabled]="verifying || submitting" required />
+      </div>
+
+      <button class="primary-button" type="submit" [disabled]="verifying || submitting">
+        {{ verifying ? 'Verifying...' : 'Search / Verify' }}
+      </button>
+    </form>
+
+    <section *ngIf="verifiedRecord as record" class="confirmation" aria-live="polite">
+      <p class="reference-name"><strong>Company name on record:</strong> {{ record.companyName }}</p>
+      <div class="field">
+        <label for="confirmCompanyName">Company Name</label>
+        <input id="confirmCompanyName" name="companyName" type="text" [value]="companyName"
+               (input)="onCompanyNameChange($event)"
+               [disabled]="submitting" autocomplete="organization" required />
+      </div>
+      <button class="primary-button" type="button" (click)="sendRequest()"
+              [disabled]="submitting || verifying">
+        {{ submitting ? 'Sending Request...' : 'Send Delete Request' }}
+      </button>
+    </section>
+
+    <p class="workflow-note">
+      This page only verifies the record and emails the SQL request. The application does not delete records;
+      the DBA reviews and executes the request manually.
+    </p>
+  </section>
+</main>

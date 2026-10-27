@@ -315,6 +315,11 @@ public class DbaEmailService {
 
     private String formatSqlForEmail(SqlRequest request) {
         String sql = request.sql();
+        if ("DELETE".equalsIgnoreCase(request.operation())
+                && ("MEMGLBLCUST".equalsIgnoreCase(request.table())
+                    || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {
+            return sql;
+        }
         if ("UPDATE".equalsIgnoreCase(request.operation())
                 && ("MEMGLBLCUST".equalsIgnoreCase(request.table())
                     || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {

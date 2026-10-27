@@ -4,6 +4,7 @@ import { LoginComponent } from './pages/login/login.component';
 import { VerificationComponent } from './pages/verification/verification.component';
 import { CustomerRegistrationComponent } from './pages/customer-registration/customer-registration.component';
 import { LayoutComponent } from './layout/layout.component';
+import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
 
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -15,7 +16,8 @@ const routes: Routes = [
     children: [
       { path: '', redirectTo: 'register', pathMatch: 'full' },
       { path: 'register', component: CustomerRegistrationComponent },
-      { path: 'verify', component: VerificationComponent }
+      { path: 'verify', component: VerificationComponent },
+      { path: 'delete-request', component: DeleteRequestComponent }
     ]
   },
   { path: '**', redirectTo: 'register' }

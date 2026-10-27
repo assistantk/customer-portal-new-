@@ -11,7 +11,6 @@ public interface CustomerService {
   String generateUniqueCodeJDBC(String companyName, String type);
   String registerNewEntryJDBC(java.util.Map<String, String> formData);
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);
-  void deleteGlobalCustomerJDBC(String customerCode);
   com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode);
   // Ownership (MEMWGONOWNRSHIP)
   java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
