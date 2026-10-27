@@ -210,8 +210,6 @@ main {
     width: 400px;
     height: 400px;
     object-fit: contain;
-    border-radius: 50%;
-    clip-path: circle(50% at 50% 50%);
     display: block;
     transition: transform 0.2s ease, filter 0.2s ease;
 }
