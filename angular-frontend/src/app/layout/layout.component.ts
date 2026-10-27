@@ -35,6 +35,12 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.isDrawerOpen = !this.isDrawerOpen;
   }
 
+  get isGlobalCodePage(): boolean {
+    return this.router.url.includes('/global-code') ||
+           this.router.url.includes('/handling-agent') ||
+           this.router.url.includes('/ownership');
+  }
+
   onLogout(): void {
     this.authService.logout().subscribe(() => {
       this.router.navigate(['/login']);
