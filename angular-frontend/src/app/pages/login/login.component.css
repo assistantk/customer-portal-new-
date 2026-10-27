@@ -10,11 +10,31 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(rgb(15 23 42 / 35%), rgb(15 23 42 / 50%)),
-    url('/FreightCodeWeb/assets/railway-bg.jpeg') center / cover no-repeat;
+  position: relative;
+  isolation: isolate;
   font-family: 'Inter', Roboto, Arial, sans-serif;
   color: #0f172a;
+}
+
+.login-background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.login-background img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgb(15 23 42 / 35%), rgb(15 23 42 / 50%));
 }
 
 /* ── Header — matches registration header ── */

@@ -10,7 +10,7 @@ public class Customer {
   @Column(nullable=false) private String customerCode;
   @Column(nullable=false, length=1000) private String address;
   @Column(nullable=false) private String city;
-  @Column(nullable=false, length=6) private String pincode;
+  @Column(length=6) private String pincode;
   @Column(nullable=false, length=10) private String panNumber;
   @Column(nullable=false) private String operatingDivision;
   @Column(nullable=false) private String zone;

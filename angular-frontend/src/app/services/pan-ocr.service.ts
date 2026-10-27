@@ -447,10 +447,31 @@ async function renderPdfPage(pdf: PdfDocument, pageNumber: number): Promise<HTML
 
 @Injectable({ providedIn: 'root' })
 export class PanOcrService {
-  async extractGstinFromFile(file: File): Promise<ExtractedGstinDetails> {
+  async extractGstinFromFile(file: File | Blob | string | null | undefined): Promise<ExtractedGstinDetails> {
+    if (!file) {
+      return {};
+    }
+
+    if (typeof file === 'string') {
+      const trimmed = file.trim();
+      if (/^[a-zA-Z]:\\/.test(trimmed) || /^file:\/\//i.test(trimmed)) {
+        throw new Error('OCR cannot read a local filesystem path directly. Please upload the PDF using the browser file selector instead of passing a path like C:\\Users\\...\\file.pdf.');
+      }
+      if (/^https?:\/\//i.test(trimmed)) {
+        const response = await fetch(trimmed);
+        if (!response.ok) {
+          throw new Error(`Could not fetch the document (${response.status}). Please upload the PDF manually.`);
+        }
+        const blob = await response.blob();
+        return this.extractGstinFromFile(new File([blob], trimmed.split(/[\\/]/).pop() || 'document.pdf', { type: blob.type || 'application/pdf' }));
+      }
+      throw new Error('OCR requires a browser File or Blob object. Please upload the document from the file picker instead of passing a raw filesystem path.');
+    }
+
+    const browserFile = file instanceof File ? file : new File([file], 'document.pdf', { type: file.type || 'application/pdf' });
     let details: ExtractedGstinDetails = {};
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    const isPdf = file.type === 'application/pdf' || extension === 'pdf';
+    const extension = browserFile.name.split('.').pop()?.toLowerCase();
+    const isPdf = browserFile.type === 'application/pdf' || extension === 'pdf';
     let pdf: PdfDocument | null = null;
     let pageLimitExceeded = false;
     let text = '';
@@ -459,7 +480,7 @@ export class PanOcrService {
       try {
         const pdfjsLib = await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('assets/pdfjs-assets/pdf.worker.min.mjs', document.baseURI).href;
-        pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise as PdfDocument;
+        pdf = await pdfjsLib.getDocument({ data: await browserFile.arrayBuffer() }).promise as PdfDocument;
         if (pdf.numPages > MAX_PDF_PAGES) {
           pageLimitExceeded = true;
           const oversizedPdf = pdf;
@@ -503,7 +524,7 @@ export class PanOcrService {
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
           const source = isPdf
             ? await renderPdfPage(pdf!, pageNumber)
-            : (preparedImage ||= await prepareImageForOcr(file));
+            : (preparedImage ||= await prepareImageForOcr(browserFile));
           if (source instanceof HTMLCanvasElement && !isPdf) imageCanvas = source;
           const result = await worker.recognize(source);
           ocrPages.push(result.data.text);

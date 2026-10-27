@@ -8,7 +8,7 @@ public class CustomerRegistrationRequest {
     @NotBlank(message="Customer code is required") private String customerCode;
     @NotBlank(message="Address is required") private String address;
     @NotBlank(message="City is required") private String city;
-    @Pattern(regexp="^[1-9][0-9]{5}$", message="Invalid pincode") private String pincode;
+    @Pattern(regexp="^(|[1-9][0-9]{5})$", message="Invalid pincode") private String pincode;
     @NotEmpty(message="At least one GSTIN is required") private List<GstinRequest> gstins;
     @Pattern(regexp="^[A-Za-z0-9]{10}$", message="PAN No. must contain exactly 10 letters or numbers") private String panNumber;
     @NotBlank(message="Operating division is required") private String operatingDivision;
