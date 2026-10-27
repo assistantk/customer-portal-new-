@@ -333,8 +333,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         this.deleteCode = verifiedCode;
         this.deleteVerificationMessage = 'Code found. Please enter the company name to confirm the deletion.';
       },
-      error: () => {
-        this.deleteErrorMessage = 'Unable to verify the code at this time. Please try again later.';
+      error: (error) => {
+        this.deleteErrorMessage = error?.error?.message
+          || 'Unable to verify the code at this time. Please try again later.';
       }
     });
   }

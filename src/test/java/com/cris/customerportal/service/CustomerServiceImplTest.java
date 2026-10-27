@@ -492,14 +492,16 @@ class CustomerServiceImplTest {
     void dbaDeleteRequestEmailPreservesVerifiedCodeLiteral() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
-        String sql = "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''Neil';";
+        String sql = "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''Neil' "
+                + "AND MAVGLBLCUSTNAME = 'O''Neil Company';";
 
-        emailService.sendDbaQueryEmail("DELETE", "MEMGLBLCUST", "O'Neil", sql);
+        emailService.sendDbaQueryEmail("DELETE", "MEMGLBLCUST", "O'Neil", "O'Neil Company", sql);
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(sql));
-        assertTrue(message.getValue().getText().contains("Table: MEMGLBLCUST\nCode: O'Neil"));
+        assertTrue(message.getValue().getText().contains(
+                "Table: MEMGLBLCUST\nCode: O'Neil\nCompany Name: O'Neil Company"));
     }
 
     @Test

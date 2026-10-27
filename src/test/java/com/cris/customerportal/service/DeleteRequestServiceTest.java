@@ -31,7 +31,7 @@ class DeleteRequestServiceTest {
         when(results.getString(2)).thenReturn("Example Company");
 
         DeleteRequestService service = new DeleteRequestService(dataSource, mock(DbaEmailService.class));
-        DeleteRequestService.VerifiedRecord record = service.verify("GLOBAL_CUSTOMER", " AEIP ");
+        DeleteRequestService.VerifiedRecord record = service.verify("GLOBAL_CUSTOMER", " aeip ");
 
         assertEquals("AEIP", record.getCode());
         assertEquals("Example Company", record.getCompanyName());
@@ -127,7 +127,8 @@ class DeleteRequestServiceTest {
                 "DELETE",
                 "MEMGLBLCUST",
                 "O'NEIL",
-                "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''NEIL';");
+                "O'Neil Company",
+                "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''NEIL' AND MAVGLBLCUSTNAME = 'O''Neil Company';");
     }
 
     @Test
@@ -147,12 +148,14 @@ class DeleteRequestServiceTest {
         DataSource dataSource = dataSourceWithRecord("AEIP", "Example Company");
         DbaEmailService emailService = mock(DbaEmailService.class);
         doThrow(new MailSendException("SMTP unavailable"))
-                .when(emailService).sendDbaQueryEmail(anyString(), anyString(), anyString(), anyString());
+                .when(emailService).sendDbaQueryEmail(
+                        anyString(), anyString(), anyString(), anyString(), anyString());
 
         assertThrows(MailSendException.class,
                 () -> new DeleteRequestService(dataSource, emailService)
                         .sendRequest("GLOBAL_CUSTOMER", "AEIP", "Example Company"));
-        verify(emailService).sendDbaQueryEmail(anyString(), anyString(), anyString(), anyString());
+        verify(emailService).sendDbaQueryEmail(
+                anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

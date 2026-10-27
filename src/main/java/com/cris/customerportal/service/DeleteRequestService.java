@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 
 @Service
 public class DeleteRequestService {
@@ -41,43 +42,53 @@ public class DeleteRequestService {
                 return record;
             }
         } catch (SQLException e) {
+            System.err.printf("[DELETE REQUEST DB ERROR] SQLState=%s ErrorCode=%d%n",
+                    e.getSQLState(), e.getErrorCode());
             throw new DatabaseUnavailableException("Unable to verify the code at this time.", e);
         }
     }
 
     public void sendRequest(String codeType, String code, String companyName) {
-        if (companyName == null || companyName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Company name is required.");
-        }
-
+        String normalizedCompanyName = normalizeCompanyName(companyName);
         VerifiedRecord record = verify(codeType, code);
         if (record == null) {
             throw new IllegalArgumentException("This code is not present in the table, so it cannot be deleted.");
         }
-        if (record.companyName == null
-                || !record.companyName.trim().equalsIgnoreCase(companyName.trim())) {
+        String verifiedCompanyName = record.companyName == null ? "" : record.companyName.trim();
+        if (verifiedCompanyName.isEmpty()
+                || !verifiedCompanyName.equalsIgnoreCase(normalizedCompanyName)) {
             throw new IllegalArgumentException(
                     "Company name does not match the selected code. Please verify the company name.");
         }
 
-        String sql = "DELETE FROM " + record.mapping.table
-                + " WHERE " + record.mapping.codeColumn + " = '"
-                + record.code.replace("'", "''") + "';";
-        dbaEmailService.sendDbaQueryEmail("DELETE", record.mapping.table, record.code, sql);
+        String sql = buildDeleteSql(record.mapping, record.code, verifiedCompanyName);
+        dbaEmailService.sendDbaQueryEmail(
+                "DELETE", record.mapping.table, record.code, verifiedCompanyName, sql);
+    }
+
+    private String buildDeleteSql(CodeMapping mapping, String code, String companyName) {
+        return "DELETE FROM " + mapping.table
+                + " WHERE " + mapping.codeColumn + " = '" + escapeSqlLiteral(code)
+                + "' AND " + mapping.nameColumn + " = '" + escapeSqlLiteral(companyName) + "';";
+    }
+
+    private String escapeSqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 
     private CodeMapping mappingFor(String codeType) {
-        if ("GLOBAL_CUSTOMER".equals(codeType)) {
+        String normalizedType = codeType == null ? "" : codeType.trim();
+        if ("GLOBAL_CUSTOMER".equals(normalizedType)) {
             return new CodeMapping("MEMGLBLCUST", "MAVGLBLCUSTCODE", "MAVGLBLCUSTNAME");
         }
-        if ("HANDLING_AGENT".equals(codeType)) {
+        if ("HANDLING_AGENT".equals(normalizedType)) {
             return new CodeMapping("MEMGLBLHNDGAGNT", "MAVHNDGAGNTCODE", "MAVHNDGAGNTNAME");
         }
         throw new IllegalArgumentException("Select a supported code type.");
     }
 
     private String normalizeCode(String code) {
-        String normalized = code == null ? "" : code.trim();
+        String normalized = code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
         if (normalized.isEmpty()) {
             throw new IllegalArgumentException("Code is required.");
         }
@@ -90,6 +101,13 @@ public class DeleteRequestService {
             }
         }
         return normalized;
+    }
+
+    private String normalizeCompanyName(String companyName) {
+        if (companyName == null || companyName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Company name is required.");
+        }
+        return companyName.trim();
     }
 
     public static final class VerifiedRecord {

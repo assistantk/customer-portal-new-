@@ -534,6 +534,8 @@
                                 <option value="HANDLING_AGENT">Handling Agent Code</option>
                             </select>
                         </div>
+                        <small *ngIf="deleteCodeType === 'GLOBAL_CUSTOMER'">Table: MEMGLBLCUST</small>
+                        <small *ngIf="deleteCodeType === 'HANDLING_AGENT'">Table: MEMGLBLHNDGAGNT</small>
                     </div>
 
                     <div class="field">

@@ -353,6 +353,20 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       );
       expect(component.deleteSuccessMessage).toBe('Delete request sent.');
     });
+
+    it('shows the server authorization error instead of reporting a database lookup failure', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+      customerServiceMock.verifyDeleteRequest.mockReturnValue(
+        throwError(() => ({ error: { message: 'Access denied. Administrator privileges required.' } }))
+      );
+
+      component.verifyDeleteCode();
+
+      expect(component.deleteErrorMessage)
+        .toBe('Access denied. Administrator privileges required.');
+    });
   });
 
   describe('Code Type Toggle & Dynamic Logo Switching', () => {

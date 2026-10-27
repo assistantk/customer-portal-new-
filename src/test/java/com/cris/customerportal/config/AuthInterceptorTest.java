@@ -99,7 +99,7 @@ class AuthInterceptorTest {
     }
 
     @Test
-    void nonAdminUser_attemptDeleteRequest_isRejectedWith403() throws Exception {
+    void authenticatedNonAdminUser_canSubmitDbaDeleteRequest() throws Exception {
         AuthUserDto normalUser = new AuthUserDto("USR1", "Standard User", "USER", "Y");
         when(request.getSession(false)).thenReturn(session);
         when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(normalUser);
@@ -108,8 +108,34 @@ class AuthInterceptorTest {
 
         boolean allowed = interceptor.preHandle(request, response, new Object());
 
+        assertTrue(allowed);
+        verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void authenticatedNonAdminUser_canVerifyDbaDeleteRequest() throws Exception {
+        AuthUserDto normalUser = new AuthUserDto("USR1", "Standard User", "USER", "Y");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(normalUser);
+        when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/verify");
+        when(request.getMethod()).thenReturn("POST");
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertTrue(allowed);
+        verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void unauthenticatedDeleteRequest_isStillRejectedWith401() throws Exception {
+        when(request.getSession(false)).thenReturn(null);
+        when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/verify");
+        when(request.getMethod()).thenReturn("POST");
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
         assertFalse(allowed);
-        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
-        assertTrue(responseWriter.toString().contains("Administrator privileges required"));
+        verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertTrue(responseWriter.toString().contains("Authentication required"));
     }
 }

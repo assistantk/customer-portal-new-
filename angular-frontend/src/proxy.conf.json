@@ -69,6 +69,11 @@
     "secure": false,
     "changeOrigin": true
   },
+  "/api/customers/delete-requests": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": true
+  },
   "/api/auth": {
     "target": "http://localhost:8080",
     "secure": false,

@@ -28,10 +28,10 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // Deletion requests remain restricted to administrators, like the retired direct-delete endpoint.
+        // Direct deletion remains admin-only; DBA requests follow the authenticated-user policy
+        // used by the Old User lookup and update endpoints.
         String requestUri = request.getRequestURI();
-        if (requestUri != null
-                && (requestUri.contains("/global-delete") || requestUri.contains("/delete-requests"))) {
+        if (requestUri != null && requestUri.contains("/global-delete")) {
             if (!"ADMIN".equalsIgnoreCase(user.getUserRole())) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json;charset=UTF-8");

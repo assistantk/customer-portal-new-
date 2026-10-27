@@ -93,6 +93,12 @@ public class DbaEmailService {
         sendDbaSqlEmail(requests);
     }
 
+    public void sendDbaQueryEmail(String operation, String table, String customerCode, String companyName, String sql) {
+        List<SqlRequest> requests = new ArrayList<>();
+        requests.add(new SqlRequest(operation, table, customerCode, companyName, sql));
+        sendDbaSqlEmail(requests);
+    }
+
     public void sendDbaSqlEmail(Collection<SqlRequest> requests) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
@@ -118,6 +124,9 @@ public class DbaEmailService {
             }
             if (request.code() != null) {
                 body.append("Code: ").append(request.code()).append('\n');
+            }
+            if (request.companyName() != null && !request.companyName().trim().isEmpty()) {
+                body.append("Company Name: ").append(request.companyName()).append('\n');
             }
             if (request.userId() != null && !request.userId().trim().isEmpty()) {
                 resolvedUserId = request.userId().trim();
@@ -288,18 +297,28 @@ public class DbaEmailService {
         private final String operation;
         private final String table;
         private final String code;
+        private final String companyName;
         private final String sql;
         private final String userId;
         private final String emailId;
 
         public SqlRequest(String operation, String table, String code, String sql) {
-            this(operation, table, code, sql, null, null);
+            this(operation, table, code, null, sql, null, null);
+        }
+
+        public SqlRequest(String operation, String table, String code, String companyName, String sql) {
+            this(operation, table, code, companyName, sql, null, null);
         }
 
         public SqlRequest(String operation, String table, String code, String sql, String userId, String emailId) {
+            this(operation, table, code, null, sql, userId, emailId);
+        }
+
+        public SqlRequest(String operation, String table, String code, String companyName, String sql, String userId, String emailId) {
             this.operation = operation;
             this.table = table;
             this.code = code;
+            this.companyName = companyName;
             this.sql = sql;
             this.userId = userId;
             this.emailId = emailId;
@@ -308,6 +327,7 @@ public class DbaEmailService {
         public String operation() { return operation; }
         public String table() { return table; }
         public String code() { return code; }
+        public String companyName() { return companyName; }
         public String sql() { return sql; }
         public String userId() { return userId; }
         public String emailId() { return emailId; }
