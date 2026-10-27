@@ -318,4 +318,64 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.errors['address']).toBe('Address cannot exceed 100 characters.');
     });
   });
+
+  describe('Code Type Toggle & Dynamic Logo Switching', () => {
+    it('should default to GLOBAL codeType with Global Customer Code logo in old mode', () => {
+      component.mode = 'old';
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+    });
+
+    it('should dynamically switch logo when toggling to HANDLING_AGENT in old mode', () => {
+      component.mode = 'old';
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+
+      expect(component.codeType).toBe('HANDLING_AGENT');
+      expect(component.oldCodeType).toBe('HANDLING_AGENT');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
+
+      // Switch back to GLOBAL
+      component.handleOldCodeTypeChange('GLOBAL');
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+    });
+
+    it('should dynamically switch logo when toggling codeType in new mode', () => {
+      component.mode = 'new';
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+
+      component.handleNewCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('HANDLING_AGENT');
+      expect(component.newCodeType).toBe('HANDLING_AGENT');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
+
+      component.handleNewCodeTypeChange('GLOBAL');
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    });
+
+    it('should keep Old User and New Entry codeType independent', () => {
+      // Set Old User to HANDLING_AGENT
+      component.mode = 'old';
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('HANDLING_AGENT');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+
+      // Switch to New Entry (default GLOBAL)
+      component.mode = 'new';
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+
+      // Switch back to Old User (should remain HANDLING_AGENT)
+      component.mode = 'old';
+      expect(component.codeType).toBe('HANDLING_AGENT');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    });
+  });
 });
+

@@ -97,7 +97,37 @@ const addressesMatch = (left: string, right: string) => {
 })
 export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   mode: 'ownership' | 'old' | 'new' = 'old';
-  codeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
+  oldCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
+  newCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
+
+  get codeType(): 'GLOBAL' | 'HANDLING_AGENT' {
+    return this.mode === 'old' ? this.oldCodeType : this.newCodeType;
+  }
+  set codeType(val: 'GLOBAL' | 'HANDLING_AGENT') {
+    if (this.mode === 'old') {
+      this.oldCodeType = val;
+    } else {
+      this.newCodeType = val;
+    }
+  }
+
+  get currentLogo(): string {
+    if (this.mode === 'ownership') {
+      return 'assets/portal-logo.png';
+    }
+    return this.codeType === 'HANDLING_AGENT'
+      ? 'assets/handling_agent_code_transparent.png'
+      : 'assets/glbl_transparent.png';
+  }
+
+  get currentLogoAlt(): string {
+    if (this.mode === 'ownership') {
+      return 'Customer Registration Portal';
+    }
+    return this.codeType === 'HANDLING_AGENT'
+      ? 'Handling Agent Code Logo'
+      : 'Global Customer Code Logo';
+  }
   form: CustomerPayload = { ...blank };
   gstins: GstinEntry[] = [{ ...blankGstin }];
   errors: Record<string, string> = {};
@@ -420,17 +450,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleOldCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
-    if (newType === 'GLOBAL') {
-      this.openGlobalCodeForm();
-      return;
-    }
-    this.codeType = newType;
+    this.oldCodeType = newType;
     if (this.form.customerCode.trim().length === 4) {
       this.triggerOldLookup(this.form.customerCode, newType);
     } else {
       this.lookupDone = false;
       this.lookupError = '';
     }
+    this.cdr.markForCheck();
   }
 
   /* ===== New User: generate code from company name ===== */
@@ -475,14 +502,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleNewCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
-    if (newType === 'GLOBAL') {
-      this.openGlobalCodeForm();
-      return;
-    }
-    this.codeType = newType;
+    this.newCodeType = newType;
     if (this.mode === 'new' && this.form.companyName?.trim()) {
       this.handleNewCompanyNameChange(this.form.companyName);
     }
+    this.cdr.markForCheck();
   }
 
   checkFile(f: File | null | undefined): string {
