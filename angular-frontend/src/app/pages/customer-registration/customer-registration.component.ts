@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Router } from '@angular/router';
 import { finalize } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
@@ -111,6 +112,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   addressManuallyEdited = false;
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
+  gstinCollapsed = false;
   private codeTimer: any = null;
   private codeRequestId = 0;
 
@@ -144,8 +146,27 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private customerService: CustomerService,
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private router?: Router
   ) {}
+
+  openGlobalCodeForm(): void {
+    if (this.router) {
+      this.router.navigate(['/registration/global-code']);
+    }
+  }
+
+  openHandlingAgentCodeForm(): void {
+    if (this.router) {
+      this.router.navigate(['/registration/handling-agent']);
+    }
+  }
+
+  openOwnershipCodeForm(): void {
+    if (this.router) {
+      this.router.navigate(['/registration/ownership']);
+    }
+  }
 
   ngOnInit(): void {}
 
@@ -212,6 +233,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   switchMode(newMode: 'ownership' | 'old' | 'new'): void {
+    if (newMode === 'ownership') {
+      this.openOwnershipCodeForm();
+      return;
+    }
     this.reset();
     this.mode = newMode;
     this.cdr.markForCheck();
@@ -394,6 +419,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleOldCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    if (newType === 'GLOBAL') {
+      this.openGlobalCodeForm();
+      return;
+    }
     this.codeType = newType;
     if (this.form.customerCode.trim().length === 4) {
       this.triggerOldLookup(this.form.customerCode, newType);
@@ -445,6 +474,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleNewCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    if (newType === 'GLOBAL') {
+      this.openGlobalCodeForm();
+      return;
+    }
     this.codeType = newType;
     if (this.mode === 'new' && this.form.companyName?.trim()) {
       this.handleNewCompanyNameChange(this.form.companyName);
