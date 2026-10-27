@@ -19,6 +19,6 @@ public class DirectAavpswdAuthenticationPolicy implements AemAuthenticationPolic
             throw new InvalidCredentialsException("Invalid User ID/Email or Password.");
         }
 
-        return new AuthUserDto(user.userId(), user.userId(), "USER", "Y", user.email());
+        return new AuthUserDto(user.userId(), user.userId(), "USER", "Y", user.email(), user.phoneNumber());
     }
 }

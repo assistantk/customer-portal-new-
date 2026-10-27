@@ -16,7 +16,7 @@ import java.util.Optional;
 public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
 
     private static final String FIND_BY_IDENTIFIER_SQL =
-            "SELECT AAVUSERID, AAVEMAILID, AAVPSWD" +
+            "SELECT AAVUSERID, AAVEMAILID, AAVPHONENO, AAVPSWD" +
             " FROM TMS3T.AEM_USER" +
             " WHERE AAVUSERID = ? OR AAVEMAILID = ?";
 
@@ -41,6 +41,7 @@ public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
                 AemUserLookupResult user = new AemUserLookupResult(
                         resultSet.getString("AAVUSERID"),
                         resultSet.getString("AAVEMAILID"),
+                        resultSet.getString("AAVPHONENO"),
                         resultSet.getString("AAVPSWD")
                 );
 

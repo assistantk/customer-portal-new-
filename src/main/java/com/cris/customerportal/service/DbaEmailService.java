@@ -184,10 +184,12 @@ public class DbaEmailService {
     private String buildUserFooter(String providedUserId, String providedEmailId) {
         String userId = firstNonBlank(providedUserId, resolveUserIdFromRequest());
         String emailId = firstNonBlank(providedEmailId, resolveUserEmailFromSession(), resolveUserEmailFromRequest());
+        String phoneNumber = resolveUserPhoneNumberFromSession();
 
         StringBuilder footer = new StringBuilder();
         footer.append("UserID: ").append(userId == null ? "Not available" : userId).append("\n");
-        footer.append("Email ID: ").append(emailId == null ? "Not available" : emailId);
+        footer.append("Email ID: ").append(emailId == null ? "Not available" : emailId).append("\n");
+        footer.append("Phone Number: ").append(phoneNumber == null ? "Not available" : phoneNumber);
         return footer.toString();
     }
 
@@ -227,6 +229,23 @@ public class DbaEmailService {
 
         AuthUserDto user = (AuthUserDto) sessionUser;
         return user.getEmail();
+    }
+
+    private String resolveUserPhoneNumberFromSession() {
+        Object requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            return null;
+        }
+
+        HttpSession session = ((ServletRequestAttributes) requestAttributes)
+                .getRequest()
+                .getSession(false);
+        Object sessionUser = session == null ? null : session.getAttribute(AuthController.AUTH_SESSION_KEY);
+        if (!(sessionUser instanceof AuthUserDto)) {
+            return null;
+        }
+
+        return ((AuthUserDto) sessionUser).getPhoneNumber();
     }
 
     private String resolveUserEmailFromRequest() {

@@ -452,7 +452,7 @@ class CustomerServiceImplTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.getSession(true).setAttribute(
             AuthController.AUTH_SESSION_KEY,
-            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "rail.user@example.org"));
+            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "rail.user@example.org", "9771429950"));
         request.getSession(false).setAttribute("CURRENT_OPERATING_DIVISION", "Nagpur (NGP)");
         ServletRequestAttributes requestAttributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(requestAttributes);
@@ -466,7 +466,7 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "UserID: SR.DCM/NCP\nEmail ID: rail.user@example.org"));
+            "UserID: SR.DCM/NCP\nEmail ID: rail.user@example.org\nPhone Number: 9771429950"));
     }
 
     @Test

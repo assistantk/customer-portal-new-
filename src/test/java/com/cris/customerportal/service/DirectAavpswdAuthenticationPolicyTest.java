@@ -14,7 +14,7 @@ class DirectAavpswdAuthenticationPolicyTest {
     @Test
     void matchingAavpswdAuthenticatesAsNonAdminUser() {
         AemUserLookupResult user =
-                new AemUserLookupResult("RAILUSER", "rail.user@example.org", "entered-value");
+                new AemUserLookupResult("RAILUSER", "rail.user@example.org", "9771429950", "entered-value");
 
         AuthUserDto authenticatedUser = policy.authenticate(user, "entered-value");
 
@@ -22,6 +22,7 @@ class DirectAavpswdAuthenticationPolicyTest {
         assertEquals("USER", authenticatedUser.getUserRole());
         assertEquals("RAILUSER", authenticatedUser.getUserName());
         assertEquals("rail.user@example.org", authenticatedUser.getEmail());
+        assertEquals("9771429950", authenticatedUser.getPhoneNumber());
     }
 
     @Test
