@@ -4,6 +4,7 @@ public class LoginRequest {
     private String userId;
     private String username;
     private String password;
+    private String captchaInput;
 
     public LoginRequest() {}
 
@@ -25,4 +26,7 @@ public class LoginRequest {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getCaptchaInput() { return captchaInput; }
+    public void setCaptchaInput(String captchaInput) { this.captchaInput = captchaInput; }
 }

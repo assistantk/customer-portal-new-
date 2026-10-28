@@ -116,6 +116,38 @@ class DeleteRequestServiceTest {
     }
 
     @Test
+    void matchingCompanyEmailsCodeOnlyDeleteSqlForGlobalCustomer() throws Exception {
+        DataSource dataSource = dataSourceWithRecord("CSPL", "M/S CHAITANYA SOLVEX PVT. LTD.");
+        DbaEmailService emailService = mock(DbaEmailService.class);
+
+        new DeleteRequestService(dataSource, emailService)
+                .sendRequest("GLOBAL_CUSTOMER", "CSPL", "M/S CHAITANYA SOLVEX PVT. LTD.");
+
+        verify(emailService).sendDbaQueryEmail(
+                "DELETE",
+                "MEMGLBLCUST",
+                "CSPL",
+                "M/S CHAITANYA SOLVEX PVT. LTD.",
+                "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'CSPL';");
+    }
+
+    @Test
+    void matchingAgentEmailsCodeOnlyDeleteSqlUsingHandlingAgentCodeColumn() throws Exception {
+        DataSource dataSource = dataSourceWithRecord("VAIS", "Handling Company");
+        DbaEmailService emailService = mock(DbaEmailService.class);
+
+        new DeleteRequestService(dataSource, emailService)
+                .sendRequest("HANDLING_AGENT", "VAIS", "Handling Company");
+
+        verify(emailService).sendDbaQueryEmail(
+                "DELETE",
+                "MEMGLBLHNDGAGNT",
+                "VAIS",
+                "Handling Company",
+                "DELETE FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = 'VAIS';");
+    }
+
+    @Test
     void matchingCompanyEmailsEscapedDeleteSqlWithoutExecutingIt() throws Exception {
         DataSource dataSource = dataSourceWithRecord("O'NEIL", "O'Neil Company");
         DbaEmailService emailService = mock(DbaEmailService.class);
@@ -128,7 +160,7 @@ class DeleteRequestServiceTest {
                 "MEMGLBLCUST",
                 "O'NEIL",
                 "O'Neil Company",
-                "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''NEIL' AND MAVGLBLCUSTNAME = 'O''Neil Company';");
+                "DELETE FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = 'O''NEIL';");
     }
 
     @Test

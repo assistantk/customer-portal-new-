@@ -61,15 +61,14 @@ public class DeleteRequestService {
                     "Company name does not match the selected code. Please verify the company name.");
         }
 
-        String sql = buildDeleteSql(record.mapping, record.code, verifiedCompanyName);
+        String sql = buildDeleteSql(record.mapping, record.code);
         dbaEmailService.sendDbaQueryEmail(
                 "DELETE", record.mapping.table, record.code, verifiedCompanyName, sql);
     }
 
-    private String buildDeleteSql(CodeMapping mapping, String code, String companyName) {
+    private String buildDeleteSql(CodeMapping mapping, String code) {
         return "DELETE FROM " + mapping.table
-                + " WHERE " + mapping.codeColumn + " = '" + escapeSqlLiteral(code)
-                + "' AND " + mapping.nameColumn + " = '" + escapeSqlLiteral(companyName) + "';";
+                + " WHERE " + mapping.codeColumn + " = '" + escapeSqlLiteral(code) + "';";
     }
 
     private String escapeSqlLiteral(String value) {

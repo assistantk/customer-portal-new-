@@ -373,8 +373,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     it('should default to GLOBAL codeType with Global Customer Code logo in old mode', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
-      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
     });
 
     it('should dynamically switch logo when toggling to HANDLING_AGENT in old mode', () => {
@@ -389,14 +389,15 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       // Switch back to GLOBAL
       component.handleOldCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
-      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
     });
 
     it('should dynamically switch logo when toggling codeType in new mode', () => {
       component.mode = 'new';
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
 
       component.handleNewCodeTypeChange('HANDLING_AGENT');
       expect(component.codeType).toBe('HANDLING_AGENT');

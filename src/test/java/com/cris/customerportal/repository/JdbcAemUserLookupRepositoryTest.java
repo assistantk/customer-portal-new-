@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -25,6 +26,7 @@ class JdbcAemUserLookupRepositoryTest {
 
     private DataSource dataSource;
     private Connection connection;
+    private DatabaseMetaData databaseMetaData;
     private PreparedStatement statement;
     private ResultSet resultSet;
     private JdbcAemUserLookupRepository repository;
@@ -33,20 +35,24 @@ class JdbcAemUserLookupRepositoryTest {
     void setUp() throws SQLException {
         dataSource = mock(DataSource.class);
         connection = mock(Connection.class);
+        databaseMetaData = mock(DatabaseMetaData.class);
         statement = mock(PreparedStatement.class);
         resultSet = mock(ResultSet.class);
         when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(databaseMetaData);
+        when(databaseMetaData.getDatabaseProductName()).thenReturn("Oracle");
+        when(connection.getSchema()).thenReturn("TMS3T");
         when(connection.prepareStatement(anyString())).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.getInt(anyString())).thenReturn(1);
         repository = new JdbcAemUserLookupRepository(dataSource);
     }
 
     @Test
-    void looksUpByEitherIdentifierAndReadsAemUserContactColumns() throws SQLException {
+    void looksUpByEitherIdentifierAndReadsAemUserCredentials() throws SQLException {
         when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString("AAVUSERID")).thenReturn("RAILUSER");
         when(resultSet.getString("AAVEMAILID")).thenReturn("rail.user@example.org");
-        when(resultSet.getString("AAVPHONENO")).thenReturn("9771429950");
         when(resultSet.getString("AAVPSWD")).thenReturn("stored-value");
 
         Optional<AemUserLookupResult> result = repository.findByIdentifier("rail.user@example.org");
@@ -54,14 +60,46 @@ class JdbcAemUserLookupRepositoryTest {
         assertTrue(result.isPresent());
         assertEquals("RAILUSER", result.get().userId());
         assertEquals("rail.user@example.org", result.get().email());
-        assertEquals("9771429950", result.get().phoneNumber());
         assertEquals("stored-value", result.get().storedPassword());
+        assertTrue(result.get().eligibilityFailures().isEmpty());
+        assertTrue(result.get().phoneNumber() == null || result.get().phoneNumber().isEmpty());
         verify(statement).setString(1, "rail.user@example.org");
         verify(statement).setString(2, "rail.user@example.org");
         verify(connection).prepareStatement(argThat(sql ->
-        sql.replaceAll("\\s+", " ").trim().equals(
-                "SELECT AAVUSERID, AAVEMAILID, AAVPHONENO, AAVPSWD FROM TMS3T.AEM_USER WHERE AAVUSERID = ? OR AAVEMAILID = ?")));
+        sql.replaceAll("\\s+", " ").contains(
+                "CASE WHEN AACUSERDELTFLAG = 'N' THEN 1 ELSE 0 END AS ACCOUNT_NOT_DELETED") &&
+                sql.contains("AADRTRMNTDATE > SYSDATE") &&
+                sql.contains("AADPSWDXPRYTIME > SYSDATE") &&
+                sql.contains("AACEDSPFLAG = 'E'") &&
+                sql.contains("AAVDSGN = 'SR.DCM'") &&
+                sql.contains("WHERE UPPER(AAVUSERID) = UPPER(?) OR UPPER(AAVEMAILID) = UPPER(?)")));
         verify(connection, never()).prepareStatement(contains("AAVOLDPSWD"));
+        verify(connection, never()).prepareStatement(contains("AAVPHONENO"));
+    }
+
+    @Test
+    void reportsEveryFailedEligibilityConditionAndRejectsNullAsFailure() throws SQLException {
+        String[][] conditions = {
+                {"ACCOUNT_NOT_DELETED", "AACUSERDELTFLAG must be N"},
+                {"TERMINATION_IN_FUTURE", "AADRTRMNTDATE must be later than Oracle SYSDATE"},
+                {"PASSWORD_NOT_EXPIRED", "AADPSWDXPRYTIME must be later than Oracle SYSDATE"},
+                {"ELIGIBLE_EDSP_FLAG", "AACEDSPFLAG must be E"},
+                {"ELIGIBLE_DESIGNATION", "AAVDSGN must be SR.DCM"}
+        };
+
+        for (String[] condition : conditions) {
+            reset(resultSet);
+            when(resultSet.next()).thenReturn(true, false);
+            when(resultSet.getString("AAVUSERID")).thenReturn("RAILUSER");
+            when(resultSet.getString("AAVEMAILID")).thenReturn("rail.user@example.org");
+            when(resultSet.getString("AAVPSWD")).thenReturn("stored-value");
+            when(resultSet.getInt(anyString())).thenReturn(1);
+            when(resultSet.getInt(condition[0])).thenReturn(0);
+
+            AemUserLookupResult user = repository.findByIdentifier("RAILUSER").get();
+
+            assertEquals(java.util.Collections.singletonList(condition[1]), user.eligibilityFailures());
+        }
     }
 
     @Test
