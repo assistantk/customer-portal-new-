@@ -26,13 +26,49 @@ export interface AuthUserData {
   userRole?: string;
   isActive?: string;
   email?: string;
+  phoneNumber?: string;
 }
 
 export interface AuthResponse {
   success: boolean;
   message?: string;
   authenticated?: boolean;
+  accessDenied?: boolean;
   data?: AuthUserData;
+  error?: string;
+}
+
+export interface RmsValidatedUserData {
+  userId: string;
+  userName?: string;
+  divisionCode: string;
+  designations: string[];
+}
+
+export interface RmsValidateUserResponse {
+  success: boolean;
+  message?: string;
+  data?: RmsValidatedUserData;
+  error?: string;
+}
+
+export interface RmsSelectDesignationResponse {
+  success: boolean;
+  accessDenied?: boolean;
+  message?: string;
+  data?: {
+    destinationMasked?: string;
+    selectedDesignation?: string;
+  };
+  error?: string;
+}
+
+export interface RmsOtpResendResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    destinationMasked?: string;
+  };
   error?: string;
 }
 
@@ -58,6 +94,68 @@ export class AuthService {
   public setCurrentUser(user: AuthUserData | null): void {
     this.updateCurrentUser(user);
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Multi-step RMS Authentication
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Step 1: Validate User ID, Password, and Division Code
+   */
+  validateUser(userId: string, password: string, divisionCode: string): Observable<RmsValidateUserResponse> {
+    return this.http.post<RmsValidateUserResponse>(
+      `${this.API}/validate-user`,
+      {
+        userId: userId.trim(),
+        password: password,
+        divisionCode: divisionCode.trim().toUpperCase()
+      },
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Step 2: Select Designation & Trigger OTP Generation
+   */
+  selectDesignation(designation: string): Observable<RmsSelectDesignationResponse> {
+    return this.http.post<RmsSelectDesignationResponse>(
+      `${this.API}/select-designation`,
+      { designation: designation.trim() },
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Resend OTP with cooldown
+   */
+  resendOtp(): Observable<RmsOtpResendResponse> {
+    return this.http.post<RmsOtpResendResponse>(
+      `${this.API}/resend-otp`,
+      {},
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Step 3: Verify OTP and establish authenticated session
+   */
+  verifyOtp(otp: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(
+      `${this.API}/verify-otp`,
+      { otp: otp.trim() },
+      { withCredentials: true }
+    ).pipe(
+      tap((res) => {
+        if (res && res.success && res.data) {
+          this.updateCurrentUser(res.data);
+        }
+      })
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Legacy / Common Auth Endpoints
+  // ─────────────────────────────────────────────────────────────
 
   login(req: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/login`, {

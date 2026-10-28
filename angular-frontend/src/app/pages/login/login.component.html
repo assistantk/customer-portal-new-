@@ -3,7 +3,7 @@
     <img src="assets/railway-bg.jpeg" alt="" />
   </div>
 
-  <!-- Header — same style as registration -->
+  <!-- Header -->
   <header class="login-header">
     <div class="login-brand">
       <div class="login-cris">
@@ -11,28 +11,46 @@
       </div>
     </div>
 
-    <span class="login-title">Login Page</span>
+    <span class="login-title">Customer Registration Portal — Login</span>
 
     <div class="login-cris">
       <img src="assets/cris-logo.png" alt="CRIS" />
     </div>
   </header>
 
-  <!-- Main -->
+  <!-- Main Content -->
   <main class="login-main">
     <div class="login-card">
-      <!-- Card head — matches registration card-head -->
+      <!-- Card Banner / Emblem -->
       <div class="login-card-head">
         <div class="login-railways-banner">
           <img src="assets/indian-railways-logo.png" alt="Indian Railways" />
         </div>
       </div>
 
+      <!-- Step Indicator -->
+      <div class="auth-steps-progress">
+        <div class="step-badge" [class.active]="currentStep === 'LOGIN'" [class.completed]="currentStep === 'DESIGNATION' || currentStep === 'OTP'">
+          <span class="step-num">1</span>
+          <span class="step-label">Credentials</span>
+        </div>
+        <div class="step-line" [class.active]="currentStep === 'DESIGNATION' || currentStep === 'OTP'"></div>
+        <div class="step-badge" [class.active]="currentStep === 'DESIGNATION'" [class.completed]="currentStep === 'OTP'">
+          <span class="step-num">2</span>
+          <span class="step-label">Designation</span>
+        </div>
+        <div class="step-line" [class.active]="currentStep === 'OTP'"></div>
+        <div class="step-badge" [class.active]="currentStep === 'OTP'">
+          <span class="step-num">3</span>
+          <span class="step-label">OTP Verify</span>
+        </div>
+      </div>
+
       <div class="login-rule"></div>
 
-      <!-- Error banner -->
-      <div *ngIf="error" class="login-error-banner">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <!-- Alerts -->
+      <div *ngIf="error" class="login-error-banner" role="alert">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="10" />
           <line x1="12" y1="8" x2="12" y2="12" />
           <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -40,18 +58,34 @@
         <span>{{ error }}</span>
       </div>
 
-      <!-- Form -->
-      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-grid" autocomplete="off">
-        <!-- User ID or email -->
+      <div *ngIf="successMessage" class="login-success-banner" role="status">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+        <span>{{ successMessage }}</span>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- STEP 1: USER ID, PASSWORD, DIVISION CODE                   -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <form *ngIf="currentStep === 'LOGIN'" [formGroup]="loginForm" (ngSubmit)="onSubmitLogin()" class="login-grid" autocomplete="off">
+
+        <!-- User ID -->
         <div class="login-field-wrap">
-          <label for="login-user">User ID or Email <b>*</b></label>
+          <label for="login-user">User ID <b>*</b></label>
           <div class="login-control">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
-            <input id="login-user" type="text" placeholder="Enter User ID or email address" formControlName="userId"
-              autofocus />
+            <input
+              id="login-user"
+              type="text"
+              placeholder="Enter official User ID (e.g. SREEJU)"
+              formControlName="userId"
+              autofocus
+            />
           </div>
         </div>
 
@@ -63,18 +97,23 @@
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
-            <input id="login-pass" [type]="showPassword ? 'text' : 'password'" placeholder="Enter Password"
-              formControlName="password" />
-            <button type="button" class="login-pw-toggle" (click)="togglePassword()"
-              [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'">
-              <svg *ngIf="showPassword" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                viewBox="0 0 24 24">
-                <path
-                  d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+            <input
+              id="login-pass"
+              [type]="showPassword ? 'text' : 'password'"
+              placeholder="Enter Password"
+              formControlName="password"
+            />
+            <button
+              type="button"
+              class="login-pw-toggle"
+              (click)="togglePassword()"
+              [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
+            >
+              <svg *ngIf="showPassword" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                 <line x1="1" y1="1" x2="23" y2="23" />
               </svg>
-              <svg *ngIf="!showPassword" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                viewBox="0 0 24 24">
+              <svg *ngIf="!showPassword" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                 <circle cx="12" cy="12" r="3" />
               </svg>
@@ -82,55 +121,54 @@
           </div>
         </div>
 
-        <!-- Captcha -->
+        <!-- Division Code -->
         <div class="login-field-wrap">
-          <label for="login-captcha">Enter Captcha <b>*</b></label>
+          <label for="login-div">Division Code <b>*</b></label>
           <div class="login-control">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              <polyline points="9 12 11 14 15 10" />
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
             </svg>
-            <input id="login-captcha" type="text" placeholder="Enter Captcha" formControlName="captchaInput"
-              autocomplete="off" />
+            <input
+              id="login-div"
+              type="text"
+              placeholder="e.g. TKD, NGP, CSTM, DLI, BSL"
+              formControlName="divisionCode"
+              list="railway-divisions-list"
+              style="text-transform: uppercase;"
+            />
+            <datalist id="railway-divisions-list">
+              <option *ngFor="let d of divisionSuggestions" [value]="d.code">{{ d.name }} ({{ d.zone }})</option>
+            </datalist>
           </div>
+          <small *ngIf="getDivisionHelpText()" class="field-hint">
+            ✓ {{ getDivisionHelpText() }}
+          </small>
         </div>
 
-        <!-- Captcha display -->
-        <div class="login-captcha-row">
-          <canvas #captchaCanvas width="150" height="40" class="login-captcha-canvas"></canvas>
-          <button type="button" class="login-captcha-refresh" (click)="refreshCaptcha()"
-            [disabled]="captchaLoading" aria-label="Refresh captcha">
-            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Actions — same style as registration -->
+        <!-- Action Buttons -->
         <div class="login-actions">
           <div class="login-secure">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <polyline points="9 12 11 14 15 10" />
             </svg>
-            <span>Secure encrypted login</span>
+            <span>RMS Authentication Gateway</span>
           </div>
+
           <div class="login-btns">
-            <button type="submit" class="login-submit" [disabled]="loading || captchaLoading || !captchaAvailable">
-              <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor"
-                stroke-width="2" viewBox="0 0 24 24">
+            <button type="submit" class="login-submit" [disabled]="loading">
+              <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
-              <svg *ngIf="!loading" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
-                viewBox="0 0 24 24">
+              <svg *ngIf="!loading" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
                 <polyline points="10 17 15 12 10 7" />
                 <line x1="15" y1="12" x2="3" y2="12" />
               </svg>
-              {{ loading ? 'Signing in…' : 'Login' }}
+              {{ loading ? 'Validating…' : 'Login' }}
             </button>
-            <button type="button" class="login-reset" (click)="handleReset()" [disabled]="loading">
+            <button type="button" class="login-reset" (click)="restartLogin()" [disabled]="loading">
               <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
@@ -140,10 +178,125 @@
           </div>
         </div>
       </form>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- STEP 2: DESIGNATION SELECTION                              -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <form *ngIf="currentStep === 'DESIGNATION'" [formGroup]="designationForm" (ngSubmit)="onSubmitDesignation()" class="login-grid" autocomplete="off">
+        <div class="user-summary-card">
+          <div class="user-avatar-circle">
+            {{ validatedUser?.userId ? validatedUser?.userId?.charAt(0) : 'U' }}
+          </div>
+          <div class="user-meta">
+            <div class="user-display-name">{{ validatedUser?.userName || validatedUser?.userId }}</div>
+            <div class="user-sub">
+              <span>ID: <strong>{{ validatedUser?.userId }}</strong></span>
+              <span>Division: <strong>{{ validatedUser?.divisionCode }}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="login-field-wrap">
+          <label for="select-desig">Select Designation <b>*</b></label>
+          <div class="login-control select-wrap">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <line x1="20" y1="8" x2="20" y2="14" />
+              <line x1="23" y1="11" x2="17" y2="11" />
+            </svg>
+            <select id="select-desig" formControlName="designation" class="login-select">
+              <option value="" disabled>-- Select your designation --</option>
+              <option *ngFor="let desig of availableDesignations" [value]="desig">
+                {{ desig }} {{ desig === 'SR.DCM' ? '(Senior Divisional Commercial Manager)' : '' }}
+              </option>
+            </select>
+          </div>
+          <small class="field-hint note-dcm">
+            Note: Portal access is authorized exclusively for <strong>Senior DCM (SR.DCM)</strong>.
+          </small>
+        </div>
+
+        <div class="login-actions">
+          <button type="button" class="btn-back-step" (click)="restartLogin()" [disabled]="loading">
+            ← Back
+          </button>
+          <button type="submit" class="login-submit" [disabled]="loading || !designationForm.valid">
+            <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            {{ loading ? 'Generating OTP…' : 'Generate OTP' }}
+          </button>
+        </div>
+      </form>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- STEP 3: OTP VERIFICATION                                   -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <form *ngIf="currentStep === 'OTP'" [formGroup]="otpForm" (ngSubmit)="onSubmitOtp()" class="login-grid" autocomplete="off">
+        <div class="otp-info-card">
+          <div class="otp-icon-wrap">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+              <line x1="12" y1="18" x2="12.01" y2="18" />
+            </svg>
+          </div>
+          <div class="otp-meta">
+            <div class="otp-title">One-Time Password Sent</div>
+            <div class="otp-dest">Dispatched to: <strong>{{ maskedDestination }}</strong></div>
+          </div>
+        </div>
+
+        <div class="login-field-wrap">
+          <label for="otp-input">Enter OTP <b>*</b></label>
+          <div class="login-control">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <input
+              id="otp-input"
+              type="text"
+              maxlength="8"
+              placeholder="Enter 6-digit OTP (e.g. 123456)"
+              formControlName="otp"
+              autocomplete="one-time-code"
+              autofocus
+            />
+          </div>
+          <div class="resend-row">
+            <span *ngIf="resendCooldown > 0" class="cooldown-text">
+              Resend OTP in <strong>{{ resendCooldown }}s</strong>
+            </span>
+            <button
+              *ngIf="resendCooldown === 0"
+              type="button"
+              class="btn-resend-link"
+              (click)="resendOtp()"
+              [disabled]="loading"
+            >
+              Resend OTP
+            </button>
+          </div>
+        </div>
+
+        <div class="login-actions">
+          <button type="button" class="btn-back-step" (click)="restartLogin()" [disabled]="loading">
+            ← Cancel
+          </button>
+          <button type="submit" class="login-submit" [disabled]="loading || !otpForm.valid">
+            <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            {{ loading ? 'Verifying…' : 'Verify OTP' }}
+          </button>
+        </div>
+      </form>
+
     </div>
   </main>
 
-  <!-- Footer — same as registration -->
+  <!-- Footer -->
   <footer class="login-footer">
     Designed and Developed By <strong>CENTRE FOR RAILWAY INFORMATION SYSTEMS</strong> Chanakyapuri, New Delhi-110021
   </footer>

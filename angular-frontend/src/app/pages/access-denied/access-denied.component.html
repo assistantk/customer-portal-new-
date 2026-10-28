@@ -1,0 +1,38 @@
+<div class="access-denied-container">
+  <div class="access-denied-card">
+    <div class="icon-circle">
+      <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+
+    <h1 class="denied-title">Access Restricted</h1>
+
+    <div class="denied-divider"></div>
+
+    <p class="denied-message">
+      This website is available only to authorized <strong>Senior DCM (SR.DCM)</strong> users. Your selected designation does not have permission to access this application.
+    </p>
+
+    <div class="policy-note">
+      <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+        <line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+      <span>If you believe this is an error, please contact your CRIS Portal Administrator or Regional Senior DCM office.</span>
+    </div>
+
+    <div class="action-row">
+      <button type="button" class="btn-return-login" (click)="goBackToLogin()">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="19" y1="12" x2="5" y2="12"/>
+          <polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Go Back to Login
+      </button>
+    </div>
+  </div>
+</div>
