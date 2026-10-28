@@ -7,6 +7,8 @@ import com.cris.customerportal.exception.InvalidCredentialsException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -36,6 +38,36 @@ class OracleDbmsUtilityAuthenticationPolicyTest {
         assertEquals("9771429950", authenticatedUser.getPhoneNumber());
         assertEquals("Y", authenticatedUser.getIsActive());
         verify(hashService).calculatePasswordHash("SREEJU", "Cris@123");
+    }
+
+    @Test
+    void trimsOracleCharPaddingFromResolvedUserIdBeforeHashing() {
+        AemUserLookupResult user =
+                new AemUserLookupResult("SREEJU   ", "sreeju@example.org", "3C12F4B");
+        when(hashService.calculatePasswordHash("SREEJU", "Cris@123")).thenReturn("3C12F4B");
+
+        AuthUserDto authenticatedUser = policy.authenticate(user, "Cris@123");
+
+        assertEquals("SREEJU", authenticatedUser.getUserId());
+        verify(hashService).calculatePasswordHash("SREEJU", "Cris@123");
+    }
+
+    @Test
+    void rejectsAccountEligibilityFailureBeforeHashCalculation() {
+        AemUserLookupResult ineligibleUser = new AemUserLookupResult(
+                "SREEJU",
+                "sreeju@example.org",
+                null,
+                "3C12F4B",
+                "Y",
+                Collections.singletonList("AADPSWDXPRYTIME must be later than Oracle SYSDATE"));
+
+        InvalidCredentialsException exception = assertThrows(
+                InvalidCredentialsException.class,
+                () -> policy.authenticate(ineligibleUser, "Cris@123"));
+
+        assertEquals("Invalid User ID/Email or Password.", exception.getMessage());
+        verifyNoInteractions(hashService);
     }
 
     @Test

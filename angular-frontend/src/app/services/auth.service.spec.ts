@@ -46,8 +46,30 @@ describe('AuthService', () => {
       authenticated: true,
       data: { userId: 'RAILUSER', userName: 'Rail User', userRole: 'USER' }
     });
-
     expect(service.currentUser?.userId).toBe('RAILUSER');
+  });
+
+  it('loads a CAPTCHA image using the session cookie', () => {
+    service.getCaptcha().subscribe((response) => {
+      expect(response.image).toBe('data:image/png;base64,captcha-image');
+    });
+
+    const request = httpTestingController.expectOne('/api/auth/captcha');
+    expect(request.request.withCredentials).toBe(true);
+    request.flush({ image: 'data:image/png;base64,captcha-image' });
+  });
+
+  it('sends the entered CAPTCHA with login credentials', () => {
+    service.login({ username: ' RAILUSER ', password: 'secret', captchaInput: 'AbCd23' }).subscribe();
+
+    const request = httpTestingController.expectOne('/api/auth/login');
+    expect(request.request.withCredentials).toBe(true);
+    expect(request.request.body).toEqual({
+      userId: 'RAILUSER',
+      password: 'secret',
+      captchaInput: 'AbCd23'
+    });
+    request.flush({ success: false, message: 'Invalid User ID/Email or Password.' });
   });
 
   it('clears cached user data when the server session has expired', () => {

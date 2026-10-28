@@ -1,6 +1,8 @@
 package com.cris.customerportal.service;
 
 import com.cris.customerportal.exception.DatabaseUnavailableException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
@@ -12,6 +14,7 @@ import java.sql.SQLException;
 @Service
 public class JdbcOraclePasswordHashService implements OraclePasswordHashService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JdbcOraclePasswordHashService.class);
     public static final String ORACLE_HASH_SQL =
             "SELECT LTRIM(" +
             "    TO_CHAR(" +
@@ -43,13 +46,14 @@ public class JdbcOraclePasswordHashService implements OraclePasswordHashService 
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (resultSet.next()) {
+                    LOGGER.debug("Oracle AEM password calculation returned a result");
                     return resultSet.getString("CALCULATED_PASSWORD");
                 }
                 throw new DatabaseUnavailableException(
                         "Unable to calculate password hash from Oracle database.", null);
             }
         } catch (SQLException exception) {
-            System.err.printf("[ORACLE AUTH HASH ERROR] Password hash calculation failed. SQLState=%s ErrorCode=%d%n",
+            LOGGER.error("Oracle AEM password calculation failed. SQLState={} ErrorCode={}",
                     exception.getSQLState(), exception.getErrorCode());
             throw new DatabaseUnavailableException(
                     "Unable to authenticate at this time. Please try again later.", exception);

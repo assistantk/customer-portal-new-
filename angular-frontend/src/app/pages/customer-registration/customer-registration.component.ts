@@ -112,21 +112,23 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   get currentLogo(): string {
-    if (this.mode === 'ownership') {
-      return 'assets/portal-logo.png';
+    if ((this.mode === 'old' || this.mode === 'new')
+        && this.codeType === 'HANDLING_AGENT') {
+      return 'assets/handling_agent_code_transparent.png';
     }
-    return this.codeType === 'HANDLING_AGENT'
-      ? 'assets/handling_agent_code_transparent.png'
-      : 'assets/glbl_transparent.png';
+    return this.mode === 'new'
+      ? 'assets/glbl_transparent.png'
+      : 'assets/portal-logo.png';
   }
 
   get currentLogoAlt(): string {
-    if (this.mode === 'ownership') {
-      return 'Customer Registration Portal';
+    if ((this.mode === 'old' || this.mode === 'new')
+        && this.codeType === 'HANDLING_AGENT') {
+      return 'Handling Agent Code Logo';
     }
-    return this.codeType === 'HANDLING_AGENT'
-      ? 'Handling Agent Code Logo'
-      : 'Global Customer Code Logo';
+    return this.mode === 'new'
+      ? 'Global Customer Code Logo'
+      : 'Customer Registration Portal';
   }
   form: CustomerPayload = { ...blank };
   gstins: GstinEntry[] = [{ ...blankGstin }];

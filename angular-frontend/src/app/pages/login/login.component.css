@@ -62,7 +62,7 @@
   background: #fff;
   border: 0;
   width: 100px;
-  height: 38px;
+  height: 30px;
   padding: 4px 8px;
   border-radius: 5px;
   display: flex;
@@ -111,11 +111,12 @@
   padding: 5px 10px;
   display: flex;
   align-items: center;
+  height: 50px;
 }
 .login-cris img {
   display: block;
   width: 120px;
-  height: auto;
+  height: 50px;
 }
 
 /* ── Main ── */

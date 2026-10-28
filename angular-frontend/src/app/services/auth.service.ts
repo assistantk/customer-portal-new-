@@ -1,11 +1,16 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { BehaviorSubject, Observable, catchError, map, of, tap } from 'rxjs';
+import { BehaviorSubject, Observable, catchError, of, tap } from 'rxjs';
 import { API_BASE_URL } from './api-config';
 
 export interface LoginRequest {
   username: string;
   password: string;
+  captchaInput: string;
+}
+
+export interface CaptchaResponse {
+  image: string;
 }
 
 export interface RegisterRequest {
@@ -57,7 +62,8 @@ export class AuthService {
   login(req: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/login`, {
       userId: req.username.trim(),
-      password: req.password
+      password: req.password,
+      captchaInput: req.captchaInput
     }, { withCredentials: true }).pipe(
       tap((res) => {
         if (res && res.success && res.data) {
@@ -67,6 +73,10 @@ export class AuthService {
         }
       })
     );
+  }
+
+  getCaptcha(): Observable<CaptchaResponse> {
+    return this.http.get<CaptchaResponse>(`${this.API}/captcha`, { withCredentials: true });
   }
 
   logout(): Observable<AuthResponse> {

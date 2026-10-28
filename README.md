@@ -75,9 +75,14 @@ The `AuthController` is mapped at `/api/auth`:
 
 | Method | Local path | Purpose |
 |---|---|---|
-| `POST` | `/api/auth/login` | Authenticates JSON `{"userId":"...","password":"..."}` and creates a server-side session on success |
+| `GET` | `/api/auth/captcha` | Creates a session-bound CAPTCHA image; the answer is not sent to Angular |
+| `POST` | `/api/auth/login` | Validates JSON `{"userId":"...","password":"...","captchaInput":"..."}` and creates a server-side session on success |
 | `GET` | `/api/auth/session` | Checks the session; `/api/auth/me` is an alias |
 | `POST` | `/api/auth/logout` | Invalidates the current session |
+
+The CAPTCHA answer is single-use and validated by Spring before database lookup. Login accepts either `AAVUSERID` or `AAVEMAILID` from `TMS3T.AEM_USER`, with case-insensitive identifier matching. A matched account is eligible only when `AACUSERDELTFLAG = 'N'`, `AADRTRMNTDATE > SYSDATE`, `AADPSWDXPRYTIME > SYSDATE`, `AACEDSPFLAG = 'E'`, and `AAVDSGN = 'SR.DCM'`; Oracle evaluates these predicates so null or expired values fail. The backend retrieves `AAVPSWD` and asks Oracle to calculate the configured legacy representation using `DBMS_UTILITY.GET_HASH_VALUE`; it does not read `AAVOLDPSWD` or calculate a replacement hash in Java. The source expression matches the DBA expression recorded in `JdbcOraclePasswordHashService`, but its output has not been independently checked against the office CRIS database or the example stored value.
+
+Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
 The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
 
@@ -143,12 +148,13 @@ curl.exe -i "http://host:port/FreightCodeApi/api/auth/session"
 
 Without a session, expect `401` with JSON. A WebLogic HTML `404` means the request is not reaching the Spring mapping; verify the backend WAR is active, the effective context root is `/FreightCodeApi`, and the URL is routed to the correct Managed Server.
 
-For an intentional login test, use a private trusted client with valid credentials and a cookie jar:
+For an intentional login test, first request a CAPTCHA and retain the cookie; then solve the returned image and submit its answer with the credentials. Use a private trusted client with valid credentials and a cookie jar:
 
 ```powershell
-curl.exe -i -c .\session-cookies.txt -X POST "http://host:port/FreightCodeApi/api/auth/login" `
+curl.exe -i -c .\session-cookies.txt "http://host:port/FreightCodeApi/api/auth/captcha"
+curl.exe -i -b .\session-cookies.txt -c .\session-cookies.txt -X POST "http://host:port/FreightCodeApi/api/auth/login" `
   -H "Content-Type: application/json" `
-  --data-raw '{"userId":"YOUR_USER_ID","password":"YOUR_PASSWORD"}'
+  --data-raw '{"userId":"YOUR_USER_ID","password":"YOUR_PASSWORD","captchaInput":"SOLVED_CAPTCHA"}'
 curl.exe -i -b .\session-cookies.txt "http://host:port/FreightCodeApi/api/auth/session"
 curl.exe -i -b .\session-cookies.txt -X POST "http://host:port/FreightCodeApi/api/auth/logout"
 ```

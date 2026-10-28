@@ -3,6 +3,8 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.dto.AuthUserDto;
 import com.cris.customerportal.exception.InvalidCredentialsException;
 import com.cris.customerportal.repository.AemUserLookupRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AemAuthenticationService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AemAuthenticationService.class);
     private final AemUserLookupRepository userLookupRepository;
     private final AemAuthenticationPolicy authenticationPolicy;
 
@@ -27,9 +30,13 @@ public class AemAuthenticationService {
             throw new IllegalArgumentException("User ID/Email and Password are required.");
         }
 
+        LOGGER.debug("Starting parameterized lookup in TMS3T.AEM_USER");
         AemUserLookupResult user = userLookupRepository.findByIdentifier(parsedIdentifier)
-                .orElseThrow(() ->
-                        new InvalidCredentialsException("Invalid User ID/Email or Password."));
+                .orElseThrow(() -> {
+                    LOGGER.info("AEM credential authentication rejected: no matching account");
+                    return new InvalidCredentialsException("Invalid User ID/Email or Password.");
+                });
+        LOGGER.debug("AEM account lookup matched one canonical account");
         return authenticationPolicy.authenticate(user, password);
     }
 }

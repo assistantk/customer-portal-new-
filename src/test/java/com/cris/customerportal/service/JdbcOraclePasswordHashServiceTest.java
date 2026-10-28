@@ -49,6 +49,9 @@ class JdbcOraclePasswordHashServiceTest {
                 sql.contains("UPPER(?) || '/' || UPPER(?)") &&
                 sql.contains("1000000000") &&
                 sql.contains("POWER(2, 30)") &&
+                sql.contains("LTRIM") &&
+                sql.contains("TO_CHAR") &&
+                sql.contains("RPAD('X', 29, 'X') || 'X'") &&
                 sql.contains("FROM DUAL")
         ));
     }
