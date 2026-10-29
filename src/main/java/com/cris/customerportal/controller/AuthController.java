@@ -443,9 +443,17 @@ public class AuthController {
     @GetMapping("/captcha")
     public ResponseEntity<?> captcha(HttpServletRequest request) {
         LOGGER.debug("CAPTCHA challenge requested");
-        Map<String, Object> body = new HashMap<>();
-        body.put("image", captchaService.createChallengeImage(request.getSession(true)));
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("image", captchaService.createChallengeImage(request.getSession(true)));
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        } catch (Exception ex) {
+            LOGGER.error("Failed to generate CAPTCHA challenge: {}", ex.getMessage(), ex);
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "Unable to generate CAPTCHA: " + ex.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+        }
     }
 
     @PostMapping("/logout")
