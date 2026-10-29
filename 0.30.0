@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"Toolbox","version":"1.9.0+binary.windows.amd64.5de8f13+prebuilt.oracledb"}},"resultType":"complete","supportedVersions":["2024-11-05","2025-03-26","2025-06-18","2025-11-25","2026-07-28"],"capabilities":{"tools":{"listChanged":false},"prompts":{"listChanged":false}}}}
