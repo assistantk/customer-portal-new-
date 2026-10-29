@@ -90,7 +90,7 @@ RMS OTP generation is requested once after designation authorization. The backen
 
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
-DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
+DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.AEM_USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
 
 The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
 
@@ -176,3 +176,17 @@ The expected successful statuses are login `200`, session `200`, and logout `200
 Spring Boot 2.7.12 uses Spring Framework 5.3, Java 8-compatible bytecode, and the `javax.servlet` API. The Maven WAR excludes embedded Tomcat and its Servlet/EL APIs; WebLogic must supply the servlet container and EL implementation. The source repository does not specify the production WebLogic version, so confirm the actual WebLogic release and supported JDK/Servlet specifications with the server administrator. This Spring Boot line requires a Servlet 3.1-compatible container; Jakarta-only servlet containers are not compatible without upgrading/migrating the application.
 
 Session management remains container-backed. Deploying frontend and backend under distinct contexts on the same origin allows the browser to send the backend session cookie to `/FreightCodeApi` when API requests include credentials. For production, use HTTPS and confirm WebLogic's session-cookie `HttpOnly`, `Secure`, and `SameSite` settings match the organization's policy; do not force `Secure` cookies while serving over plain HTTP.
+
+### CAPTCHA deployment notes
+
+The backend renders CAPTCHA images with Java AWT in headless mode and tries the logical SansSerif, Dialog, and Monospaced fonts. On Linux WebLogic hosts, configure the server JVM with:
+
+```text
+-Djava.awt.headless=true
+```
+
+Install `fontconfig` and an available font package, such as `dejavu-sans-fonts` on RPM-based distributions or `fonts-dejavu-core` on Debian-based distributions. Check the WebLogic startup log for the CAPTCHA AWT font-rendering self-check result.
+
+After deploying the backend WAR, open `https://host/FreightCodeApi/api/auth/captcha` directly or request it with `curl -i`. A successful response is JSON containing an `image` data URI and sets the session cookie. A rendering failure returns HTTP `503` with JSON `success: false` and a `message`; an HTML maintenance page or redirect means the request is not reaching the CAPTCHA controller.
+
+The CAPTCHA endpoint creates the HTTP session with `request.getSession(true)`. The repository's backend and frontend WebLogic descriptors do not override session-cookie settings. Keep the cookie scoped to `/FreightCodeApi` (the normal context path for the backend), and ensure the browser accepts it for the deployed HTTPS origin. `Secure` should be enabled for HTTPS, and `SameSite=Lax` is suitable when the frontend and backend are served from the same origin; do not configure `SameSite=None` without `Secure`.

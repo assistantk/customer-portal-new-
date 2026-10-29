@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 class JdbcPortalUserLookupRepositoryTest {
 
     @Test
-    void findsTheCanonicalUserIdFromTmsUserTable() throws SQLException {
+    void findsTheCanonicalUserIdFromAemUserTable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);
@@ -31,12 +31,12 @@ class JdbcPortalUserLookupRepositoryTest {
 
         assertEquals(Optional.of("DBUSER"), userId);
         verify(connection).prepareStatement(
-                "SELECT AAVUSERID FROM TMS3T.USER WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))");
+                "SELECT AAVUSERID FROM TMS3T.AEM_USER WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))");
         verify(statement).setString(1, "railuser");
     }
 
     @Test
-    void returnsEmptyWhenTheAuthenticatedUserIsNotInTmsUserTable() throws SQLException {
+    void returnsEmptyWhenTheAuthenticatedUserIsNotInAemUserTable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);

@@ -59,6 +59,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void captchaEndpointReturnsJsonWhenImageGenerationFails() {
+        when(request.getSession(true)).thenReturn(captchaSession);
+        when(captchaService.createChallengeImage(captchaSession))
+                .thenThrow(new CaptchaService.CaptchaGenerationException("render failed", new Error("font failure")));
+
+        ResponseEntity<?> response = controller.captcha(request);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+        assertEquals(false, ((Map<?, ?>) response.getBody()).get("success"));
+        assertEquals("CAPTCHA is temporarily unavailable. Please try again later.",
+                ((Map<?, ?>) response.getBody()).get("message"));
+    }
+
+    @Test
     void successfulLoginConsumesCaptchaThenCreatesAuthenticatedSession() {
         LoginRequest loginRequest = loginRequest("RAILUSER", "password", "AbCd23");
         AuthUserDto user = new AuthUserDto("RAILUSER", "Rail User", "USER", "Y");

@@ -444,8 +444,16 @@ public class AuthController {
     public ResponseEntity<?> captcha(HttpServletRequest request) {
         LOGGER.debug("CAPTCHA challenge requested");
         Map<String, Object> body = new HashMap<>();
-        body.put("image", captchaService.createChallengeImage(request.getSession(true)));
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        try {
+            body.put("image", captchaService.createChallengeImage(request.getSession(true)));
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        } catch (CaptchaService.CaptchaGenerationException exception) {
+            body.put("success", false);
+            body.put("message", "CAPTCHA is temporarily unavailable. Please try again later.");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .cacheControl(CacheControl.noStore())
+                    .body(body);
+        }
     }
 
     @PostMapping("/logout")
