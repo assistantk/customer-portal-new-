@@ -7,5 +7,5 @@ import { Component } from '@angular/core';
   styleUrl: './app.css'
 })
 export class App {
-  title = 'Customer Registration Portal';
+  title = 'Freight Code Generator';
 }
