@@ -2,7 +2,10 @@ package com.cris.customerportal.service;
 
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
 import javax.servlet.http.HttpSession;
+import java.io.ByteArrayInputStream;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,5 +50,23 @@ class CaptchaServiceTest {
         assertFalse(captchaService.consumeChallenge(session, "wrong"));
         assertFalse(captchaService.consumeChallenge(session, null));
         verify(session, times(2)).removeAttribute(anyString());
+    }
+
+    @Test
+    void createsPngInHeadlessMode() throws Exception {
+        CaptchaService captchaService = new CaptchaService();
+        HttpSession session = mock(HttpSession.class);
+        Map<String, Object> sessionAttributes = new HashMap<>();
+        doAnswer(invocation -> {
+            sessionAttributes.put(invocation.getArgument(0), invocation.getArgument(1));
+            return null;
+        }).when(session).setAttribute(anyString(), any());
+
+        String imageDataUri = captchaService.createChallengeImage(session);
+        byte[] imageBytes = Base64.getDecoder().decode(imageDataUri.substring("data:image/png;base64,".length()));
+
+        assertEquals("true", System.getProperty("java.awt.headless"));
+        assertNotNull(ImageIO.read(new ByteArrayInputStream(imageBytes)));
+        assertEquals(6, ((String) sessionAttributes.values().iterator().next()).length());
     }
 }
