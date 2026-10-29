@@ -125,13 +125,7 @@ public class RmsAuthOrchestrator {
         }
 
         // Parse user designations returned by RMS ATVLDTUSER
-        List<String> designations = parseDesignations(response.getDesignations());
-        if (designations.isEmpty() && response.getRoleId() != null) {
-            designations = parseDesignations(response.getRoleId());
-        }
-        if (designations.isEmpty() && response.getData() != null) {
-            designations = parseDesignations(response.getData());
-        }
+        List<String> designations = response.extractAllDesignations();
         if (designations.isEmpty()) {
             // Supported fallback data source: if the RMS API validates credentials for a location
             // but does not include explicit designation fields in the response, default to the

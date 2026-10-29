@@ -3,155 +3,312 @@ package com.cris.customerportal.dto;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Generic wrapper for JSON responses from RMS APIs.
  * Supports ATVLDTUSER, RTGNRTOTP, and RTVRFYOTP envelopes.
- * Resilient to differing field names used across RMS services (F_STATUS vs F_ERRORNO, F_MSG vs F_RMRK, etc.)
+ * Resilient to differing field types (e.g. F_ROLEID as array vs string, F_ERRORNO as int vs string).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class RmsApiResponse {
 
     @JsonProperty("F_STATUS")
     @JsonAlias({"status", "STATUS"})
-    private String status;
+    private JsonNode statusNode;
 
     @JsonProperty("F_MSG")
     @JsonAlias({"message", "MESSAGE", "F_MESSAGE", "msg"})
-    private String message;
+    private JsonNode msgNode;
 
     @JsonProperty("F_ERRORNO")
     @JsonAlias({"errorNo", "ERRORNO", "F_ERRNO", "errno"})
-    private String errorNo;
+    private JsonNode errorNoNode;
 
     @JsonProperty("F_RMRK")
     @JsonAlias({"rmrk", "RMRK", "remark", "REMARK", "remarks", "REMARKS"})
-    private String rmrk;
+    private JsonNode rmrkNode;
 
     @JsonProperty("F_USERID")
     @JsonAlias({"userId", "USERID", "F_USER_ID"})
-    private String userId;
+    private JsonNode userIdNode;
 
     @JsonProperty("F_SRVCNAME")
     @JsonAlias({"srvcName", "SRVCNAME"})
-    private String srvcName;
+    private JsonNode srvcNameNode;
 
     @JsonProperty("F_VALDFLAG")
     @JsonAlias({"valdFlag", "VALDFLAG"})
-    private String valdFlag;
+    private JsonNode valdFlagNode;
 
     @JsonProperty("F_ROLEID")
     @JsonAlias({"roleId", "ROLEID"})
-    private String roleId;
+    private JsonNode roleIdNode;
 
     @JsonProperty("F_DESIG")
     @JsonAlias({"designations", "DESIG", "F_DESIGNATION", "DESIGNATION"})
-    private String designations;
+    private JsonNode designationsNode;
 
     @JsonProperty("F_DATA")
     @JsonAlias({"data", "DATA"})
-    private String data;
+    private JsonNode dataNode;
 
     @JsonProperty("F_USERNAME")
     @JsonAlias({"userName", "USERNAME", "F_USER_NAME"})
-    private String userName;
+    private JsonNode userNameNode;
 
     @JsonProperty("F_EMAILID")
     @JsonAlias({"email", "EMAILID", "EMAIL", "F_NEWRRTYPE", "NEWRRTYPE"})
-    private String email;
+    private JsonNode emailNode;
 
     @JsonProperty("F_MOBILENO")
     @JsonAlias({"mobileNo", "MOBILENO", "MOBILE", "F_NEWRRNUMB", "NEWRRNUMB"})
-    private String mobileNo;
+    private JsonNode mobileNoNode;
 
     @JsonProperty("F_CLNTID")
     @JsonAlias({"clientId", "CLNTID"})
-    private String clientId;
+    private JsonNode clientIdNode;
 
     @JsonProperty("F_DOMN")
     @JsonAlias({"domain", "DOMN"})
-    private String domain;
+    private JsonNode domainNode;
 
     @JsonProperty("F_SRVC")
     @JsonAlias({"service", "SRVC"})
-    private String service;
+    private JsonNode serviceNode;
 
     public RmsApiResponse() {}
 
-    public String getStatus()       { return status; }
-    public void setStatus(String s) { this.status = s; }
+    public String getStatus() {
+        return statusNode != null && !statusNode.isNull() ? statusNode.asText() : null;
+    }
+    public void setStatus(String s) {
+        this.statusNode = s != null ? TextNode.valueOf(s) : null;
+    }
 
     public String getMessage() {
-        if (message != null && !message.trim().isEmpty()) {
-            return message.trim();
+        if (msgNode != null && !msgNode.isNull() && !msgNode.asText().trim().isEmpty()) {
+            return msgNode.asText().trim();
         }
-        if (rmrk != null && !rmrk.trim().isEmpty()) {
-            return rmrk.trim();
+        if (rmrkNode != null && !rmrkNode.isNull() && !rmrkNode.asText().trim().isEmpty()) {
+            return rmrkNode.asText().trim();
         }
         return null;
     }
-    public void setMessage(String m) { this.message = m; }
+    public void setMessage(String m) {
+        this.msgNode = m != null ? TextNode.valueOf(m) : null;
+    }
 
-    public String getErrorNo()        { return errorNo; }
-    public void setErrorNo(String en) { this.errorNo = en; }
+    public String getErrorNo() {
+        return errorNoNode != null && !errorNoNode.isNull() ? errorNoNode.asText() : null;
+    }
+    public void setErrorNo(String en) {
+        this.errorNoNode = en != null ? TextNode.valueOf(en) : null;
+    }
 
-    public String getRmrk()        { return rmrk; }
-    public void setRmrk(String r)  { this.rmrk = r; }
+    public String getRmrk() {
+        return rmrkNode != null && !rmrkNode.isNull() ? rmrkNode.asText() : null;
+    }
+    public void setRmrk(String r) {
+        this.rmrkNode = r != null ? TextNode.valueOf(r) : null;
+    }
 
-    public String getUserId()        { return userId; }
-    public void setUserId(String u)  { this.userId = u; }
+    public String getUserId() {
+        return userIdNode != null && !userIdNode.isNull() ? userIdNode.asText() : null;
+    }
+    public void setUserId(String u) {
+        this.userIdNode = u != null ? TextNode.valueOf(u) : null;
+    }
 
-    public String getSrvcName()        { return srvcName; }
-    public void setSrvcName(String sn) { this.srvcName = sn; }
+    public String getSrvcName() {
+        return srvcNameNode != null && !srvcNameNode.isNull() ? srvcNameNode.asText() : null;
+    }
+    public void setSrvcName(String sn) {
+        this.srvcNameNode = sn != null ? TextNode.valueOf(sn) : null;
+    }
 
-    public String getValdFlag()        { return valdFlag; }
-    public void setValdFlag(String vf) { this.valdFlag = vf; }
+    public String getValdFlag() {
+        return valdFlagNode != null && !valdFlagNode.isNull() ? valdFlagNode.asText() : null;
+    }
+    public void setValdFlag(String vf) {
+        this.valdFlagNode = vf != null ? TextNode.valueOf(vf) : null;
+    }
 
-    public String getRoleId()        { return roleId; }
-    public void setRoleId(String r)  { this.roleId = r; }
+    public JsonNode getRoleIdNode() {
+        return roleIdNode;
+    }
+    public void setRoleIdNode(JsonNode n) {
+        this.roleIdNode = n;
+    }
 
-    public String getDesignations()       { return designations; }
-    public void setDesignations(String d) { this.designations = d; }
+    public String getRoleId() {
+        return getDesignations();
+    }
+    public void setRoleId(String r) {
+        this.roleIdNode = r != null ? TextNode.valueOf(r) : null;
+    }
 
-    public String getData()       { return data; }
-    public void setData(String d) { this.data = d; }
+    public JsonNode getDesignationsNode() {
+        return designationsNode;
+    }
+    public void setDesignationsNode(JsonNode n) {
+        this.designationsNode = n;
+    }
 
-    public String getUserName()       { return userName; }
-    public void setUserName(String u) { this.userName = u; }
+    public String getDesignations() {
+        List<String> list = extractAllDesignations();
+        return list.isEmpty() ? null : String.join("|", list);
+    }
+    public void setDesignations(String d) {
+        this.designationsNode = d != null ? TextNode.valueOf(d) : null;
+    }
 
-    public String getEmail()       { return email; }
-    public void setEmail(String e) { this.email = e; }
+    public String getData() {
+        if (dataNode == null || dataNode.isNull()) return null;
+        return dataNode.isTextual() ? dataNode.asText() : dataNode.toString();
+    }
+    public void setData(String d) {
+        this.dataNode = d != null ? TextNode.valueOf(d) : null;
+    }
 
-    public String getMobileNo()       { return mobileNo; }
-    public void setMobileNo(String m) { this.mobileNo = m; }
+    public String getUserName() {
+        return userNameNode != null && !userNameNode.isNull() ? userNameNode.asText() : null;
+    }
+    public void setUserName(String u) {
+        this.userNameNode = u != null ? TextNode.valueOf(u) : null;
+    }
 
-    public String getClientId()       { return clientId; }
-    public void setClientId(String c) { this.clientId = c; }
+    public String getEmail() {
+        return emailNode != null && !emailNode.isNull() ? emailNode.asText() : null;
+    }
+    public void setEmail(String e) {
+        this.emailNode = e != null ? TextNode.valueOf(e) : null;
+    }
 
-    public String getDomain()       { return domain; }
-    public void setDomain(String d) { this.domain = d; }
+    public String getMobileNo() {
+        return mobileNoNode != null && !mobileNoNode.isNull() ? mobileNoNode.asText() : null;
+    }
+    public void setMobileNo(String m) {
+        this.mobileNoNode = m != null ? TextNode.valueOf(m) : null;
+    }
 
-    public String getService()       { return service; }
-    public void setService(String s) { this.service = s; }
+    public String getClientId() {
+        return clientIdNode != null && !clientIdNode.isNull() ? clientIdNode.asText() : null;
+    }
+    public void setClientId(String c) {
+        this.clientIdNode = c != null ? TextNode.valueOf(c) : null;
+    }
+
+    public String getDomain() {
+        return domainNode != null && !domainNode.isNull() ? domainNode.asText() : null;
+    }
+    public void setDomain(String d) {
+        this.domainNode = d != null ? TextNode.valueOf(d) : null;
+    }
+
+    public String getService() {
+        return serviceNode != null && !serviceNode.isNull() ? serviceNode.asText() : null;
+    }
+    public void setService(String s) {
+        this.serviceNode = s != null ? TextNode.valueOf(s) : null;
+    }
+
+    /**
+     * Resiliently extracts all designations from F_ROLEID, F_DESIG, and F_DATA.
+     * Handles string literals, delimited strings ("SR.DCM|DCM"), JSON arrays of strings (["SR.DCM", "DCM"]),
+     * and JSON arrays of objects ([{"ROLEID": "SR.DCM"}]).
+     */
+    public List<String> extractAllDesignations() {
+        List<String> list = new ArrayList<>();
+        extractFromNode(roleIdNode, list);
+        extractFromNode(designationsNode, list);
+        extractFromNode(dataNode, list);
+        return list.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private void extractFromNode(JsonNode node, List<String> target) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                if (item == null || item.isNull()) continue;
+                if (item.isTextual()) {
+                    addStringTokens(item.asText(), target);
+                } else if (item.isObject()) {
+                    String[] candidates = {"F_ROLEID", "ROLEID", "ROLE_ID", "ROLE", "F_DESIG", "DESIG", "DESIGNATION", "NAME", "CODE", "F_ROLEDESC", "ROLEDESC"};
+                    boolean found = false;
+                    for (String key : candidates) {
+                        JsonNode val = item.get(key);
+                        if (val != null && val.isTextual() && !val.asText().trim().isEmpty()) {
+                            addStringTokens(val.asText(), target);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        Iterator<Map.Entry<String, JsonNode>> fields = item.fields();
+                        while (fields.hasNext()) {
+                            Map.Entry<String, JsonNode> field = fields.next();
+                            if (field.getValue().isTextual()) {
+                                addStringTokens(field.getValue().asText(), target);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (node.isTextual()) {
+            addStringTokens(node.asText(), target);
+        }
+    }
+
+    private void addStringTokens(String raw, List<String> target) {
+        if (raw == null) return;
+        String trimmed = raw.trim();
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            trimmed = trimmed.substring(1, trimmed.length() - 1);
+        }
+        String[] parts = trimmed.contains("|") ? trimmed.split("\\|")
+                : trimmed.contains(",") ? trimmed.split(",")
+                : new String[]{trimmed};
+        for (String p : parts) {
+            String clean = p.replace("\"", "").replace("'", "").trim();
+            if (!clean.isEmpty()) {
+                target.add(clean);
+            }
+        }
+    }
 
     /**
      * Determines whether the response represents an application-level success.
-     * Evaluates F_ERRORNO, F_STATUS, F_VALDFLAG, and F_RMRK.
+     * Evaluates F_ERRORNO, F_STATUS, F_VALDFLAG, F_RMRK, and role list availability.
      */
     public boolean isSuccess() {
-        // 1. Explicit error number check
-        if (errorNo != null && !errorNo.trim().isEmpty()) {
-            String trimmedErr = errorNo.trim();
+        String err = getErrorNo();
+        if (err != null && !err.trim().isEmpty()) {
+            String trimmedErr = err.trim();
             if (!"0".equals(trimmedErr) && !"00".equals(trimmedErr) && !"SUCCESS".equalsIgnoreCase(trimmedErr)) {
                 return false;
             }
         }
 
-        // 2. Explicit status check
-        if (status != null && !status.trim().isEmpty()) {
-            String s = status.trim().toUpperCase(Locale.ROOT);
+        String st = getStatus();
+        if (st != null && !st.trim().isEmpty()) {
+            String s = st.trim().toUpperCase(Locale.ROOT);
             if ("E".equals(s) || "ERROR".equals(s) || "F".equals(s) || "FAIL".equals(s) || "FAILED".equals(s)) {
                 return false;
             }
@@ -160,9 +317,9 @@ public class RmsApiResponse {
             }
         }
 
-        // 3. Inspect remarks for negative keywords
-        if (rmrk != null && !rmrk.trim().isEmpty()) {
-            String lower = rmrk.trim().toLowerCase(Locale.ROOT);
+        String rk = getRmrk();
+        if (rk != null && !rk.trim().isEmpty()) {
+            String lower = rk.trim().toLowerCase(Locale.ROOT);
             if (lower.contains("invalid") || lower.contains("error") || lower.contains("failed")
                     || lower.contains("not found") || lower.contains("wrong") || lower.contains("incorrect")
                     || lower.contains("denied") || lower.contains("locked") || lower.contains("expired")
@@ -174,25 +331,28 @@ public class RmsApiResponse {
             }
         }
 
-        // 4. Inspect validation flag
-        if (valdFlag != null && !valdFlag.trim().isEmpty()) {
-            String vf = valdFlag.trim().toUpperCase(Locale.ROOT);
-            if ("N".equals(vf) || "F".equals(vf) || "E".equals(vf)) {
+        String vf = getValdFlag();
+        if (vf != null && !vf.trim().isEmpty()) {
+            String v = vf.trim().toUpperCase(Locale.ROOT);
+            if ("N".equals(v) || "F".equals(v) || "E".equals(v)) {
                 return false;
             }
-            if ("S".equals(vf) || "Y".equals(vf) || "R".equals(vf) || "V".equals(vf)) {
+            if ("S".equals(v) || "Y".equals(v) || "R".equals(v) || "V".equals(v)) {
                 return true;
             }
         }
 
-        // 5. If error number is explicitly 0/00/SUCCESS and no negative remarks
-        if (errorNo != null && ("0".equals(errorNo.trim()) || "00".equals(errorNo.trim()) || "SUCCESS".equalsIgnoreCase(errorNo.trim()))) {
+        if (err != null && ("0".equals(err.trim()) || "00".equals(err.trim()) || "SUCCESS".equalsIgnoreCase(err.trim()))) {
             return true;
         }
 
-        // 6. Inspect message for positive indicator
-        if (message != null && !message.trim().isEmpty()) {
-            String lower = message.trim().toLowerCase(Locale.ROOT);
+        if ("S".equalsIgnoreCase(st)) {
+            return true;
+        }
+
+        String msg = getMessage();
+        if (msg != null && !msg.trim().isEmpty()) {
+            String lower = msg.trim().toLowerCase(Locale.ROOT);
             if (lower.contains("invalid") || lower.contains("error") || lower.contains("failed")
                     || lower.contains("not found") || lower.contains("wrong") || lower.contains("incorrect")
                     || lower.contains("denied") || lower.contains("unauthorized")) {
@@ -201,6 +361,11 @@ public class RmsApiResponse {
             if (lower.contains("success") || lower.contains("valid") || lower.contains("verified")) {
                 return true;
             }
+        }
+
+        // If F_ROLEID contains designations and no error was reported, it is a successful validation response
+        if (!extractAllDesignations().isEmpty()) {
+            return true;
         }
 
         return false;
