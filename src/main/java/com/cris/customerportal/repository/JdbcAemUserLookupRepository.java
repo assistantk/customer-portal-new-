@@ -27,7 +27,7 @@ public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
             " CASE WHEN AADRTRMNTDATE > SYSDATE THEN 1 ELSE 0 END AS TERMINATION_IN_FUTURE," +
             " CASE WHEN AADPSWDXPRYTIME > SYSDATE THEN 1 ELSE 0 END AS PASSWORD_NOT_EXPIRED," +
             " CASE WHEN AACEDSPFLAG = 'E' THEN 1 ELSE 0 END AS ELIGIBLE_EDSP_FLAG," +
-            " CASE WHEN AAVDSGN = 'SR.DCM' THEN 1 ELSE 0 END AS ELIGIBLE_DESIGNATION" +
+            " CASE WHEN AAVDSGN = 'SR-DCM' THEN 1 ELSE 0 END AS ELIGIBLE_DESIGNATION" +
             " FROM TMS3T.AEM_USER" +
             " WHERE UPPER(AAVUSERID) = UPPER(?) OR UPPER(AAVEMAILID) = UPPER(?)";
 
@@ -79,7 +79,7 @@ public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
         addFailureIfConditionNotMet(resultSet, failures, "AADPSWDXPRYTIME must be later than Oracle SYSDATE",
                 "PASSWORD_NOT_EXPIRED");
         addFailureIfConditionNotMet(resultSet, failures, "AACEDSPFLAG must be E", "ELIGIBLE_EDSP_FLAG");
-        addFailureIfConditionNotMet(resultSet, failures, "AAVDSGN must be SR.DCM", "ELIGIBLE_DESIGNATION");
+        addFailureIfConditionNotMet(resultSet, failures, "AAVDSGN must be SR-DCM", "ELIGIBLE_DESIGNATION");
         return failures;
     }
 

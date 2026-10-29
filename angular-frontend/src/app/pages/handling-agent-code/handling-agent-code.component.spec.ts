@@ -67,6 +67,13 @@ describe('HandlingAgentCodeComponent', () => {
     expect(component.errors['operatingDivision']).toBeDefined();
   });
 
+  it('should reject agent/company names longer than 40 characters', () => {
+    component.form.agentCompanyName = 'A'.repeat(41);
+
+    expect(component.validate()).toBe(false);
+    expect(component.errors['agentCompanyName']).toBe('Agent / Company name cannot exceed 40 characters.');
+  });
+
   it('should pass validation when all required fields are valid', () => {
     component.form = {
       agentCompanyName: 'Super Logistics Private Limited',

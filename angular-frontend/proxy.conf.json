@@ -75,7 +75,7 @@
     "changeOrigin": true
   },
   "/api": {
-    "target": "http://localhost:4000",
+    "target": "http://localhost:8080",
     "secure": false,
     "changeOrigin": true
   }

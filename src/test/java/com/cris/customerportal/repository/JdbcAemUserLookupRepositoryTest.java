@@ -71,7 +71,7 @@ class JdbcAemUserLookupRepositoryTest {
                 sql.contains("AADRTRMNTDATE > SYSDATE") &&
                 sql.contains("AADPSWDXPRYTIME > SYSDATE") &&
                 sql.contains("AACEDSPFLAG = 'E'") &&
-                sql.contains("AAVDSGN = 'SR.DCM'") &&
+                sql.contains("AAVDSGN = 'SR-DCM'") &&
                 sql.contains("WHERE UPPER(AAVUSERID) = UPPER(?) OR UPPER(AAVEMAILID) = UPPER(?)")));
         verify(connection, never()).prepareStatement(contains("AAVOLDPSWD"));
         verify(connection, never()).prepareStatement(contains("AAVPHONENO"));
@@ -84,7 +84,7 @@ class JdbcAemUserLookupRepositoryTest {
                 {"TERMINATION_IN_FUTURE", "AADRTRMNTDATE must be later than Oracle SYSDATE"},
                 {"PASSWORD_NOT_EXPIRED", "AADPSWDXPRYTIME must be later than Oracle SYSDATE"},
                 {"ELIGIBLE_EDSP_FLAG", "AACEDSPFLAG must be E"},
-                {"ELIGIBLE_DESIGNATION", "AAVDSGN must be SR.DCM"}
+                {"ELIGIBLE_DESIGNATION", "AAVDSGN must be SR-DCM"}
         };
 
         for (String[] condition : conditions) {

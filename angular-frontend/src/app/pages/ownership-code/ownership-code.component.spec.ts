@@ -1,9 +1,9 @@
 import { ChangeDetectorRef } from '@angular/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OwnershipCodeComponent } from './ownership-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 describe('OwnershipCodeComponent', () => {
   let component: OwnershipCodeComponent;
@@ -14,9 +14,15 @@ describe('OwnershipCodeComponent', () => {
 
   beforeEach(() => {
     customerServiceMock = {
-      lookupOwnershipJDBC: vi.fn().mockReturnValue(of({ found: true, data: { ownershipDesc: 'Test Address 1' } })),
+      lookupOwnershipJDBC: vi.fn().mockReturnValue(of({
+        found: true,
+        data: { ownershipDesc: 'Test Address 1', recordSource: 'EXISTING_OWNERSHIP_RECORD' }
+      })),
       checkOwnershipDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
-      lookupOwnershipPartyJDBC: vi.fn().mockReturnValue(of({ found: true, data: { partyDesc: 'Test Address 2' } })),
+      lookupOwnershipPartyJDBC: vi.fn().mockReturnValue(of({
+        found: true,
+        data: { partyDesc: 'Test Address 2', recordSource: 'EXISTING_OWNERSHIP_RECORD' }
+      })),
       checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
       submitOwnershipJDBC: vi.fn().mockReturnValue(of({ success: true, message: 'Request sent to DBA' }))
     };
@@ -38,6 +44,10 @@ describe('OwnershipCodeComponent', () => {
       routerMock,
       cdrMock
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('should initialize with blank form and empty errors', () => {
@@ -71,6 +81,54 @@ describe('OwnershipCodeComponent', () => {
     vi.useRealTimers();
   });
 
+  it('should use Global Customer data as a new ownership record source', () => {
+    vi.useFakeTimers();
+    customerServiceMock.lookupOwnershipJDBC.mockReturnValue(of({
+      found: true,
+      data: {
+        ownershipDesc: 'Global Company',
+        address: 'Global Address',
+        panNumber: 'ABCDE1234F',
+        city: 'Delhi',
+        pincode: '110001',
+        recordSource: 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'
+      }
+    }));
+
+    component.handleOwnershipCodeChange('GLB1');
+    vi.advanceTimersByTime(500);
+
+    expect(component.ownSection1Source).toBe('NEW_RECORD_FROM_GLOBAL_CUSTOMER');
+    expect(component.form.ownershipAddress).toBe('Global Company');
+    expect(component.form.address).toBe('Global Address');
+    expect(component.form.panNumber).toBe('ABCDE1234F');
+    expect(component.form.city).toBe('Delhi');
+    expect(component.form.pincode).toBe('110001');
+  });
+
+  it('should wait for all four code characters before requesting ownership data', () => {
+    vi.useFakeTimers();
+    component.handleOwnershipCodeChange('OWN');
+    vi.advanceTimersByTime(500);
+    expect(customerServiceMock.lookupOwnershipJDBC).not.toHaveBeenCalled();
+
+    component.handleOwnershipCodeChange('OWN1');
+    vi.advanceTimersByTime(500);
+    expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('OWN1');
+  });
+
+  it('should expose backend lookup failures to the user', () => {
+    vi.useFakeTimers();
+    customerServiceMock.lookupOwnershipJDBC.mockReturnValue(
+      throwError(() => ({ error: { message: 'Ownership table lookup failed' } }))
+    );
+
+    component.handleOwnershipCodeChange('OWN1');
+    vi.advanceTimersByTime(500);
+
+    expect(component.ownSection1LookupError).toBe('Ownership table lookup failed');
+  });
+
   it('should validate required fields', () => {
     const valid = component.validate();
     expect(valid).toBe(false);
@@ -87,6 +145,8 @@ describe('OwnershipCodeComponent', () => {
   });
 
   it('should submit registration successfully', () => {
+    component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
     component.form = {
       ownershipCode: 'OWN1',
       ownershipAddress: 'Address 1',

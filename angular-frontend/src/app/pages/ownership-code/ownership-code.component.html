@@ -42,8 +42,11 @@
                         <svg *ngIf="!ownSection1Loading && !ownSection1Duplicate && ownSection1Found === true" width="14" height="14" class="field-status ok-icon" title="Record found in database" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     </div>
                     <small *ngIf="errors['ownershipCode']" class="error-msg">{{ errors['ownershipCode'] }}</small>
+                    <small *ngIf="ownSection1LookupError" class="error-msg">{{ ownSection1LookupError }}</small>
                     <small *ngIf="!errors['ownershipCode'] && ownSection1Duplicate" class="error-msg">This Ownership Code already exists in database.</small>
-                    <small *ngIf="!errors['ownershipCode'] && ownSection1Found === true && !ownSection1Duplicate" class="success-msg">Record found - address auto-filled.</small>
+                    <small *ngIf="!errors['ownershipCode'] && ownSection1Source === 'EXISTING_OWNERSHIP_RECORD'" class="success-msg">Existing ownership record found - changes will be sent as an UPDATE request.</small>
+                    <small *ngIf="!errors['ownershipCode'] && ownSection1Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" class="success-msg">Global Customer record found - a new ownership INSERT request can be submitted.</small>
+                    <small *ngIf="ownSection1LookupError" class="error-msg">{{ ownSection1LookupError }}</small>
                 </div>
 
                 <!-- Ownership Address -->
@@ -339,8 +342,11 @@
                         <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status ok-icon" title="Record found in database" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     </div>
                     <small *ngIf="errors['ownershipPartyCode']" class="error-msg">{{ errors['ownershipPartyCode'] }}</small>
+                    <small *ngIf="ownSection2LookupError" class="error-msg">{{ ownSection2LookupError }}</small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error-msg">This Ownership Code already exists in database.</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Found === true && !ownSection2Duplicate" class="success-msg">Record found - address auto-filled.</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" class="success-msg">Existing ownership record found - changes will be sent as an UPDATE request.</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" class="success-msg">Global Customer record found - a new ownership INSERT request can be submitted.</small>
+                    <small *ngIf="ownSection2LookupError" class="error-msg">{{ ownSection2LookupError }}</small>
                 </div>
 
                 <!-- Ownership Party Address -->

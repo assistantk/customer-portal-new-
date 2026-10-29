@@ -24,8 +24,14 @@ public class CustomerController { private final CustomerService service; public 
  @GetMapping("/generate-code") public Map<String,String> generateCode(@RequestParam String base){Map<String,String> r=new HashMap<>();r.put("code",service.generateUniqueCode(base));return r;}
 
  @PostMapping("/new-generate-code")
- public Map<String,Object> newGenerateCode(@RequestParam String type, @RequestBody Map<String, String> payload) {
-  Map<String,Object> r=new HashMap<>();r.put("code",service.generateUniqueCodeJDBC(payload.get("companyName"),type));r.put("available",true);return r;
+ public ResponseEntity<?> newGenerateCode(@RequestParam String type, @RequestBody Map<String, String> payload) {
+  try {
+   Map<String,Object> r=new HashMap<>();r.put("code",service.generateUniqueCodeJDBC(payload.get("companyName"),type));r.put("available",true);
+   return ResponseEntity.ok(r);
+  } catch (IllegalArgumentException e) {
+   Map<String,Object> body=new HashMap<>();body.put("success",false);body.put("message",e.getMessage());
+   return ResponseEntity.badRequest().body(body);
+  }
  }
 
  @PostMapping(value="/new-register", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)

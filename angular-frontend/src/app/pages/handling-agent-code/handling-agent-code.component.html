@@ -30,6 +30,7 @@
                             id="agentCompanyName"
                             name="agentCompanyName"
                             type="text"
+                            maxlength="40"
                             [value]="form.agentCompanyName"
                             (input)="handleNameChange($any($event.target).value)"
                             placeholder="Enter agent/company name"

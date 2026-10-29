@@ -26,13 +26,53 @@ export interface AuthUserData {
   userRole?: string;
   isActive?: string;
   email?: string;
+  phoneNumber?: string;
 }
 
 export interface AuthResponse {
   success: boolean;
   message?: string;
   authenticated?: boolean;
+  accessDenied?: boolean;
   data?: AuthUserData;
+  error?: string;
+}
+
+export interface RmsValidatedUserData {
+  userId: string;
+  userName?: string;
+  divisionCode: string;
+  designations: string[];
+}
+
+export interface RmsValidateUserResponse {
+  success: boolean;
+  message?: string;
+  data?: RmsValidatedUserData;
+  error?: string;
+}
+
+export interface RmsSelectDesignationResponse {
+  success: boolean;
+  accessDenied?: boolean;
+  message?: string;
+  retryAfterSeconds?: number;
+  data?: {
+    destinationMasked?: string;
+    selectedDesignation?: string;
+    resendCooldownSeconds?: number;
+  };
+  error?: string;
+}
+
+export interface RmsOtpResendResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    destinationMasked?: string;
+    resendCooldownSeconds?: number;
+  };
+  retryAfterSeconds?: number;
   error?: string;
 }
 
@@ -40,6 +80,7 @@ export interface AuthResponse {
 export class AuthService {
   private readonly API = `${API_BASE_URL}/auth`;
   private readonly cachedUserKey = 'customer-portal.authenticated-user';
+  private readonly rmsTempUserKey = 'customer-portal.rms-temp-user';
   private currentUserSubject = new BehaviorSubject<AuthUserData | null>(this.readCachedUser());
   public currentUser$ = this.currentUserSubject.asObservable();
   private sessionCheckedSubject = new BehaviorSubject<boolean>(false);
@@ -58,6 +99,92 @@ export class AuthService {
   public setCurrentUser(user: AuthUserData | null): void {
     this.updateCurrentUser(user);
   }
+
+  public setRmsTempUser(user: RmsValidatedUserData | null): void {
+    if (user) {
+      sessionStorage.setItem(this.rmsTempUserKey, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(this.rmsTempUserKey);
+    }
+  }
+
+  public getRmsTempUser(): RmsValidatedUserData | null {
+    const raw = sessionStorage.getItem(this.rmsTempUserKey);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.userId && Array.isArray(parsed.designations)) {
+        return parsed as RmsValidatedUserData;
+      }
+    } catch {
+      sessionStorage.removeItem(this.rmsTempUserKey);
+    }
+    return null;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Multi-step RMS Authentication
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Step 1: Validate User ID, Password, and Division Code
+   */
+  validateUser(userId: string, password: string, divisionCode: string, captchaInput: string): Observable<RmsValidateUserResponse> {
+    return this.http.post<RmsValidateUserResponse>(
+      `${this.API}/validate-user`,
+      {
+        userId: userId.trim(),
+        password: password,
+        divisionCode: divisionCode.trim().toUpperCase(),
+        captchaInput: captchaInput.trim()
+      },
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Step 2: Select Designation & Trigger OTP Generation
+   */
+  selectDesignation(designation: string): Observable<RmsSelectDesignationResponse> {
+    return this.http.post<RmsSelectDesignationResponse>(
+      `${this.API}/select-designation`,
+      { designation: designation.trim() },
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Resend OTP with cooldown
+   */
+  resendOtp(): Observable<RmsOtpResendResponse> {
+    return this.http.post<RmsOtpResendResponse>(
+      `${this.API}/resend-otp`,
+      {},
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Step 3: Verify OTP and establish authenticated session
+   */
+  verifyOtp(otp: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(
+      `${this.API}/verify-otp`,
+      { otp: otp.trim() },
+      { withCredentials: true }
+    ).pipe(
+      tap((res) => {
+        if (res && res.success && res.data) {
+          this.setRmsTempUser(null);
+          this.updateCurrentUser(res.data);
+        }
+      })
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Legacy / Common Auth Endpoints
+  // ─────────────────────────────────────────────────────────────
 
   login(req: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/login`, {
@@ -82,9 +209,11 @@ export class AuthService {
   logout(): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/logout`, {}, { withCredentials: true }).pipe(
       tap(() => {
+        this.setRmsTempUser(null);
         this.updateCurrentUser(null);
       }),
       catchError(() => {
+        this.setRmsTempUser(null);
         this.updateCurrentUser(null);
         return of({ success: true, message: 'Logged out' });
       })
@@ -116,6 +245,7 @@ export class AuthService {
   }
 
   handleAuthExpired(): void {
+    this.setRmsTempUser(null);
     this.updateCurrentUser(null);
   }
 

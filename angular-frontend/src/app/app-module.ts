@@ -16,6 +16,7 @@ import { LayoutComponent } from './layout/layout.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { AuthInterceptor } from './services/auth.interceptor';
 import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
+import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
 
 @NgModule({
   declarations: [
@@ -29,7 +30,8 @@ import { DeleteRequestComponent } from './pages/delete-request/delete-request.co
     HandlingAgentCodeComponent,
     OwnershipCodeComponent,
     LayoutComponent,
-    NotificationComponent
+    NotificationComponent,
+    AccessDeniedComponent
   ],
   imports: [
     BrowserModule,

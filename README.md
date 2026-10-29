@@ -76,15 +76,25 @@ The `AuthController` is mapped at `/api/auth`:
 | Method | Local path | Purpose |
 |---|---|---|
 | `GET` | `/api/auth/captcha` | Creates a session-bound CAPTCHA image; the answer is not sent to Angular |
+| `POST` | `/api/auth/validate-user` | Validates `userId`, `password`, `divisionCode`, and one-time `captchaInput` before RMS authentication |
+| `POST` | `/api/auth/select-designation` | Confirms the authorized designation and requests the initial OTP |
+| `POST` | `/api/auth/resend-otp` | Requests an OTP resend after the server-enforced cooldown |
+| `POST` | `/api/auth/verify-otp` | Verifies the OTP before creating the authenticated session |
 | `POST` | `/api/auth/login` | Validates JSON `{"userId":"...","password":"...","captchaInput":"..."}` and creates a server-side session on success |
 | `GET` | `/api/auth/session` | Checks the session; `/api/auth/me` is an alias |
 | `POST` | `/api/auth/logout` | Invalidates the current session |
 
-The CAPTCHA answer is single-use and validated by Spring before database lookup. Login accepts either `AAVUSERID` or `AAVEMAILID` from `TMS3T.AEM_USER`, with case-insensitive identifier matching. A matched account is eligible only when `AACUSERDELTFLAG = 'N'`, `AADRTRMNTDATE > SYSDATE`, `AADPSWDXPRYTIME > SYSDATE`, `AACEDSPFLAG = 'E'`, and `AAVDSGN = 'SR.DCM'`; Oracle evaluates these predicates so null or expired values fail. The backend retrieves `AAVPSWD` and asks Oracle to calculate the configured legacy representation using `DBMS_UTILITY.GET_HASH_VALUE`; it does not read `AAVOLDPSWD` or calculate a replacement hash in Java. The source expression matches the DBA expression recorded in `JdbcOraclePasswordHashService`, but its output has not been independently checked against the office CRIS database or the example stored value.
+CAPTCHA answers are single-use and validated by Spring before RMS authentication or database lookup. RMS login loads its challenge from `/api/auth/captcha` and submits the answer with the user ID, password, and division code to `/api/auth/validate-user`. Legacy login also validates the challenge before database lookup. Login accepts either `AAVUSERID` or `AAVEMAILID` from `TMS3T.AEM_USER`, with case-insensitive identifier matching. A matched account is eligible only when `AACUSERDELTFLAG = 'N'`, `AADRTRMNTDATE > SYSDATE`, `AADPSWDXPRYTIME > SYSDATE`, `AACEDSPFLAG = 'E'`, and `AAVDSGN = 'SR-DCM'`; Oracle evaluates these predicates so null or expired values fail. The backend retrieves `AAVPSWD` and asks Oracle to calculate the configured legacy representation using `DBMS_UTILITY.GET_HASH_VALUE`; it does not read `AAVOLDPSWD` or calculate a replacement hash in Java. The source expression matches the DBA expression recorded in `JdbcOraclePasswordHashService`, but its output has not been independently checked against the office CRIS database or the example stored value.
+
+RMS OTP generation is requested once after designation authorization. The backend enforces a five-minute per-user cooldown across initial generation and resend requests, serializes simultaneous requests for the same user, and returns HTTP `429` with `retryAfterSeconds` while the cooldown is active. The frontend displays the remaining time and only enables resend after the cooldown; failed resend attempts do not restart it. Cooldown state is held in application memory, so it is shared by requests handled by the same application instance but is not retained across restarts or coordinated across multiple backend instances.
 
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
+DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
+
 The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
+
+The Ownership registration page checks each requested ownership table independently before looking up the same four-character code in `MEMGLBLCUST`. Existing ownership rows are submitted as DBA email UPDATE requests; absent ownership rows can be submitted as INSERT requests only when the code exists in the global-customer table. Lookup failures and codes absent from both source tables block submission; the application does not directly write ownership rows.
 
 All frontend API services use the configured API base. Development uses `/api`; production uses `/FreightCodeApi/api`. The production frontend and backend share scheme, hostname, and port, so they are same-origin even though they have different context paths. Requests include credentials; WebLogic scopes the session cookie to the backend application context. No cross-origin proxy is required in production.
 

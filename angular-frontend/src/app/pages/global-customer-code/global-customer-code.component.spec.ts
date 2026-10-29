@@ -69,6 +69,13 @@ describe('GlobalCustomerCodeComponent', () => {
     expect(component.errors['operatingDivision']).toBeDefined();
   });
 
+  it('should reject company names longer than 40 characters', () => {
+    component.form.companyName = 'A'.repeat(41);
+
+    expect(component.validate()).toBe(false);
+    expect(component.errors['companyName']).toBe('Company name cannot exceed 40 characters.');
+  });
+
   it('should pass validation when all fields are valid', () => {
     component.form = {
       customerCode: 'ABCD',
