@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChangeDetectorRef } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
@@ -92,9 +93,10 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
 
     expect(component.loading).toBe(false);
     expect(component.currentStep).toBe('DESIGNATION');
+    expect(component.loginForm.get('password')?.value).toBe('');
     expect(component.validatedUser?.userId).toBe('SREEJU');
     expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
-    expect(component.designationForm.get('designation')?.value).toBe('SR-DCM');
+    expect(component.designationForm.get('designation')?.value).toBe('');
     expect(component.error).toBe('');
     expect(authServiceMock.setRmsTempUser).toHaveBeenCalled();
     expect(cdrMock.markForCheck).toHaveBeenCalled();
@@ -136,6 +138,18 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
 
     expect(component.error).toBe('Please enter the CAPTCHA shown.');
     expect(authServiceMock.validateUser).not.toHaveBeenCalled();
+  });
+
+  it('converts typed User ID characters to uppercase', () => {
+    const input = document.createElement('input');
+    input.value = 'railuser';
+    input.setSelectionRange(4, 4);
+
+    component.uppercaseUserId({ target: input } as unknown as Event);
+
+    expect(input.value).toBe('RAILUSER');
+    expect(component.loginForm.get('userId')?.value).toBe('RAILUSER');
+    expect(input.selectionStart).toBe(4);
   });
 
   // Scenario 2: Invalid mock credentials -> error appears and UI remains on Credentials
@@ -238,11 +252,53 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.currentStep).toBe('DESIGNATION');
     expect(component.availableDesignations.length).toBe(3);
     expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
-    expect(component.designationForm.get('designation')?.value).toBe('SR-DCM');
+    expect(component.designationForm.get('designation')?.value).toBe('');
   });
 
-  // Scenario 6: Unauthorized designation -> access is denied
-  it('Scenario 6: denies access when unauthorized non-SR-DCM designation is selected', () => {
+  it('initiates OTP when an available designation is selected', () => {
+    component.currentStep = 'DESIGNATION';
+    component.availableDesignations = ['SR-DCM', 'DCM'];
+    component.designationForm.setValue({ designation: 'SR-DCM' });
+    authServiceMock.selectDesignation.mockReturnValue(of({
+      success: true,
+      message: 'OTP sent.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
+    }));
+
+    component.onSubmitDesignation();
+
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('SR-DCM');
+    expect(component.currentStep).toBe('OTP');
+    expect(component.resendCooldown).toBe(60);
+  });
+
+  it('uses the resend endpoint and runs a one-minute countdown', () => {
+    vi.useFakeTimers();
+    component.currentStep = 'OTP';
+    component.resendCooldown = 0;
+    authServiceMock.resendOtp.mockReturnValue(of({
+      success: true,
+      data: { resendCooldownSeconds: 300 }
+    }));
+
+    component.resendOtp();
+
+    expect(authServiceMock.resendOtp).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
+    expect(component.resendCooldown).toBe(60);
+    expect(component.resendCooldownDisplay).toBe('01:00');
+
+    vi.advanceTimersByTime(1000);
+    expect(component.resendCooldown).toBe(59);
+    vi.advanceTimersByTime(59000);
+    expect(component.resendCooldown).toBe(0);
+
+    component.ngOnDestroy();
+    vi.useRealTimers();
+  });
+
+  // Scenario 6: Unauthorized designation -> access is denied without leaving the login card
+  it('Scenario 6: reports an unauthorized designation without navigating away', () => {
     component.validatedUser = {
       userId: 'SREEJU',
       divisionCode: 'TKD',
@@ -266,7 +322,10 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.onSubmitDesignation();
 
     expect(component.loading).toBe(false);
-    expect(routerMock.navigate).toHaveBeenCalledWith(['/access-denied']);
+    expect(component.currentStep).toBe('DESIGNATION');
+    expect(component.error).toContain('Access Restricted');
+    expect(component.designationForm.get('designation')?.value).toBe('');
+    expect(routerMock.navigate).not.toHaveBeenCalled();
   });
 
   // Scenario 7: Successful OTP verification -> authorized user reaches home page

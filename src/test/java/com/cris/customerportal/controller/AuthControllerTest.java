@@ -47,6 +47,19 @@ class AuthControllerTest {
     }
 
     @Test
+    void httpsRequiredRejectsCredentialSubmissionOverHttp() {
+        controller = new AuthController(authService, captchaService, null, true);
+        LoginRequest loginRequest = loginRequest("RAILUSER", "password", "AbCd23");
+
+        ResponseEntity<?> response = controller.login(loginRequest, request);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals("HTTPS is required for credential submission.",
+                ((Map<?, ?>) response.getBody()).get("message"));
+        verifyNoInteractions(authService, captchaService);
+    }
+
+    @Test
     void captchaEndpointCreatesSessionBoundNoStoreImage() {
         when(request.getSession(true)).thenReturn(captchaSession);
         when(captchaService.createChallengeImage(captchaSession)).thenReturn("data:image/png;base64,image");

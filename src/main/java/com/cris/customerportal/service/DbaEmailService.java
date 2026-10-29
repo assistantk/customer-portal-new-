@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import javax.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -25,12 +28,12 @@ import java.util.regex.Pattern;
 @Service
 public class DbaEmailService {
 
-    private static final Set<String> COMPANY_NAME_COLUMNS = Set.of(
+    private static final Set<String> COMPANY_NAME_COLUMNS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
             "MAVGLBLCUSTNAME",
             "MAVHNDGAGNTNAME",
             "MAVHNDAGNTNAME",
             "MAVWGONOWNRSHIPDESC",
-            "MAVWGONOWNRPRTYDESC");
+            "MAVWGONOWNRPRTYDESC")));
 
     private final JavaMailSender mailSender;
     private final String fromEmail;

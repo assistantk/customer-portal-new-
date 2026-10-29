@@ -1,3 +1,4 @@
 export const environment = {
-  apiBaseUrl: '/FreightCodeApi/api'
+  apiBaseUrl: '/FreightCodeApi/api',
+  production: true
 };

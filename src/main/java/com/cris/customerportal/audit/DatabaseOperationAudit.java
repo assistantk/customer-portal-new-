@@ -52,7 +52,11 @@ public class DatabaseOperationAudit {
             String upperName = paramName != null ? paramName.toUpperCase() : "";
             if (upperName.contains("MOBILE") || upperName.contains("PHONE")) {
                 if (val.length() > 4) {
-                    return "\"" + "*".repeat(val.length() - 4) + val.substring(val.length() - 4) + "\"";
+                    StringBuilder maskedPrefix = new StringBuilder(val.length() - 4);
+                    for (int i = 4; i < val.length(); i++) {
+                        maskedPrefix.append('*');
+                    }
+                    return "\"" + maskedPrefix + val.substring(val.length() - 4) + "\"";
                 }
                 return "\"******" + val + "\"";
             } else if (upperName.contains("PAN")) {
