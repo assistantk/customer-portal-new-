@@ -1,0 +1,183 @@
+================================================================================
+          CUSTOMER PORTAL - CAPTCHA USER & DEVELOPER GUIDE
+================================================================================
+
+TABLE OF CONTENTS:
+1. Overview
+2. Prerequisites to Run
+3. How to Use CAPTCHA on the Login Page (End-User Guide)
+4. Developer Guide: How CAPTCHA is Implemented in Code
+5. Common Errors & Troubleshooting (502 Bad Gateway, Validation Failed)
+
+--------------------------------------------------------------------------------
+1. OVERVIEW
+--------------------------------------------------------------------------------
+The Customer Portal uses a server-generated, session-based CAPTCHA on the Login
+page to prevent automated bots and brute-force attacks during authentication.
+
+Key Features:
+- 6-character alphanumeric code generated randomly on the backend.
+- Confusing characters (0, O, 1, I) are excluded for clarity.
+- Dynamic PNG image rendered in-memory with noise lines & character jitter.
+- Stored in the user's HTTP Session (JSESSIONID).
+- One-Time-Use (Consumed immediately on validation to prevent replay attacks).
+- Constant-time comparison using MessageDigest to resist timing attacks.
+
+--------------------------------------------------------------------------------
+2. PREREQUISITES TO RUN (REQUIRED)
+--------------------------------------------------------------------------------
+Before the CAPTCHA can load or validate, BOTH frontend and backend must be running:
+
+1. Backend (Spring Boot - Port 8080):
+   Run in project root directory:
+   > .\mvnw.cmd spring-boot:run
+   (Wait until console shows "Started CustomerPortalApplication on port 8080")
+
+2. Frontend (Angular - Port 4200):
+   Run in "angular-frontend" directory:
+   > cd angular-frontend
+   > npm start
+   (Access application at: http://localhost:4200)
+
+--------------------------------------------------------------------------------
+3. HOW TO USE CAPTCHA ON THE LOGIN PAGE (END-USER GUIDE)
+--------------------------------------------------------------------------------
+Step 1: Open the Login Page
+   - Navigate to http://localhost:4200 in your web browser.
+   - You will see the Login Form (Step 1 of RMS Authentication).
+
+Step 2: Locate the CAPTCHA Section
+   - Below the "Division Code" input, you will see the CAPTCHA section:
+     + An image box displaying 6 characters.
+     + A "Refresh CAPTCHA" button next to it.
+     + An input box labeled "CAPTCHA *" with placeholder "Enter the characters shown".
+
+Step 3: Enter Your Credentials
+   - Fill in:
+     1. User ID (e.g. your official RMS User ID)
+     2. Password
+     3. Division Code (e.g. TKD, NGP, CSTM, etc.)
+
+Step 4: Enter the CAPTCHA Characters
+   - Look carefully at the 6 characters in the image.
+   - Type them exactly into the "CAPTCHA *" input field.
+   - Note: CAPTCHA is case-sensitive (letters can be uppercase or lowercase).
+   - Do not include spaces.
+
+Step 5: Refreshing the CAPTCHA (Optional)
+   - If the characters are hard to read, click the "Refresh CAPTCHA" button.
+   - A new image challenge will load immediately.
+   - Type the new characters into the input box.
+
+Step 6: Submit
+   - Click the "Login" button.
+   - What happens next:
+     * If valid: Moves to Step 2 (Designation Selection & OTP verification).
+     * If invalid: An error message is displayed:
+       "CAPTCHA validation failed. Please refresh and try again."
+       Click "Refresh CAPTCHA", enter the new text, and try again.
+
+--------------------------------------------------------------------------------
+4. DEVELOPER GUIDE: HOW CAPTCHA IS IMPLEMENTED IN CODE
+--------------------------------------------------------------------------------
+
+A. Backend Service:
+   File: src/main/java/com/cris/customerportal/service/CaptchaService.java
+   - generateAnswer(): Generates 6-character random string from pool:
+     "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+   - createChallengeImage(HttpSession session):
+     1. Stores the answer in session: session.setAttribute(SESSION_KEY, answer)
+     2. Draws a 150x40 pixel BufferedImage using Java AWT (Graphics2D).
+     3. Adds random background lines and jittered font rendering.
+     4. Encodes to Base64 PNG data URL: "data:image/png;base64,..."
+   - consumeChallenge(HttpSession session, String submittedAnswer):
+     1. Fetches stored answer from session.
+     2. IMMEDIATELY deletes answer from session: session.removeAttribute(SESSION_KEY).
+     3. Validates using MessageDigest.isEqual() (timing-attack resistant).
+
+B. Backend Controller:
+   File: src/main/java/com/cris/customerportal/controller/AuthController.java
+   - GET /api/auth/captcha
+     Generates challenge and returns JSON:
+     {
+       "image": "data:image/png;base64,iVBORw0KGgo..."
+     }
+     Header: Cache-Control: no-store
+   - POST /api/auth/validate-user
+     Receives { userId, password, divisionCode, captchaInput }
+     Validates captcha with captchaService.consumeChallenge(session, captchaInput).
+     If validation fails, returns HTTP 400 Bad Request.
+
+C. Frontend Angular Service:
+   File: angular-frontend/src/app/services/auth.service.ts
+   - getCaptcha():
+     Calls this.http.get<CaptchaResponse>('/api/auth/captcha', { withCredentials: true })
+     * Note: 'withCredentials: true' is required so the browser sends the session
+       cookie (JSESSIONID) for the backend to remember the challenge.
+
+D. Frontend Angular Component:
+   Files:
+   - angular-frontend/src/app/pages/login/login.component.ts
+     * loadCaptcha(): calls authService.getCaptcha() on ngOnInit() and refreshCaptcha().
+     * Stores image string in captchaImage property.
+   - angular-frontend/src/app/pages/login/login.component.html
+     * Displays image: <img *ngIf="captchaImage" [src]="captchaImage" />
+     * Refresh button: (click)="refreshCaptcha()"
+     * Input field bound to reactive form: formControlName="captchaInput"
+
+E. Frontend Proxy:
+   File: angular-frontend/proxy.conf.json
+   - Proxies requests starting with /api/auth and /api to http://localhost:8080.
+
+--------------------------------------------------------------------------------
+5. COMMON ERRORS & TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+Issue 1: "Failed to load resource: 502 (Bad Gateway)" / CAPTCHA image not showing
+   Cause: The Spring Boot backend is NOT running on port 8080. Angular proxy cannot
+          connect to http://localhost:8080.
+   Fix: Start the backend server:
+        > .\mvnw.cmd spring-boot:run
+
+Issue 2: "CAPTCHA validation failed. Please refresh and try again."
+   Causes:
+   - Typed incorrect characters or case mismatch (CAPTCHA is case-sensitive).
+   - Clicked Login multiple times with same CAPTCHA (CAPTCHA is single-use).
+   - Session timed out while sitting on the login page.
+   Fix: Click "Refresh CAPTCHA", enter the new characters, and click Login once.
+
+Issue 3: "Loading CAPTCHA..." stays stuck
+   Cause: Network timeout or backend hanging.
+   Fix: Check if backend console has logged errors or if database connection is slow.
+--------------------------------------------------------------------------------
+6. DEPLOYMENT ISSUES & FIXES (DEPLOY MEIN CAPTCHA KYUN NAHI DIKHTA)
+--------------------------------------------------------------------------------
+Jab application ko production / WebLogic / Linux server par deploy kiya jata hai,
+CAPTCHA na dikhne ke 4 mukhya kaaran aur unke solutions:
+
+1. Java Headless Server Environment (HTTP 500 Error):
+   - Problem: Linux / WebLogic server par graphical display (X11) nahi hota.
+     Java AWT (BufferedImage / Graphics2D) crash hokar HeadlessException de deta hai.
+   - Fix in Code: CustomerPortalApplication.java me System.setProperty("java.awt.headless", "true")
+     add kar diya gaya hai.
+   - Server OS Level: Minimal Linux server par font libraries hona zaroori hai:
+     RHEL/CentOS: sudo yum install fontconfig freetype dejavu-sans-fonts
+     Ubuntu/Debian: sudo apt-get install fontconfig fonts-dejavu
+
+2. API Context Path Mismatch (HTTP 404 Error):
+   - Production frontend build environment.production.ts me API path use karta hai:
+     '/FreightCodeApi/api'
+   - Isliye WebLogic / Tomcat me Backend WAR ka context root strictly 'FreightCodeApi' hona chahiye.
+   - WebLogic Admin Console me check karein ki FreightCodeApi.war ka State 'ACTIVE' hai ya nahi.
+
+3. Reverse Proxy / OHS / Nginx Mapping:
+   - Agar Web server (Nginx/OHS) ke aage deploy hai, toh verify karein ki:
+     '/FreightCodeApi/' path backend managed server (port 7001/8080) par route ho raha hai.
+
+4. Browser DevTools (F12) se Quick Diagnosis:
+   - F12 dabayein -> Network tab -> Filter me 'captcha' likhein.
+   - Status 404: Backend WAR deploy nahi hai ya context path galat hai.
+   - Status 500: Server logs me Java AWT / Database error dekhein.
+   - Status 502: Reverse proxy backend tak connect nahi kar pa raha.
+   - CORS error: Frontend aur Backend alag-alag ports/domains par hain bina proper proxy ke.
+================================================================================

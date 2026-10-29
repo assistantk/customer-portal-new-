@@ -89,6 +89,18 @@ class RmsAuthControllerTest {
     }
 
     @Test
+    void validateUser_requiresHttpsBeforeCaptchaOrCredentialValidationWhenEnabled() {
+        controller = new AuthController(mock(AuthService.class), captchaService, orchestrator, true);
+        RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
+        req.setCaptchaInput("AbCd23");
+
+        ResponseEntity<?> response = controller.validateUser(req, request);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        verifyNoInteractions(captchaService, orchestrator);
+    }
+
+    @Test
     void validateUser_missingCaptcha_rejectsRequest() {
         RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
 
@@ -161,7 +173,7 @@ class RmsAuthControllerTest {
         assertNotNull(body);
         assertFalse((Boolean) body.get("success"));
         assertEquals(Boolean.TRUE, body.get("accessDenied"));
-        verify(session).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
+        verify(session, never()).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
     }
 
     @Test

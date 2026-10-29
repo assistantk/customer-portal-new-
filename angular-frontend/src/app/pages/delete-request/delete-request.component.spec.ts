@@ -16,11 +16,99 @@ describe('DeleteRequestComponent', () => {
       submitDeleteRequest: vi.fn()
     };
     component = new DeleteRequestComponent(customerService as unknown as CustomerService);
+  });
+
+  it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
+    expect(component.codeType).toBe('');
+    expect(component.pageTitle).toBe('Delete Request');
+    expect(component.currentLogo).toBeNull();
+
+    component.code = 'AEIP';
+    component.verifyCode();
+
+    expect(customerService.verifyDeleteRequest).not.toHaveBeenCalled();
+    expect(component.errorMessage).toBe('Please select a code type.');
+  });
+
+  it('dynamically displays Global Customer Code logo and heading when Global Code is selected', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+
+    expect(component.pageTitle).toBe('Global Customer Code Deletion Request');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+  });
+
+  it('dynamically displays Handling Agent logo and heading when Handling Agent Code is selected', () => {
+    component.codeType = 'HANDLING_AGENT';
+
+    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
+  });
+
+  it('switches the logo on every selection change and resets image fallback state', () => {
+    component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+
+    component.onLogoError();
+    expect(component.logoLoadFailed).toBe(true);
+
+    component.onCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.logoLoadFailed).toBe(false);
+
+    component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.logoLoadFailed).toBe(false);
+  });
+
+  it('handles a missing selected logo without affecting the delete form state', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
     component.code = 'AEIP';
+
+    component.onLogoError();
+
+    expect(component.logoLoadFailed).toBe(true);
+    expect(component.code).toBe('AEIP');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+  });
+
+  it('clears code, company name, messages, and verification when switching code types', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
+    customerService.verifyDeleteRequest.mockReturnValue(of({
+      success: true,
+      found: true,
+      code: 'AEIP',
+      companyName: 'Example Company'
+    }));
+    component.verifyCode();
+    component.companyName = 'Example Company';
+    expect(component.verifiedRecord).not.toBeNull();
+
+    // Switch to Handling Agent Code
+    const mockSelectEvent = {
+      target: { value: 'HANDLING_AGENT' }
+    } as unknown as Event;
+    component.onCodeTypeChange(mockSelectEvent);
+
+    expect(component.codeType).toBe('HANDLING_AGENT');
+    expect(component.code).toBe('');
+    expect(component.companyName).toBe('');
+    expect(component.verifiedRecord).toBeNull();
+    expect(component.verificationMessage).toBe('');
+    expect(component.errorMessage).toBe('');
+    expect(component.successMessage).toBe('');
+    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+
+    component.sendRequest();
+    expect(customerService.submitDeleteRequest).not.toHaveBeenCalled();
   });
 
   it('requires a verified code and matching company name before submitting', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
     customerService.verifyDeleteRequest.mockReturnValue(of({
       success: true,
       found: true,
@@ -38,6 +126,8 @@ describe('DeleteRequestComponent', () => {
   });
 
   it('clears verification when the code changes and requires a fresh lookup', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
     customerService.verifyDeleteRequest.mockReturnValue(of({
       success: true,
       found: true,
@@ -55,24 +145,9 @@ describe('DeleteRequestComponent', () => {
     expect(component.errorMessage).toContain('Verify the current code');
   });
 
-  it('clears verification when the selected code type changes', () => {
-    customerService.verifyDeleteRequest.mockReturnValue(of({
-      success: true,
-      found: true,
-      code: 'AEIP',
-      companyName: 'Example Company'
-    }));
-    component.verifyCode();
-
-    component.codeType = 'HANDLING_AGENT';
-    component.onCodeTypeChange();
-    component.sendRequest();
-
-    expect(customerService.submitDeleteRequest).not.toHaveBeenCalled();
-    expect(component.verifiedRecord).toBeNull();
-  });
-
   it('displays not-found and lookup failure as distinct outcomes', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
     customerService.verifyDeleteRequest.mockReturnValue(of({ success: true, found: false }));
     component.verifyCode();
     expect(component.verificationMessage)
@@ -85,6 +160,8 @@ describe('DeleteRequestComponent', () => {
   });
 
   it('prevents duplicate submissions while a request is in flight', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
     customerService.verifyDeleteRequest.mockReturnValue(of({
       success: true,
       found: true,
@@ -106,6 +183,8 @@ describe('DeleteRequestComponent', () => {
   });
 
   it('resets the submission state after email delivery fails so the user can retry', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
     customerService.verifyDeleteRequest.mockReturnValue(of({
       success: true,
       found: true,

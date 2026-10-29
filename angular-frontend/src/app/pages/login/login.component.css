@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════
    Login Page — Rebuilt with Multi-Step Flow
-   CRIS Customer Portal
+   Freight Code Generator
    ═══════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -236,6 +236,21 @@
   gap: 14px;
 }
 
+.auth-expansion {
+  animation: auth-reveal 0.24s ease-out;
+}
+
+@keyframes auth-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── Form Fields ── */
 .login-field-wrap {
   min-width: 0;
@@ -452,6 +467,8 @@
 .resend-row {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
   margin-top: 6px;
   font-size: 11px;
 }
@@ -473,6 +490,12 @@
 
 .btn-resend-link:hover {
   color: #1d4ed8;
+}
+
+.btn-resend-link:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 /* ── Actions ── */

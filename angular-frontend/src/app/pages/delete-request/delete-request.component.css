@@ -22,6 +22,28 @@ main {
   box-shadow: 0 8px 30px -6px rgb(0 0 0 / 12%), 0 4px 12px -4px rgb(0 0 0 / 8%);
 }
 
+.logo-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.code-type-logo {
+  max-width: 260px;
+  max-height: 120px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08));
+  transition: transform 0.2s ease;
+}
+
+.code-type-logo:hover {
+  transform: scale(1.02);
+}
+
 .card-heading {
   display: flex;
   gap: 14px;
@@ -29,6 +51,15 @@ main {
   margin-bottom: 24px;
   padding-bottom: 16px;
   border-bottom: 1px dotted #dce4eb;
+}
+
+.card-heading.has-custom-logo {
+  justify-content: center;
+  text-align: center;
+}
+
+.card-heading.has-custom-logo .heading-text {
+  text-align: center;
 }
 
 .heading-icon {
@@ -39,9 +70,13 @@ main {
   border-radius: 10px;
   background: #eff6ff;
   color: #2563eb;
-  font-size: 30px;
+  font-size: 20px;
   font-weight: 400;
   line-height: 1;
+}
+
+.heading-text {
+  flex: 1;
 }
 
 h1 {
@@ -121,8 +156,8 @@ select:disabled {
 }
 
 .primary-button:disabled {
-  cursor: wait;
-  opacity: .7;
+  cursor: not-allowed;
+  opacity: .6;
 }
 
 .notice {
@@ -168,5 +203,10 @@ select:disabled {
 
   .delete-card {
     padding: 22px 18px;
+  }
+
+  .code-type-logo {
+    max-width: 200px;
+    max-height: 90px;
   }
 }

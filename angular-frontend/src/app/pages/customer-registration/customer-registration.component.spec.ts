@@ -473,6 +473,39 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   });
 
   describe('Delete Request Mode', () => {
+    it('shows the selected code-type logo and switches immediately between both delete options', () => {
+      component.mode = 'delete';
+      expect(component.currentLogo).toBeNull();
+      expect(component.currentLogoAlt).toBe('');
+
+      component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
+
+      component.onDeleteCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
+
+      component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    });
+
+    it('shows a missing-logo fallback and retries the image after changing code type', () => {
+      component.mode = 'delete';
+      component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+      component.deleteCode = 'ACME01';
+
+      component.onCurrentLogoError();
+
+      expect(component.deleteLogoMissing).toBe(true);
+      expect(component.deleteCode).toBe('ACME01');
+
+      component.onDeleteCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
+
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.deleteLogoMissing).toBe(false);
+    });
+
     it('verifies a code and requires the company name to match before sending', () => {
       component.mode = 'delete';
       component.deleteCodeType = 'GLOBAL_CUSTOMER';
@@ -521,7 +554,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.png');
-      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
+      expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
     it('should dynamically switch logo when toggling to HANDLING_AGENT in old mode', () => {
@@ -537,7 +570,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.handleOldCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.png');
-      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
+      expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
     it('should dynamically switch logo when toggling codeType in new mode', () => {

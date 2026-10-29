@@ -13,7 +13,7 @@ import java.util.Optional;
 public class JdbcPortalUserLookupRepository {
 
     private static final String FIND_USER_ID_SQL =
-            "SELECT AAVUSERID FROM TMS3T.USER WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))";
+            "SELECT AAVUSERID FROM TMS3T.AEM_USER WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))";
 
     private final DataSource dataSource;
 
@@ -35,14 +35,14 @@ public class JdbcPortalUserLookupRepository {
                 }
                 String userId = resultSet.getString("AAVUSERID");
                 if (resultSet.next()) {
-                    throw new IllegalStateException("Multiple TMS3T.USER rows matched the authenticated user ID.");
+                    throw new IllegalStateException("Multiple TMS3T.AEM_USER rows matched the authenticated user ID.");
                 }
                 return Optional.ofNullable(userId)
                         .map(String::trim)
                         .filter(value -> !value.isEmpty());
             }
         } catch (SQLException exception) {
-            throw new IllegalStateException("Unable to resolve authenticated user ID from TMS3T.USER.", exception);
+            throw new IllegalStateException("Unable to resolve authenticated user ID from TMS3T.AEM_USER.", exception);
         }
     }
 }

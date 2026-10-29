@@ -15,6 +15,7 @@ import javax.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,9 +32,7 @@ import java.util.Map;
         "http://localhost:4200",
         "http://127.0.0.1:4200",
         "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://*:*",
-        "https://*:*"
+        "http://127.0.0.1:5173"
 }, allowCredentials = "true")
 public class AuthController {
 
@@ -44,19 +43,29 @@ public class AuthController {
     private final AuthService authService;
     private final CaptchaService captchaService;
     private final RmsAuthOrchestrator rmsAuthOrchestrator;
+    private final boolean requireHttps;
 
     public AuthController(AuthService authService, CaptchaService captchaService) {
-        this(authService, captchaService, null);
+        this(authService, captchaService, null, false);
+    }
+
+    public AuthController(
+            AuthService authService,
+            CaptchaService captchaService,
+            RmsAuthOrchestrator rmsAuthOrchestrator) {
+        this(authService, captchaService, rmsAuthOrchestrator, false);
     }
 
     @Autowired
     public AuthController(
             AuthService authService,
             CaptchaService captchaService,
-            @Autowired(required = false) RmsAuthOrchestrator rmsAuthOrchestrator) {
+            @Autowired(required = false) RmsAuthOrchestrator rmsAuthOrchestrator,
+            @Value("${app.security.require-https:true}") boolean requireHttps) {
         this.authService = authService;
         this.captchaService = captchaService;
         this.rmsAuthOrchestrator = rmsAuthOrchestrator;
+        this.requireHttps = requireHttps;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -66,6 +75,11 @@ public class AuthController {
     public ResponseEntity<?> validateUser(
             @RequestBody RmsValidateUserRequest requestDto,
             HttpServletRequest request) {
+
+        ResponseEntity<?> transportError = requireHttps(request);
+        if (transportError != null) {
+            return transportError;
+        }
 
         String userId = requestDto != null ? requestDto.getUserId() : null;
         String password = requestDto != null ? requestDto.getPassword() : null;
@@ -137,24 +151,24 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
-            LOGGER.info("RMS authentication result: FAILED (userId={}): {}. Status: {}. Designation step can proceed: false",
-                    safeUserId, ex.getMessage(), HttpStatus.UNAUTHORIZED.value());
+            LOGGER.info("RMS authentication result: FAILED (invalid credentials, userId={}). Status: {}. Designation step can proceed: false",
+                    safeUserId, HttpStatus.UNAUTHORIZED.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", ex.getMessage());
+            body.put("message", "Invalid User ID, Email, or Password.");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
 
         } catch (RmsApiException ex) {
-            LOGGER.error("RMS validation service error: {}. Status: {}. Designation step can proceed: false",
-                    ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
+            LOGGER.error("RMS validation service error. Status: {}. Designation step can proceed: false",
+                    HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", ex.getMessage());
+            body.put("message", "Authentication service is temporarily unavailable. Please try again later.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
 
         } catch (Exception ex) {
-            LOGGER.error("Unexpected error in validate-user for userId={}: {}. Status: {}. Designation step can proceed: false",
-                    safeUserId, ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR.value(), ex);
+            LOGGER.error("Unexpected error in validate-user for userId={}. Status: {}. Designation step can proceed: false",
+                    safeUserId, HttpStatus.INTERNAL_SERVER_ERROR.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Authentication service error. Please try again.");
@@ -232,8 +246,6 @@ public class AuthController {
 
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
             LOGGER.warn("Access denied for user {}: {}. Status: {}", ctx.getUserId(), ex.getMessage(), HttpStatus.FORBIDDEN.value());
-            // Clear intermediate auth context to prevent tampering
-            session.removeAttribute(RMS_SESSION_CONTEXT_KEY);
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("accessDenied", true);
@@ -265,13 +277,13 @@ public class AuthController {
         LOGGER.info("RMS resend-otp request received");
         if (rmsAuthOrchestrator == null) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("success", false, "message", "RMS authentication service is not configured."));
+                    .body(errorBody("RMS authentication service is not configured."));
         }
 
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute(RMS_SESSION_CONTEXT_KEY) == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("success", false, "message", "Session expired. Please restart login."));
+                    .body(errorBody("Session expired. Please restart login."));
         }
 
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
@@ -305,18 +317,18 @@ public class AuthController {
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
             LOGGER.warn("RMS resend-otp denied for user {}: {}", ctx.getUserId(), ex.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+                    .body(errorBody(ex.getMessage()));
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS resend-otp rejected for user {}: {}", ctx.getUserId(), ex.getMessage());
             return ResponseEntity.badRequest()
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+                    .body(errorBody(ex.getMessage()));
 
         } catch (RmsApiException ex) {
             LOGGER.error("OTP resend failed for user {}: {}. Status: {}",
                     ctx.getUserId(), ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+                    .body(errorBody(ex.getMessage()));
         }
     }
 
@@ -403,6 +415,11 @@ public class AuthController {
     // ─────────────────────────────────────────────────────────────
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
+        ResponseEntity<?> transportError = requireHttps(request);
+        if (transportError != null) {
+            return transportError;
+        }
+
         String userId = loginRequest != null ? loginRequest.getEffectiveUserId() : null;
         String password = loginRequest != null ? loginRequest.getPassword() : null;
         String captchaInput = loginRequest != null ? loginRequest.getCaptchaInput() : null;
@@ -444,8 +461,16 @@ public class AuthController {
     public ResponseEntity<?> captcha(HttpServletRequest request) {
         LOGGER.debug("CAPTCHA challenge requested");
         Map<String, Object> body = new HashMap<>();
-        body.put("image", captchaService.createChallengeImage(request.getSession(true)));
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        try {
+            body.put("image", captchaService.createChallengeImage(request.getSession(true)));
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+        } catch (CaptchaService.CaptchaGenerationException exception) {
+            body.put("success", false);
+            body.put("message", "CAPTCHA is temporarily unavailable. Please try again later.");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .cacheControl(CacheControl.noStore())
+                    .body(body);
+        }
     }
 
     @PostMapping("/logout")
@@ -487,6 +512,23 @@ public class AuthController {
         }
         String remoteAddr = request.getRemoteAddr();
         return (remoteAddr != null && !remoteAddr.isEmpty()) ? remoteAddr : "1.1.1.1";
+    }
+
+    private static Map<String, Object> errorBody(String message) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("message", message);
+        return body;
+    }
+
+    private ResponseEntity<?> requireHttps(HttpServletRequest request) {
+        if (requireHttps && (request == null || !request.isSecure())) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "HTTPS is required for credential submission.");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+        }
+        return null;
     }
 
     private String sanitizeForLog(String input) {

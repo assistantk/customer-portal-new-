@@ -1,12 +1,13 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, isDevMode } from "@angular/core";
 import { FormBuilder, FormGroup, Validators } from "@angular/forms";
 import { Router, ActivatedRoute } from "@angular/router";
+import { merge, Subscription } from "rxjs";
 import { finalize, timeout } from "rxjs/operators";
 import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../../services/auth.service";
 import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
-const OTP_RESEND_COOLDOWN_SECONDS = 5 * 60;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 @Component({
   selector: "app-login",
@@ -16,6 +17,7 @@ const OTP_RESEND_COOLDOWN_SECONDS = 5 * 60;
 })
 export class LoginComponent implements OnInit, OnDestroy {
   currentStep: AuthStep = 'LOGIN';
+  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'VERIFY' | null = null;
 
   // Step 1: Login Form
   loginForm!: FormGroup;
@@ -33,7 +35,8 @@ export class LoginComponent implements OnInit, OnDestroy {
   otpForm!: FormGroup;
   maskedDestination = '';
   resendCooldown = 0;
-  private cooldownInterval: any = null;
+  private cooldownInterval: ReturnType<typeof setInterval> | null = null;
+  private credentialChangeSubscription?: Subscription;
 
   // Global UI State
   loading = false;
@@ -52,7 +55,7 @@ export class LoginComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Step 1 Form: User ID, Password, Division Code
     this.loginForm = this.fb.group({
-      userId: ["", [Validators.required, Validators.pattern(/^[A-Za-z0-9_.-]+$/)]],
+      userId: ["", Validators.required],
       password: ["", Validators.required],
       divisionCode: ["", Validators.required],
       captchaInput: ["", Validators.required]
@@ -71,12 +74,23 @@ export class LoginComponent implements OnInit, OnDestroy {
     const qUrl = this.route.snapshot.queryParams['returnUrl'];
     this.returnUrl = qUrl ? qUrl : '/registration';
 
+    this.credentialChangeSubscription = merge(
+      this.loginForm.get('userId')!.valueChanges,
+      this.loginForm.get('password')!.valueChanges,
+      this.loginForm.get('divisionCode')!.valueChanges
+    ).subscribe(() => {
+      if (this.currentStep !== 'LOGIN') {
+        this.resetFlowAfterCredentialChange();
+      }
+    });
+
     this.authService.setRmsTempUser(null);
     this.loadCaptcha();
   }
 
   ngOnDestroy(): void {
     this.clearCooldownTimer();
+    this.credentialChangeSubscription?.unsubscribe();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -84,6 +98,10 @@ export class LoginComponent implements OnInit, OnDestroy {
   // ─────────────────────────────────────────────────────────────
 
   onSubmitLogin(): void {
+    if (this.currentStep !== 'LOGIN') {
+      return;
+    }
+
     this.error = "";
     this.successMessage = "";
 
@@ -118,6 +136,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
+    this.loadingOperation = 'LOGIN';
 
     if (isDevMode()) {
       console.log('[RMS Auth] Request started: validate-user for userId:', userId, 'divisionCode:', divisionCode);
@@ -127,7 +146,8 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
-        this.loginForm.patchValue({ captchaInput: '' });
+        this.loadingOperation = null;
+        this.loginForm.patchValue({ password: '', captchaInput: '' }, { emitEvent: false });
         if (this.currentStep === 'LOGIN') {
           this.loadCaptcha();
         }
@@ -154,12 +174,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           // Advance to Designation step
           this.currentStep = 'DESIGNATION';
 
-          // Pre-select if only 1 designation, or if SR-DCM is present
-          if (this.availableDesignations.length === 1) {
-            this.designationForm.patchValue({ designation: this.availableDesignations[0] });
-          } else if (this.availableDesignations.includes('SR-DCM')) {
-            this.designationForm.patchValue({ designation: 'SR-DCM' });
-          }
+          this.designationForm.reset({ designation: '' });
           this.successMessage = res.message || "Credentials verified. Please select your designation to proceed.";
         } else {
           this.currentStep = 'LOGIN';
@@ -204,13 +219,22 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.error = "";
     this.successMessage = "";
 
+    if (this.currentStep !== 'DESIGNATION') {
+      return;
+    }
+
     const selectedDesig = (this.designationForm.get('designation')?.value || '').trim();
     if (!selectedDesig) {
       this.error = "Please select a designation.";
       return;
     }
+    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())) {
+      this.error = "The selected designation is not permitted for this account.";
+      return;
+    }
 
     this.loading = true;
+    this.loadingOperation = 'DESIGNATION';
 
     if (isDevMode()) {
       console.log('[RMS Auth] Request started: select-designation for designation:', selectedDesig);
@@ -220,6 +244,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.loadingOperation = null;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -234,16 +259,16 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
 
         if (res && res.accessDenied) {
-          this.authService.setRmsTempUser(null);
-          this.router.navigate(['/access-denied']);
+          this.designationForm.reset({ designation: '' });
+          this.error = res.message || "The selected designation is not authorized for this portal.";
           return;
         }
 
         if (passed) {
           this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
           this.currentStep = 'OTP';
-          this.successMessage = res.message || "OTP generated and dispatched successfully.";
-          this.startCooldown(res.data?.resendCooldownSeconds || OTP_RESEND_COOLDOWN_SECONDS);
+          this.successMessage = res.message || "OTP sent to your registered contact.";
+          this.startCooldown(OTP_RESEND_COOLDOWN_SECONDS);
         } else {
           this.error = res.message || "Failed to generate OTP. Please try again.";
         }
@@ -255,8 +280,8 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
 
         if (err?.status === 403 || err?.error?.accessDenied) {
-          this.authService.setRmsTempUser(null);
-          this.router.navigate(['/access-denied']);
+          this.designationForm.reset({ designation: '' });
+          this.error = err?.error?.message || "The selected designation is not authorized for this portal.";
           return;
         }
 
@@ -283,6 +308,10 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.error = "";
     this.successMessage = "";
 
+    if (this.currentStep !== 'OTP') {
+      return;
+    }
+
     const otp = (this.otpForm.get('otp')?.value || '').trim();
     if (!otp) {
       this.error = "Please enter the OTP received on your mobile / email.";
@@ -290,6 +319,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
+    this.loadingOperation = 'VERIFY';
 
     if (isDevMode()) {
       console.log('[RMS Auth] Request started: verify-otp');
@@ -299,6 +329,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.loadingOperation = null;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -349,11 +380,13 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.error = "";
     this.successMessage = "";
     this.loading = true;
+    this.loadingOperation = 'RESEND';
 
     this.authService.resendOtp().pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.loadingOperation = null;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -363,7 +396,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }
-          this.startCooldown(res.data?.resendCooldownSeconds || OTP_RESEND_COOLDOWN_SECONDS);
+          this.startCooldown(OTP_RESEND_COOLDOWN_SECONDS);
         } else {
           this.error = res.message || "Failed to resend OTP. Please try again.";
         }
@@ -388,14 +421,33 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.showPassword = !this.showPassword;
   }
 
+  uppercaseUserId(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const selectionStart = input.selectionStart;
+    const selectionEnd = input.selectionEnd;
+    const uppercaseValue = input.value.toUpperCase();
+
+    if (input.value !== uppercaseValue) {
+      input.value = uppercaseValue;
+      this.loginForm.get('userId')?.setValue(uppercaseValue, { emitEvent: false });
+      if (selectionStart !== null && selectionEnd !== null) {
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
+  }
+
   restartLogin(): void {
     this.authService.setRmsTempUser(null);
     this.loading = false;
+    this.loadingOperation = null;
     this.currentStep = 'LOGIN';
     this.error = '';
     this.successMessage = '';
     this.validatedUser = null;
     this.availableDesignations = [];
+    this.maskedDestination = '';
+    this.clearCooldownTimer();
+    this.resendCooldown = 0;
     this.loginForm.reset({ userId: '', password: '', divisionCode: '', captchaInput: '' });
     this.designationForm.reset({ designation: '' });
     this.otpForm.reset({ otp: '' });
@@ -418,7 +470,7 @@ export class LoginComponent implements OnInit, OnDestroy {
   get resendCooldownDisplay(): string {
     const minutes = Math.floor(this.resendCooldown / 60);
     const seconds = this.resendCooldown % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private startCooldown(seconds: number): void {
@@ -449,9 +501,25 @@ export class LoginComponent implements OnInit, OnDestroy {
   }
 
   private clearCooldownTimer(): void {
-    if (this.cooldownInterval) {
+    if (this.cooldownInterval !== null) {
       clearInterval(this.cooldownInterval);
       this.cooldownInterval = null;
     }
+  }
+
+  private resetFlowAfterCredentialChange(): void {
+    this.authService.setRmsTempUser(null);
+    this.currentStep = 'LOGIN';
+    this.error = '';
+    this.successMessage = '';
+    this.validatedUser = null;
+    this.availableDesignations = [];
+    this.maskedDestination = '';
+    this.designationForm.reset({ designation: '' });
+    this.otpForm.reset({ otp: '' });
+    this.clearCooldownTimer();
+    this.resendCooldown = 0;
+    this.loadCaptcha();
+    this.cdr.markForCheck();
   }
 }

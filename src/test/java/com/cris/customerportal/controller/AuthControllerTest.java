@@ -47,6 +47,19 @@ class AuthControllerTest {
     }
 
     @Test
+    void httpsRequiredRejectsCredentialSubmissionOverHttp() {
+        controller = new AuthController(authService, captchaService, null, true);
+        LoginRequest loginRequest = loginRequest("RAILUSER", "password", "AbCd23");
+
+        ResponseEntity<?> response = controller.login(loginRequest, request);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals("HTTPS is required for credential submission.",
+                ((Map<?, ?>) response.getBody()).get("message"));
+        verifyNoInteractions(authService, captchaService);
+    }
+
+    @Test
     void captchaEndpointCreatesSessionBoundNoStoreImage() {
         when(request.getSession(true)).thenReturn(captchaSession);
         when(captchaService.createChallengeImage(captchaSession)).thenReturn("data:image/png;base64,image");
@@ -56,6 +69,21 @@ class AuthControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("no-store", response.getHeaders().getCacheControl());
         assertEquals("data:image/png;base64,image", ((Map<?, ?>) response.getBody()).get("image"));
+    }
+
+    @Test
+    void captchaEndpointReturnsJsonWhenImageGenerationFails() {
+        when(request.getSession(true)).thenReturn(captchaSession);
+        when(captchaService.createChallengeImage(captchaSession))
+                .thenThrow(new CaptchaService.CaptchaGenerationException("render failed", new Error("font failure")));
+
+        ResponseEntity<?> response = controller.captcha(request);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+        assertEquals(false, ((Map<?, ?>) response.getBody()).get("success"));
+        assertEquals("CAPTCHA is temporarily unavailable. Please try again later.",
+                ((Map<?, ?>) response.getBody()).get("message"));
     }
 
     @Test

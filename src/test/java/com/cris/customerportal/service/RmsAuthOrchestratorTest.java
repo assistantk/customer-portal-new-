@@ -9,13 +9,27 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 
+import java.lang.reflect.Field;
+import java.util.concurrent.ConcurrentMap;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class RmsAuthOrchestratorTest {
 
     private RmsAuthOrchestrator orchestrator;
+
+    @Test
+    void liveRmsEndpointRequiresHttpsAndRejectsEmbeddedCredentials() {
+        assertDoesNotThrow(() ->
+                RmsApiClient.requireHttpsBaseUrl("https://rms.example.org/RMS"));
+        assertThrows(IllegalStateException.class, () ->
+                RmsApiClient.requireHttpsBaseUrl("http://rms.example.org/RMS"));
+        assertThrows(IllegalStateException.class, () ->
+                RmsApiClient.requireHttpsBaseUrl("https://user@rms.example.org/RMS"));
+    }
 
     @BeforeEach
     void setUp() {
@@ -233,7 +247,7 @@ class RmsAuthOrchestratorTest {
     }
 
     @Test
-    void resendOtp_isBlockedForFiveMinutesAfterSuccessfulInitialGeneration() {
+    void resendOtp_isBlockedForOneMinuteAfterSuccessfulInitialGeneration() {
         RmsApiClient clientMock = mock(RmsApiClient.class);
         RmsApiResponse successResponse = new RmsApiResponse();
         successResponse.setErrorNo("0");
@@ -248,7 +262,8 @@ class RmsAuthOrchestratorTest {
 
         liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
 
-        assertTrue(liveOrchestrator.getResendCooldownSeconds("sreeju") > 0);
+        assertEquals(RmsAuthOrchestrator.OTP_RESEND_COOLDOWN_SECONDS,
+                liveOrchestrator.getResendCooldownSeconds("sreeju"));
         RmsAuthOrchestrator.OtpResendCooldownException exception = assertThrows(
                 RmsAuthOrchestrator.OtpResendCooldownException.class,
                 () -> liveOrchestrator.resendOtp(ctx, "127.0.0.1"));
@@ -262,6 +277,41 @@ class RmsAuthOrchestratorTest {
                 () -> liveOrchestrator.selectDesignationAndGenerateOtp(
                         secondContext, "SR-DCM", "127.0.0.1"));
         verify(clientMock, times(1)).generateOtp(any(RmsOtpGenerateRequest.class));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void subsequentLoginOnSameDayUsesRmsResendOperation() throws Exception {
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        RmsApiResponse successResponse = new RmsApiResponse();
+        successResponse.setErrorNo("0");
+        when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(successResponse);
+        RmsAuthOrchestrator liveOrchestrator =
+                new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+
+        RmsAuthSessionContext firstContext = new RmsAuthSessionContext();
+        firstContext.setUserId("SREEJU");
+        firstContext.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        firstContext.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        liveOrchestrator.selectDesignationAndGenerateOtp(firstContext, "SR-DCM", "127.0.0.1");
+
+        Field cooldownField = RmsAuthOrchestrator.class.getDeclaredField("otpResendAllowedAt");
+        cooldownField.setAccessible(true);
+        ConcurrentMap<String, Long> cooldowns =
+                (ConcurrentMap<String, Long>) cooldownField.get(liveOrchestrator);
+        cooldowns.put("SREEJU", System.currentTimeMillis() - 1);
+
+        RmsAuthSessionContext secondContext = new RmsAuthSessionContext();
+        secondContext.setUserId("SREEJU");
+        secondContext.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        secondContext.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        liveOrchestrator.selectDesignationAndGenerateOtp(secondContext, "SR-DCM", "127.0.0.1");
+
+        org.mockito.ArgumentCaptor<RmsOtpGenerateRequest> requestCaptor =
+                forClass(RmsOtpGenerateRequest.class);
+        verify(clientMock, times(2)).generateOtp(requestCaptor.capture());
+        assertEquals("GNRTOTP", requestCaptor.getAllValues().get(0).getF_SRVCNAME());
+        assertEquals("REGNRTOTP", requestCaptor.getAllValues().get(1).getF_SRVCNAME());
     }
 
     @Test
