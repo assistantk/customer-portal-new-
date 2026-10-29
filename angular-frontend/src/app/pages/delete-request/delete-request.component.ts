@@ -21,11 +21,58 @@ export class DeleteRequestComponent {
 
   constructor(private customerService: CustomerService) {}
 
+  get pageTitle(): string {
+    if (this.codeType === 'GLOBAL_CUSTOMER') {
+      return 'Global Customer Code Deletion Request';
+    }
+    if (this.codeType === 'HANDLING_AGENT') {
+      return 'Handling Agent Code Deletion Request';
+    }
+    return 'Delete Request';
+  }
+
+  get pageSubtitle(): string {
+    if (this.codeType === 'GLOBAL_CUSTOMER') {
+      return 'Verify a Global Customer Code and submit a deletion request to the DBA.';
+    }
+    if (this.codeType === 'HANDLING_AGENT') {
+      return 'Verify a Handling Agent Code and submit a deletion request to the DBA.';
+    }
+    return 'Select a code type, verify the code, and submit a deletion request to the DBA.';
+  }
+
+  get currentLogo(): string | null {
+    if (this.codeType === 'GLOBAL_CUSTOMER') {
+      return 'assets/glbl_transparent.png';
+    }
+    if (this.codeType === 'HANDLING_AGENT') {
+      return 'assets/handling_agent_code_transparent.png';
+    }
+    return null;
+  }
+
+  get currentLogoAlt(): string {
+    if (this.codeType === 'GLOBAL_CUSTOMER') {
+      return 'Global Customer Code Logo';
+    }
+    if (this.codeType === 'HANDLING_AGENT') {
+      return 'Handling Agent Code Logo';
+    }
+    return '';
+  }
+
   onCodeTypeChange(event?: Event): void {
     if (event) {
       this.codeType = (event.target as HTMLSelectElement).value as DeleteRequestCodeType | '';
     }
-    this.clearVerification();
+    this.code = '';
+    this.companyName = '';
+    this.verifiedRecord = null;
+    this.verificationMessage = '';
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.submitting = false;
+    this.verifying = false;
   }
 
   onCodeChange(event?: Event): void {

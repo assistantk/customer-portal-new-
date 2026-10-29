@@ -115,17 +115,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const gstins = (gstinNumbers || '').replace(/[\[\]"\s]/g, '').split(',').filter(Boolean);
     this.gstins = gstins.length
       ? gstins.map((gstin, index) => ({
-          ...blankGstin,
-          gstinId: `ownership-global-${index}`,
-          gstin,
-          state: getStateNameFromGstinCode(gstin.slice(0, 2)) || ''
-        }))
+        ...blankGstin,
+        gstinId: `ownership-global-${index}`,
+        gstin,
+        state: getStateNameFromGstinCode(gstin.slice(0, 2)) || ''
+      }))
       : [{ ...blankGstin }];
   }
 
   get currentLogo(): string {
     if ((this.mode === 'old' || this.mode === 'new')
-        && this.codeType === 'HANDLING_AGENT') {
+      && this.codeType === 'HANDLING_AGENT') {
       return 'assets/handling_agent_code_transparent.png';
     }
     return this.mode === 'new'
@@ -135,12 +135,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   get currentLogoAlt(): string {
     if ((this.mode === 'old' || this.mode === 'new')
-        && this.codeType === 'HANDLING_AGENT') {
+      && this.codeType === 'HANDLING_AGENT') {
       return 'Handling Agent Code Logo';
     }
     return this.mode === 'new'
       ? 'Global Customer Code Logo'
-      : 'Customer Registration Portal';
+      : 'Freight Code Generator';
   }
   form: CustomerPayload = { ...blank };
   gstins: GstinEntry[] = [{ ...blankGstin }];
@@ -206,7 +206,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
     private router?: Router
-  ) {}
+  ) { }
 
   openGlobalCodeForm(): void {
     if (this.router) {
@@ -436,46 +436,46 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (upperCode.trim().length === 4) {
       this.ownSection1Loading = true;
       this.ownSection1Timer = setTimeout(() => {
-          const trimmed = upperCode.trim();
-          this.customerService.lookupOwnershipJDBC(trimmed).pipe(timeout(15000)).subscribe({
-            next: (resp) => {
-              if (reqId !== this.ownSection1ReqId) return;
-              if (resp && resp.found && resp.data) {
-                if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
-                  this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                  this.ownSection1Found = true;
-                  this.ownSection1Source = resp.data.recordSource;
-                } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                  this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                  this.form.address = resp.data.address || '';
-                  this.form.panNumber = resp.data.panNumber || '';
-                  this.form.city = resp.data.city || '';
-                  this.form.pincode = resp.data.pincode || '';
-                  this.populateOwnershipGstins(resp.data.gstinNumbers || '');
-                  this.ownSection1Found = true;
-                  this.ownSection1Source = resp.data.recordSource;
-                } else {
-                  this.ownSection1Found = false;
-                  this.ownSection1Source = 'LOOKUP_ERROR';
-                  this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
-                }
+        const trimmed = upperCode.trim();
+        this.customerService.lookupOwnershipJDBC(trimmed).pipe(timeout(15000)).subscribe({
+          next: (resp) => {
+            if (reqId !== this.ownSection1ReqId) return;
+            if (resp && resp.found && resp.data) {
+              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
+                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.ownSection1Found = true;
+                this.ownSection1Source = resp.data.recordSource;
+              } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
+                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.form.address = resp.data.address || '';
+                this.form.panNumber = resp.data.panNumber || '';
+                this.form.city = resp.data.city || '';
+                this.form.pincode = resp.data.pincode || '';
+                this.populateOwnershipGstins(resp.data.gstinNumbers || '');
+                this.ownSection1Found = true;
+                this.ownSection1Source = resp.data.recordSource;
               } else {
                 this.ownSection1Found = false;
-                this.ownSection1Source = 'INVALID_CODE';
-                this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+                this.ownSection1Source = 'LOOKUP_ERROR';
+                this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
               }
-              this.ownSection1Loading = false;
-              this.cdr.markForCheck();
-            },
-            error: (error) => {
-              if (reqId !== this.ownSection1ReqId) return;
-              this.ownSection1Source = 'LOOKUP_ERROR';
-              this.ownSection1LookupError = error?.error?.message
-                || 'Unable to fetch ownership record. Please try again.';
-              this.ownSection1Loading = false;
-              this.cdr.markForCheck();
+            } else {
+              this.ownSection1Found = false;
+              this.ownSection1Source = 'INVALID_CODE';
+              this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             }
-          });
+            this.ownSection1Loading = false;
+            this.cdr.markForCheck();
+          },
+          error: (error) => {
+            if (reqId !== this.ownSection1ReqId) return;
+            this.ownSection1Source = 'LOOKUP_ERROR';
+            this.ownSection1LookupError = error?.error?.message
+              || 'Unable to fetch ownership record. Please try again.';
+            this.ownSection1Loading = false;
+            this.cdr.markForCheck();
+          }
+        });
       }, 600);
     } else {
       this.ownSection1Loading = false;
@@ -504,7 +504,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             if (reqId !== this.ownSection2ReqId) return;
             if (resp && resp.found && resp.data) {
               if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
-                  || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
+                || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
                 this.form.ownershipPartyAddress = resp.data.partyDesc || '';
                 this.ownSection2Found = true;
                 this.ownSection2Source = resp.data.recordSource;

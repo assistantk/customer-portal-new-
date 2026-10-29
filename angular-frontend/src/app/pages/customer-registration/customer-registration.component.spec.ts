@@ -521,7 +521,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.png');
-      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
+      expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
     it('should dynamically switch logo when toggling to HANDLING_AGENT in old mode', () => {
@@ -537,7 +537,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.handleOldCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.png');
-      expect(component.currentLogoAlt).toBe('Customer Registration Portal');
+      expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
     it('should dynamically switch logo when toggling codeType in new mode', () => {

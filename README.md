@@ -1,4 +1,4 @@
-# CRIS Customer Registration Portal
+# CRIS Freight Code Generator
 
 The portal consists of an Angular single-page frontend and a Spring Boot REST backend. They are built and deployed as two independent WebLogic applications:
 
