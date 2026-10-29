@@ -46,6 +46,33 @@ describe('DeleteRequestComponent', () => {
     expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
   });
 
+  it('switches the logo on every selection change and resets image fallback state', () => {
+    component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+
+    component.onLogoError();
+    expect(component.logoLoadFailed).toBe(true);
+
+    component.onCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.logoLoadFailed).toBe(false);
+
+    component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.logoLoadFailed).toBe(false);
+  });
+
+  it('handles a missing selected logo without affecting the delete form state', () => {
+    component.codeType = 'GLOBAL_CUSTOMER';
+    component.code = 'AEIP';
+
+    component.onLogoError();
+
+    expect(component.logoLoadFailed).toBe(true);
+    expect(component.code).toBe('AEIP');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+  });
+
   it('clears code, company name, messages, and verification when switching code types', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
     component.code = 'AEIP';

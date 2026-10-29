@@ -18,6 +18,7 @@ export class DeleteRequestComponent {
   successMessage = '';
   verifying = false;
   submitting = false;
+  logoLoadFailed = false;
 
   constructor(private customerService: CustomerService) {}
 
@@ -61,10 +62,15 @@ export class DeleteRequestComponent {
     return '';
   }
 
+  onLogoError(): void {
+    this.logoLoadFailed = true;
+  }
+
   onCodeTypeChange(event?: Event): void {
     if (event) {
       this.codeType = (event.target as HTMLSelectElement).value as DeleteRequestCodeType | '';
     }
+    this.logoLoadFailed = false;
     this.code = '';
     this.companyName = '';
     this.verifiedRecord = null;

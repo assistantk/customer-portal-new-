@@ -98,6 +98,8 @@ Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle d
 
 DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.AEM_USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
 
+The admin Delete Request page offers only **Global Code** and **Handling Agent Code**. Global Code verification uses `MEMGLBLCUST.MAVGLBLCUSTCODE`; Handling Agent Code verification uses `MEMGLBLHNDGAGNT.MAVHNDGAGNTCODE`. The page requires the verified company name to be confirmed before emailing the matching DELETE SQL to the DBA. The application does not execute these DELETE statements; the DBA reviews and executes them manually.
+
 The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
 
 The Ownership registration page checks each requested ownership table independently before looking up the same four-character code in `MEMGLBLCUST`. Existing ownership rows are submitted as DBA email UPDATE requests; absent ownership rows can be submitted as INSERT requests only when the code exists in the global-customer table. Lookup failures and codes absent from both source tables block submission; the application does not directly write ownership rows.

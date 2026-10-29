@@ -1,12 +1,12 @@
 <main>
   <section class="delete-card">
     <!-- Dynamic Code-Type Logo or Neutral Placeholder -->
-    <div class="logo-wrapper" *ngIf="currentLogo">
-      <img [src]="currentLogo" [alt]="currentLogoAlt" class="code-type-logo" />
+    <div class="logo-wrapper" *ngIf="currentLogo && !logoLoadFailed">
+      <img [src]="currentLogo" [alt]="currentLogoAlt" class="code-type-logo" (error)="onLogoError()" />
     </div>
 
-    <header class="card-heading" [class.has-custom-logo]="!!currentLogo">
-      <div *ngIf="!currentLogo" class="heading-icon" aria-hidden="true">
+    <header class="card-heading" [class.has-custom-logo]="!!currentLogo && !logoLoadFailed">
+      <div *ngIf="!currentLogo || logoLoadFailed" class="heading-icon" aria-hidden="true">
         <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path d="M3 6h18"/>
           <path d="M8 6V4h8v2"/>
