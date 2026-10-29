@@ -6,6 +6,7 @@ import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../.
 import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
+const OTP_RESEND_COOLDOWN_SECONDS = 5 * 60;
 
 @Component({
   selector: "app-login",
@@ -242,7 +243,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
           this.currentStep = 'OTP';
           this.successMessage = res.message || "OTP generated and dispatched successfully.";
-          this.startCooldown(30);
+          this.startCooldown(res.data?.resendCooldownSeconds || OTP_RESEND_COOLDOWN_SECONDS);
         } else {
           this.error = res.message || "Failed to generate OTP. Please try again.";
         }
@@ -259,7 +260,11 @@ export class LoginComponent implements OnInit, OnDestroy {
           return;
         }
 
-        if (err?.name === 'TimeoutError') {
+        if (err?.status === 429) {
+          const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
+          this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
+          this.error = err?.error?.message || "An OTP was recently sent. Please wait before trying again.";
+        } else if (err?.name === 'TimeoutError') {
           this.error = "Request timed out while generating OTP. Please try again.";
         } else if (err?.status === 0) {
           this.error = "Unable to connect to the authentication server. Please retry.";
@@ -358,13 +363,19 @@ export class LoginComponent implements OnInit, OnDestroy {
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }
-          this.startCooldown(30);
+          this.startCooldown(res.data?.resendCooldownSeconds || OTP_RESEND_COOLDOWN_SECONDS);
         } else {
           this.error = res.message || "Failed to resend OTP. Please try again.";
         }
       },
       error: (err) => {
-        this.error = err?.error?.message || err?.message || "Unable to resend OTP. Please try again.";
+        if (err?.status === 429) {
+          const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
+          this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
+          this.error = err?.error?.message || "Please wait before requesting another OTP.";
+        } else {
+          this.error = err?.error?.message || err?.message || "Unable to resend OTP. Please try again.";
+        }
       }
     });
   }
@@ -378,7 +389,6 @@ export class LoginComponent implements OnInit, OnDestroy {
   }
 
   restartLogin(): void {
-    this.clearCooldownTimer();
     this.authService.setRmsTempUser(null);
     this.loading = false;
     this.currentStep = 'LOGIN';
@@ -403,6 +413,12 @@ export class LoginComponent implements OnInit, OnDestroy {
     if (!code) return '';
     const details = getDivisionDetails(code);
     return details ? `${details.name} • ${details.zone}` : '';
+  }
+
+  get resendCooldownDisplay(): string {
+    const minutes = Math.floor(this.resendCooldown / 60);
+    const seconds = this.resendCooldown % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private startCooldown(seconds: number): void {

@@ -233,6 +233,59 @@ class RmsAuthOrchestratorTest {
     }
 
     @Test
+    void resendOtp_isBlockedForFiveMinutesAfterSuccessfulInitialGeneration() {
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        RmsApiResponse successResponse = new RmsApiResponse();
+        successResponse.setErrorNo("0");
+        when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(successResponse);
+        RmsAuthOrchestrator liveOrchestrator =
+                new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+
+        liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        assertTrue(liveOrchestrator.getResendCooldownSeconds("sreeju") > 0);
+        RmsAuthOrchestrator.OtpResendCooldownException exception = assertThrows(
+                RmsAuthOrchestrator.OtpResendCooldownException.class,
+                () -> liveOrchestrator.resendOtp(ctx, "127.0.0.1"));
+        assertTrue(exception.getRetryAfterSeconds() > 0);
+
+        RmsAuthSessionContext secondContext = new RmsAuthSessionContext();
+        secondContext.setUserId("SREEJU");
+        secondContext.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        secondContext.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        assertThrows(RmsAuthOrchestrator.OtpResendCooldownException.class,
+                () -> liveOrchestrator.selectDesignationAndGenerateOtp(
+                        secondContext, "SR-DCM", "127.0.0.1"));
+        verify(clientMock, times(1)).generateOtp(any(RmsOtpGenerateRequest.class));
+    }
+
+    @Test
+    void repeatedInitialGenerationDoesNotCallRmsAgainOnceOtpIsPending() {
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        RmsApiResponse successResponse = new RmsApiResponse();
+        successResponse.setErrorNo("0");
+        when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(successResponse);
+        RmsAuthOrchestrator liveOrchestrator =
+                new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+
+        liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class,
+                () -> liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1"));
+        verify(clientMock, times(1)).generateOtp(any(RmsOtpGenerateRequest.class));
+    }
+
+    @Test
     void test13_liveMode_roleIdAsJsonArray_parsesSuccessfully() throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         String jsonResponse = "{\n" +

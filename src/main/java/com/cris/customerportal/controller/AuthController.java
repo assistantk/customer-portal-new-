@@ -213,12 +213,22 @@ public class AuthController {
             Map<String, Object> data = new HashMap<>();
             data.put("destinationMasked", rmsAuthOrchestrator.getMaskedContact(ctx));
             data.put("selectedDesignation", ctx.getSelectedDesignation());
+            data.put("resendCooldownSeconds", rmsAuthOrchestrator.getResendCooldownSeconds(ctx.getUserId()));
 
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "OTP generated and sent to your registered contact.");
             body.put("data", data);
             return ResponseEntity.ok(body);
+
+        } catch (RmsAuthOrchestrator.OtpResendCooldownException ex) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", ex.getMessage());
+            body.put("retryAfterSeconds", ex.getRetryAfterSeconds());
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                    .body(body);
 
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
             LOGGER.warn("Access denied for user {}: {}. Status: {}", ctx.getUserId(), ex.getMessage(), HttpStatus.FORBIDDEN.value());
@@ -271,6 +281,7 @@ public class AuthController {
 
             Map<String, Object> data = new HashMap<>();
             data.put("destinationMasked", rmsAuthOrchestrator.getMaskedContact(ctx));
+            data.put("resendCooldownSeconds", rmsAuthOrchestrator.getResendCooldownSeconds(ctx.getUserId()));
 
             LOGGER.info("RMS resend-otp result: SUCCESS for user {}. Status: {}", ctx.getUserId(), HttpStatus.OK.value());
 
@@ -280,10 +291,32 @@ public class AuthController {
             body.put("data", data);
             return ResponseEntity.ok(body);
 
-        } catch (Exception ex) {
-            LOGGER.error("OTP resend failed: {}. Status: {}", ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
+        } catch (RmsAuthOrchestrator.OtpResendCooldownException ex) {
+            LOGGER.info("RMS resend-otp rate limited for user {}. Retry after {} seconds.",
+                    ctx.getUserId(), ex.getRetryAfterSeconds());
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", ex.getMessage());
+            body.put("retryAfterSeconds", ex.getRetryAfterSeconds());
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                    .body(body);
+
+        } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
+            LOGGER.warn("RMS resend-otp denied for user {}: {}", ctx.getUserId(), ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", ex.getMessage()));
+
+        } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
+            LOGGER.info("RMS resend-otp rejected for user {}: {}", ctx.getUserId(), ex.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", ex.getMessage()));
+
+        } catch (RmsApiException ex) {
+            LOGGER.error("OTP resend failed for user {}: {}. Status: {}",
+                    ctx.getUserId(), ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("success", false, "message", "Unable to resend OTP. Please try again."));
+                    .body(Map.of("success", false, "message", ex.getMessage()));
         }
     }
 

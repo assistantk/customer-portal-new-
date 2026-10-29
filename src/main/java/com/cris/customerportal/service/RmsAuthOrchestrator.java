@@ -18,6 +18,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
@@ -37,6 +39,8 @@ public class RmsAuthOrchestrator {
 
     /** Required canonical designation code for Senior DCM portal access. */
     public static final String REQUIRED_DESIGNATION = "SR-DCM";
+    public static final int OTP_RESEND_COOLDOWN_SECONDS = 5 * 60;
+    private static final long OTP_RESEND_COOLDOWN_MILLIS = OTP_RESEND_COOLDOWN_SECONDS * 1000L;
 
     private static final DateTimeFormatter APPLY_DATE_FMT =
             DateTimeFormatter.ofPattern("dd-MM-yyyy");
@@ -45,6 +49,8 @@ public class RmsAuthOrchestrator {
     private final boolean mockMode;
     private final String projectName;
     private final String configuredClientId;
+    private final ConcurrentMap<String, Long> otpResendAllowedAt = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Object> otpUserLocks = new ConcurrentHashMap<>();
 
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
@@ -175,11 +181,63 @@ public class RmsAuthOrchestrator {
      */
     public void selectDesignationAndGenerateOtp(
             RmsAuthSessionContext ctx, String selectedDesig, String clientIp) {
-        generateOtp(ctx, selectedDesig, clientIp, "GNRTOTP");
+        String userKey = normalizeUserId(ctx.getUserId());
+        synchronized (lockForUser(userKey)) {
+            if (ctx.getStep() != RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED) {
+                throw new InvalidRmsCredentialsException(
+                        "OTP has already been generated. Use Resend OTP when the countdown ends.");
+            }
+            int remainingSeconds = getResendCooldownSeconds(userKey);
+            if (remainingSeconds > 0) {
+                throw new OtpResendCooldownException(remainingSeconds);
+            }
+            generateOtp(ctx, selectedDesig, clientIp, "GNRTOTP");
+            startOtpResendCooldown(userKey);
+        }
     }
 
     public void resendOtp(RmsAuthSessionContext ctx, String clientIp) {
-        generateOtp(ctx, ctx.getSelectedDesignation(), clientIp, "REGNRTOTP");
+        String userKey = normalizeUserId(ctx.getUserId());
+        synchronized (lockForUser(userKey)) {
+            if (ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING) {
+                throw new InvalidRmsCredentialsException("No OTP is pending. Please restart login.");
+            }
+            int remainingSeconds = getResendCooldownSeconds(userKey);
+            if (remainingSeconds > 0) {
+                throw new OtpResendCooldownException(remainingSeconds);
+            }
+            generateOtp(ctx, ctx.getSelectedDesignation(), clientIp, "REGNRTOTP");
+            startOtpResendCooldown(userKey);
+        }
+    }
+
+    public int getResendCooldownSeconds(String userId) {
+        String userKey = normalizeUserId(userId);
+        Long allowedAt = otpResendAllowedAt.get(userKey);
+        if (allowedAt == null) {
+            return 0;
+        }
+        long remainingMillis = allowedAt - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            otpResendAllowedAt.remove(userKey, allowedAt);
+            return 0;
+        }
+        return (int) ((remainingMillis + 999) / 1000);
+    }
+
+    private Object lockForUser(String userKey) {
+        return otpUserLocks.computeIfAbsent(userKey, key -> new Object());
+    }
+
+    private String normalizeUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            throw new InvalidRmsCredentialsException("User ID is required.");
+        }
+        return userId.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void startOtpResendCooldown(String userKey) {
+        otpResendAllowedAt.put(userKey, System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MILLIS);
     }
 
     private void generateOtp(
@@ -361,6 +419,19 @@ public class RmsAuthOrchestrator {
 
     public static class InvalidRmsCredentialsException extends RuntimeException {
         public InvalidRmsCredentialsException(String message) { super(message); }
+    }
+
+    public static class OtpResendCooldownException extends RuntimeException {
+        private final int retryAfterSeconds;
+
+        public OtpResendCooldownException(int retryAfterSeconds) {
+            super("Please wait before requesting another OTP.");
+            this.retryAfterSeconds = retryAfterSeconds;
+        }
+
+        public int getRetryAfterSeconds() {
+            return retryAfterSeconds;
+        }
     }
 
     public static class AccessDeniedException extends RuntimeException {

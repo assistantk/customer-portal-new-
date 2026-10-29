@@ -56,9 +56,11 @@ export interface RmsSelectDesignationResponse {
   success: boolean;
   accessDenied?: boolean;
   message?: string;
+  retryAfterSeconds?: number;
   data?: {
     destinationMasked?: string;
     selectedDesignation?: string;
+    resendCooldownSeconds?: number;
   };
   error?: string;
 }
@@ -68,7 +70,9 @@ export interface RmsOtpResendResponse {
   message?: string;
   data?: {
     destinationMasked?: string;
+    resendCooldownSeconds?: number;
   };
+  retryAfterSeconds?: number;
   error?: string;
 }
 

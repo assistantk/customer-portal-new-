@@ -133,6 +133,7 @@ class RmsAuthControllerTest {
         ctx.setMobileNo("9910303868");
         ctx.setEmail("krishnan.sreeju@gmail.com");
         ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("SR-DCM");
@@ -149,6 +150,7 @@ class RmsAuthControllerTest {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
         ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("DCM");
@@ -178,11 +180,30 @@ class RmsAuthControllerTest {
         ctx.setUserId("SREEJU");
         ctx.setSelectedDesignation("SR-DCM");
         ctx.setDesignations(Arrays.asList("SR-DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         ResponseEntity<?> response = controller.resendOtp(request);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(orchestrator).resendOtp(eq(ctx), anyString());
+    }
+
+    @Test
+    void resendOtp_withActiveCooldown_returnsTooManyRequests() {
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setDesignations(Arrays.asList("SR-DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+        when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
+
+        ResponseEntity<?> response = controller.resendOtp(request);
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertNotNull(body);
+        assertTrue(((Number) body.get("retryAfterSeconds")).intValue() > 0);
         verify(orchestrator).resendOtp(eq(ctx), anyString());
     }
 

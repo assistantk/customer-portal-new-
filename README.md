@@ -77,11 +77,16 @@ The `AuthController` is mapped at `/api/auth`:
 |---|---|---|
 | `GET` | `/api/auth/captcha` | Creates a session-bound CAPTCHA image; the answer is not sent to Angular |
 | `POST` | `/api/auth/validate-user` | Validates `userId`, `password`, `divisionCode`, and one-time `captchaInput` before RMS authentication |
+| `POST` | `/api/auth/select-designation` | Confirms the authorized designation and requests the initial OTP |
+| `POST` | `/api/auth/resend-otp` | Requests an OTP resend after the server-enforced cooldown |
+| `POST` | `/api/auth/verify-otp` | Verifies the OTP before creating the authenticated session |
 | `POST` | `/api/auth/login` | Validates JSON `{"userId":"...","password":"...","captchaInput":"..."}` and creates a server-side session on success |
 | `GET` | `/api/auth/session` | Checks the session; `/api/auth/me` is an alias |
 | `POST` | `/api/auth/logout` | Invalidates the current session |
 
 CAPTCHA answers are single-use and validated by Spring before RMS authentication or database lookup. RMS login loads its challenge from `/api/auth/captcha` and submits the answer with the user ID, password, and division code to `/api/auth/validate-user`. Legacy login also validates the challenge before database lookup. Login accepts either `AAVUSERID` or `AAVEMAILID` from `TMS3T.AEM_USER`, with case-insensitive identifier matching. A matched account is eligible only when `AACUSERDELTFLAG = 'N'`, `AADRTRMNTDATE > SYSDATE`, `AADPSWDXPRYTIME > SYSDATE`, `AACEDSPFLAG = 'E'`, and `AAVDSGN = 'SR-DCM'`; Oracle evaluates these predicates so null or expired values fail. The backend retrieves `AAVPSWD` and asks Oracle to calculate the configured legacy representation using `DBMS_UTILITY.GET_HASH_VALUE`; it does not read `AAVOLDPSWD` or calculate a replacement hash in Java. The source expression matches the DBA expression recorded in `JdbcOraclePasswordHashService`, but its output has not been independently checked against the office CRIS database or the example stored value.
+
+RMS OTP generation is requested once after designation authorization. The backend enforces a five-minute per-user cooldown across initial generation and resend requests, serializes simultaneous requests for the same user, and returns HTTP `429` with `retryAfterSeconds` while the cooldown is active. The frontend displays the remaining time and only enables resend after the cooldown; failed resend attempts do not restart it. Cooldown state is held in application memory, so it is shared by requests handled by the same application instance but is not retained across restarts or coordinated across multiple backend instances.
 
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
