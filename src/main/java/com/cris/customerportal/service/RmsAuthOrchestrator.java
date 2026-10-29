@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,7 +40,7 @@ public class RmsAuthOrchestrator {
 
     /** Required canonical designation code for Senior DCM portal access. */
     public static final String REQUIRED_DESIGNATION = "SR-DCM";
-    public static final int OTP_RESEND_COOLDOWN_SECONDS = 5 * 60;
+    public static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final long OTP_RESEND_COOLDOWN_MILLIS = OTP_RESEND_COOLDOWN_SECONDS * 1000L;
 
     private static final DateTimeFormatter APPLY_DATE_FMT =
@@ -51,6 +52,7 @@ public class RmsAuthOrchestrator {
     private final String configuredClientId;
     private final ConcurrentMap<String, Long> otpResendAllowedAt = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Object> otpUserLocks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, LocalDate> otpGeneratedOn = new ConcurrentHashMap<>();
 
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
@@ -119,15 +121,13 @@ public class RmsAuthOrchestrator {
         req.setF_USERID(userId.trim().toUpperCase(Locale.ROOT));
         req.setF_PSWD(password);
         req.setF_LOCN(divisionCode.trim().toUpperCase(Locale.ROOT));
-        req.setF_APLYDATE(LocalDate.now().format(APPLY_DATE_FMT));
+        req.setF_APLYDATE(LocalDate.now(ZoneId.systemDefault()).format(APPLY_DATE_FMT));
 
         RmsApiResponse response = rmsApiClient.validateUser(req);
 
         if (!response.isSuccess()) {
-            String msg = response.getMessage() != null ? response.getMessage()
-                    : "Invalid User ID, Password, or Division Code.";
-            LOGGER.info("ATVLDTUSER returned non-success for userId={}: {}", userId, msg);
-            throw new InvalidRmsCredentialsException(msg);
+            LOGGER.info("ATVLDTUSER rejected credentials for userId={}", userId);
+            throw new InvalidRmsCredentialsException("Invalid User ID, Email, or Password.");
         }
 
         // Parse user designations returned by RMS ATVLDTUSER
@@ -191,7 +191,10 @@ public class RmsAuthOrchestrator {
             if (remainingSeconds > 0) {
                 throw new OtpResendCooldownException(remainingSeconds);
             }
-            generateOtp(ctx, selectedDesig, clientIp, "GNRTOTP");
+            LocalDate today = LocalDate.now(ZoneId.systemDefault());
+            String serviceName = today.equals(otpGeneratedOn.get(userKey)) ? "REGNRTOTP" : "GNRTOTP";
+            generateOtp(ctx, selectedDesig, clientIp, serviceName);
+            otpGeneratedOn.put(userKey, today);
             startOtpResendCooldown(userKey);
         }
     }
@@ -312,10 +315,10 @@ public class RmsAuthOrchestrator {
         if (mockMode) {
             String cleanOtp = otp != null ? otp.trim() : "";
             if (!"123456".equals(cleanOtp)) {
-                LOGGER.info("MOCK mode – incorrect OTP entered: {} (expected 123456)", cleanOtp);
+                LOGGER.info("MOCK mode – incorrect OTP entered for userId={}", ctx.getUserId());
                 throw new InvalidRmsCredentialsException("Invalid OTP. Please enter the valid 6-digit OTP.");
             }
-            LOGGER.info("MOCK mode – valid OTP 123456 accepted for userId={}", ctx.getUserId());
+            LOGGER.info("MOCK mode – OTP accepted for userId={}", ctx.getUserId());
         } else {
             RmsOtpVerifyRequest req = new RmsOtpVerifyRequest();
             req.setF_USERID(ctx.getUserId());

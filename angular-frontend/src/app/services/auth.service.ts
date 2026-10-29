@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { BehaviorSubject, Observable, catchError, of, tap } from 'rxjs';
-import { API_BASE_URL } from './api-config';
+import { BehaviorSubject, Observable, catchError, of, tap, throwError } from 'rxjs';
+import { API_BASE_URL, isSecureApiTransport } from './api-config';
+import { environment } from '../../environments/environment';
 
 export interface LoginRequest {
   username: string;
@@ -130,16 +131,25 @@ export class AuthService {
    * Step 1: Validate User ID, Password, and Division Code
    */
   validateUser(userId: string, password: string, divisionCode: string, captchaInput: string): Observable<RmsValidateUserResponse> {
+    if (!this.isSecureLoginTransport()) {
+      return throwError(() => new Error('Secure HTTPS connection required for login.'));
+    }
+
     return this.http.post<RmsValidateUserResponse>(
       `${this.API}/validate-user`,
       {
-        userId: userId.trim(),
+        userId: userId.trim().toUpperCase(),
         password: password,
         divisionCode: divisionCode.trim().toUpperCase(),
         captchaInput: captchaInput.trim()
       },
       { withCredentials: true }
     );
+  }
+
+  private isSecureLoginTransport(): boolean {
+    return !environment.production ||
+      (typeof window !== 'undefined' && isSecureApiTransport(window.location.href, this.API));
   }
 
   /**
@@ -187,6 +197,10 @@ export class AuthService {
   // ─────────────────────────────────────────────────────────────
 
   login(req: LoginRequest): Observable<AuthResponse> {
+    if (!this.isSecureLoginTransport()) {
+      return throwError(() => new Error('Secure HTTPS connection required for login.'));
+    }
+
     return this.http.post<AuthResponse>(`${this.API}/login`, {
       userId: req.username.trim(),
       password: req.password,

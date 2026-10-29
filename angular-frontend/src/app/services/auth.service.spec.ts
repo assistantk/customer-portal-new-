@@ -69,6 +69,7 @@ describe('AuthService', () => {
       password: 'secret',
       captchaInput: 'AbCd23'
     });
+    expect(sessionStorage.length).toBe(0);
     request.flush({ success: false, message: 'Invalid User ID/Email or Password.' });
   });
 

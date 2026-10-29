@@ -10,14 +10,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.io.IOException;
+import java.net.HttpURLConnection;
 
 /**
  * Thin HTTP client for the three RMS office APIs:
@@ -38,52 +45,98 @@ public class RmsApiClient {
 
     public RmsApiClient(
             RestTemplateBuilder builder,
-            @Value("${rms.api.base-url:http://10.60.201.192:7101/RMS}") String baseUrl,
+            String baseUrl,
+            String validateUserPath,
+            String generateOtpPath,
+            String verifyOtpPath,
+            long connectTimeoutMs,
+            long readTimeoutMs) {
+        this(builder, baseUrl, validateUserPath, generateOtpPath, verifyOtpPath,
+                connectTimeoutMs, readTimeoutMs, "mock");
+    }
+
+    @Autowired
+    public RmsApiClient(
+            RestTemplateBuilder builder,
+            @Value("${rms.api.base-url:}") String baseUrl,
             @Value("${rms.api.validate-user-path:/ATVLDTUSER}") String validateUserPath,
             @Value("${rms.api.generate-otp-path:/RTGNRTOTP}") String generateOtpPath,
             @Value("${rms.api.verify-otp-path:/RTVRFYOTP}") String verifyOtpPath,
             @Value("${rms.api.connect-timeout-ms:5000}") long connectTimeoutMs,
-            @Value("${rms.api.read-timeout-ms:10000}") long readTimeoutMs) {
+            @Value("${rms.api.read-timeout-ms:10000}") long readTimeoutMs,
+            @Value("${rms.auth.mode:live}") String authMode) {
 
-        this.validateUserUrl = baseUrl + validateUserPath;
-        this.generateOtpUrl  = baseUrl + generateOtpPath;
-        this.verifyOtpUrl    = baseUrl + verifyOtpPath;
+        if (!"mock".equalsIgnoreCase(authMode == null ? "" : authMode.trim())) {
+            requireHttpsBaseUrl(baseUrl);
+        }
+
+        String normalizedBaseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
+        this.validateUserUrl = normalizedBaseUrl + validateUserPath;
+        this.generateOtpUrl  = normalizedBaseUrl + generateOtpPath;
+        this.verifyOtpUrl    = normalizedBaseUrl + verifyOtpPath;
 
         this.restTemplate = builder
                 .setConnectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .setReadTimeout(Duration.ofMillis(readTimeoutMs))
+                .requestFactory(RmsApiClient::noRedirectRequestFactory)
                 .build();
 
         this.objectMapper = new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-        LOGGER.info("RmsApiClient initialized. validateUserUrl={} generateOtpUrl={} verifyOtpUrl={} connectTimeoutMs={} readTimeoutMs={}",
-                validateUserUrl, generateOtpUrl, verifyOtpUrl, connectTimeoutMs, readTimeoutMs);
+        LOGGER.info("RmsApiClient initialized with connectTimeoutMs={} readTimeoutMs={}",
+                connectTimeoutMs, readTimeoutMs);
+    }
+
+    static void requireHttpsBaseUrl(String baseUrl) {
+        try {
+            URI uri = new URI(baseUrl);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getQuery() != null
+                    || uri.getFragment() != null) {
+                throw new IllegalStateException(
+                        "A valid HTTPS RMS_API_BASE_URL without embedded credentials or query parameters is required in live mode.");
+            }
+
+        } catch (URISyntaxException | NullPointerException ex) {
+            throw new IllegalStateException(
+                    "A valid HTTPS RMS_API_BASE_URL without embedded credentials or query parameters is required in live mode.", ex);
+        }
+    }
+
+    private static ClientHttpRequestFactory noRedirectRequestFactory() {
+        return new SimpleClientHttpRequestFactory() {
+            @Override
+            protected void prepareConnection(HttpURLConnection connection, String httpMethod) throws IOException {
+                super.prepareConnection(connection, httpMethod);
+                connection.setInstanceFollowRedirects(false);
+            }
+        };
     }
 
     public RmsApiResponse validateUser(RmsLoginRequest request) {
-        LOGGER.info("Dispatching ATVLDTUSER to {} for userId={} locn={}", validateUserUrl, request.getF_USERID(), request.getF_LOCN());
+        LOGGER.info("Dispatching ATVLDTUSER credential validation request");
         try {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(validateUserUrl, request, String.class);
             String rawJson = response.getBody();
             if (rawJson == null || rawJson.trim().isEmpty()) {
-                LOGGER.error("Empty response received from ATVLDTUSER at {}", validateUserUrl);
+                LOGGER.error("Empty response received from ATVLDTUSER");
                 throw new RmsApiException("Empty response received from RMS validation service.");
             }
             RmsApiResponse body = objectMapper.readValue(rawJson, RmsApiResponse.class);
-            LOGGER.info("ATVLDTUSER parsed response: status={} errorNo={} msg={} roles={}",
-                    body.getStatus(), body.getErrorNo(), body.getMessage(), body.extractAllDesignations());
+            LOGGER.info("ATVLDTUSER parsed response: status={} errorNo={} roles={}",
+                    body.getStatus(), body.getErrorNo(), body.extractAllDesignations());
             return body;
         } catch (ResourceAccessException ex) {
-            LOGGER.error("Network/timeout error calling ATVLDTUSER at {}: {}", validateUserUrl, ex.getMessage());
-            throw new RmsApiException("RMS validation service is currently unreachable (" + ex.getMessage() + "). Please check server network connectivity or try again.", ex);
+            LOGGER.error("Network/timeout error calling ATVLDTUSER");
+            throw new RmsApiException("RMS validation service is currently unreachable. Please try again later.");
         } catch (JsonProcessingException ex) {
-            LOGGER.error("JSON parse error calling ATVLDTUSER: {}", ex.getMessage());
-            throw new RmsApiException("RMS validation response format error: " + ex.getMessage(), ex);
+            LOGGER.error("JSON parse error calling ATVLDTUSER");
+            throw new RmsApiException("RMS validation response format error.");
         } catch (RestClientException ex) {
-            LOGGER.error("HTTP error calling ATVLDTUSER: {}", ex.getMessage());
-            throw new RmsApiException("RMS validation service error: " + ex.getMessage(), ex);
+            LOGGER.error("HTTP error calling ATVLDTUSER");
+            throw new RmsApiException("RMS validation service error.");
         }
     }
 
