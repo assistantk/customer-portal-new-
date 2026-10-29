@@ -15,6 +15,8 @@ public class CustomerPortalApplication extends SpringBootServletInitializer {
     System.setProperty("socksNonProxyHosts",
         "localhost|127.0.0.1|*.crisexacc.org|tndexaccvm-scan.crisexacc.org|db.internal.net|smtp.gmail.com");
     System.setProperty("java.net.preferIPv4Stack", "true");
+    // Ensure headless mode for Java AWT (Graphics2D / BufferedImage) on server/Linux/WebLogic environments
+    System.setProperty("java.awt.headless", "true");
   }
 
   public static void main(String[] args) {
@@ -26,11 +28,3 @@ public class CustomerPortalApplication extends SpringBootServletInitializer {
     return application.sources(CustomerPortalApplication.class);
   }
 }
-
-
-//JCIB
-/*$env:ORACLE_DB_URL = "jdbc:oracle:thin:@//10.30.6.65:1521/test.crisexacc.org"
-$env:ORACLE_DB_USERNAME = "tms3t"
-$env:ORACLE_DB_PASSWORD = Read-Host "Oracle database password"
-
-.\mvnw.cmd spring-boot:run*/

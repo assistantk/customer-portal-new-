@@ -54,8 +54,8 @@ public class CaptchaService {
                 throw new IllegalStateException("PNG image encoder is unavailable.");
             }
             return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
-        } catch (IOException exception) {
-            throw new IllegalStateException("Unable to generate CAPTCHA image.", exception);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to generate CAPTCHA image: " + exception.getMessage(), exception);
         } finally {
             graphics.dispose();
         }
