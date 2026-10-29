@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, timeout } from 'rxjs';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
@@ -61,6 +61,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   ownSection1Loading = false;
   ownSection1Found: boolean | null = null;
   ownSection1Duplicate = false;
+  ownSection1LookupError = '';
+  ownSection1Source: 'EXISTING_OWNERSHIP_RECORD' | 'NEW_RECORD_FROM_GLOBAL_CUSTOMER' | 'INVALID_CODE' | 'LOOKUP_ERROR' | null = null;
   private ownSection1Timer: any = null;
   private ownSection1ReqId = 0;
 
@@ -68,6 +70,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   ownSection2Loading = false;
   ownSection2Found: boolean | null = null;
   ownSection2Duplicate = false;
+  ownSection2LookupError = '';
+  ownSection2Source: 'EXISTING_OWNERSHIP_RECORD' | 'NEW_RECORD_FROM_GLOBAL_CUSTOMER' | 'INVALID_CODE' | 'LOOKUP_ERROR' | null = null;
   private ownSection2Timer: any = null;
   private ownSection2ReqId = 0;
 
@@ -111,44 +115,57 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
     delete this.errors['ownershipCode'];
+    this.form.ownershipAddress = '';
+    this.form.address = '';
+    this.form.panNumber = '';
+    this.form.city = '';
+    this.form.pincode = '';
     this.ownSection1Found = null;
     this.ownSection1Duplicate = false;
+    this.ownSection1LookupError = '';
+    this.ownSection1Source = null;
 
     const reqId = ++this.ownSection1ReqId;
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
 
-    if (upperCode.trim().length > 0) {
+    if (upperCode.trim().length === 4) {
       this.ownSection1Loading = true;
       this.ownSection1Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
-        this.customerService.lookupOwnershipJDBC(trimmed).subscribe({
+        this.customerService.lookupOwnershipJDBC(trimmed).pipe(timeout(15000)).subscribe({
           next: (resp) => {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
-              this.form.ownershipAddress = resp.data.ownershipDesc || '';
-              this.ownSection1Found = true;
+              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
+                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.ownSection1Found = true;
+                this.ownSection1Source = resp.data.recordSource;
+              } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
+                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.form.address = resp.data.address || '';
+                this.form.panNumber = resp.data.panNumber || '';
+                this.form.city = resp.data.city || '';
+                this.form.pincode = resp.data.pincode || '';
+                this.ownSection1Found = true;
+                this.ownSection1Source = resp.data.recordSource;
+              } else {
+                this.ownSection1Found = false;
+                this.ownSection1Source = 'LOOKUP_ERROR';
+                this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
+              }
             } else {
               this.ownSection1Found = false;
+              this.ownSection1Source = 'INVALID_CODE';
+              this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             }
-            this.cdr.markForCheck();
-          },
-          error: () => {
-            if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Found = false;
-            this.cdr.markForCheck();
-          }
-        });
-
-        this.customerService.checkOwnershipDuplicate(trimmed).subscribe({
-          next: (dupResp) => {
-            if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Duplicate = dupResp && dupResp.duplicate === true;
             this.ownSection1Loading = false;
             this.cdr.markForCheck();
           },
-          error: () => {
+          error: (error) => {
             if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Duplicate = false;
+            this.ownSection1Source = 'LOOKUP_ERROR';
+            this.ownSection1LookupError = error?.error?.message
+              || 'Unable to fetch ownership record. Please try again.';
             this.ownSection1Loading = false;
             this.cdr.markForCheck();
           }
@@ -164,44 +181,46 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipPartyCode = upperCode;
     delete this.errors['ownershipPartyCode'];
+    this.form.ownershipPartyAddress = '';
     this.ownSection2Found = null;
     this.ownSection2Duplicate = false;
+    this.ownSection2LookupError = '';
+    this.ownSection2Source = null;
 
     const reqId = ++this.ownSection2ReqId;
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
 
-    if (upperCode.trim().length > 0) {
+    if (upperCode.trim().length === 4) {
       this.ownSection2Loading = true;
       this.ownSection2Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
-        this.customerService.lookupOwnershipPartyJDBC(trimmed).subscribe({
+        this.customerService.lookupOwnershipPartyJDBC(trimmed).pipe(timeout(15000)).subscribe({
           next: (resp) => {
             if (reqId !== this.ownSection2ReqId) return;
             if (resp && resp.found && resp.data) {
-              this.form.ownershipPartyAddress = resp.data.partyDesc || '';
-              this.ownSection2Found = true;
+              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
+                  || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
+                this.form.ownershipPartyAddress = resp.data.partyDesc || '';
+                this.ownSection2Found = true;
+                this.ownSection2Source = resp.data.recordSource;
+              } else {
+                this.ownSection2Found = false;
+                this.ownSection2Source = 'LOOKUP_ERROR';
+                this.ownSection2LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
+              }
             } else {
               this.ownSection2Found = false;
+              this.ownSection2Source = 'INVALID_CODE';
+              this.ownSection2LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             }
-            this.cdr.markForCheck();
-          },
-          error: () => {
-            if (reqId !== this.ownSection2ReqId) return;
-            this.ownSection2Found = false;
-            this.cdr.markForCheck();
-          }
-        });
-
-        this.customerService.checkOwnershipPartyDuplicate(trimmed).subscribe({
-          next: (dupResp) => {
-            if (reqId !== this.ownSection2ReqId) return;
-            this.ownSection2Duplicate = dupResp && dupResp.duplicate === true;
             this.ownSection2Loading = false;
             this.cdr.markForCheck();
           },
-          error: () => {
+          error: (error) => {
             if (reqId !== this.ownSection2ReqId) return;
-            this.ownSection2Duplicate = false;
+            this.ownSection2Source = 'LOOKUP_ERROR';
+            this.ownSection2LookupError = error?.error?.message
+              || 'Unable to fetch ownership details. Please try again.';
             this.ownSection2Loading = false;
             this.cdr.markForCheck();
           }
@@ -269,9 +288,13 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     this.ownSection1Loading = false;
     this.ownSection1Found = null;
     this.ownSection1Duplicate = false;
+    this.ownSection1Source = null;
+    this.ownSection1LookupError = '';
     this.ownSection2Loading = false;
     this.ownSection2Found = null;
     this.ownSection2Duplicate = false;
+    this.ownSection2Source = null;
+    this.ownSection2LookupError = '';
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
     this.zoneOpen = false;
@@ -286,8 +309,12 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
 
     if (!this.form.ownershipCode?.trim()) {
       e['ownershipCode'] = 'Ownership Code is required';
-    } else if (this.ownSection1Duplicate) {
-      e['ownershipCode'] = 'This Ownership Code already exists in MEMWGONOWNRSHIP. Duplicate entries are not allowed.';
+    } else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipCode.trim())) {
+      e['ownershipCode'] = 'Enter a valid four-character Global Customer Code.';
+    } else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') {
+      e['ownershipCode'] = this.ownSection1LookupError;
+    } else if (this.ownSection1Loading || !this.ownSection1Source) {
+      e['ownershipCode'] = 'Wait for ownership code lookup to complete.';
     }
 
     if (!this.form.ownershipAddress?.trim()) {
@@ -326,8 +353,12 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
 
     if (!this.form.ownershipPartyCode?.trim()) {
       e['ownershipPartyCode'] = 'Ownership Code is required';
-    } else if (this.ownSection2Duplicate) {
-      e['ownershipPartyCode'] = 'This Ownership Code already exists in MEMWGONOWNRPRTY. Duplicate entries are not allowed.';
+    } else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipPartyCode.trim())) {
+      e['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
+    } else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') {
+      e['ownershipPartyCode'] = this.ownSection2LookupError;
+    } else if (this.ownSection2Loading || !this.ownSection2Source) {
+      e['ownershipPartyCode'] = 'Wait for ownership code lookup to complete.';
     }
 
     if (!this.form.ownershipPartyAddress?.trim()) {

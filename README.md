@@ -90,7 +90,11 @@ RMS OTP generation is requested once after designation authorization. The backen
 
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
+DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
+
 The expected unauthenticated response from session verification is `401` with JSON. Successful login returns `200` and sets the servlet-container session cookie. Protected `/api/customers/**` requests require that session. Signup currently has a frontend form, but the backend does not define `/api/auth/register`.
+
+The Ownership registration page checks each requested ownership table independently before looking up the same four-character code in `MEMGLBLCUST`. Existing ownership rows are submitted as DBA email UPDATE requests; absent ownership rows can be submitted as INSERT requests only when the code exists in the global-customer table. Lookup failures and codes absent from both source tables block submission; the application does not directly write ownership rows.
 
 All frontend API services use the configured API base. Development uses `/api`; production uses `/FreightCodeApi/api`. The production frontend and backend share scheme, hostname, and port, so they are same-origin even though they have different context paths. Requests include credentials; WebLogic scopes the session cookie to the backend application context. No cross-origin proxy is required in production.
 

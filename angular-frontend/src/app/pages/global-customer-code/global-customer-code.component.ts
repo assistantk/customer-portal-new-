@@ -99,10 +99,17 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     delete this.errors['companyName'];
     delete this.errors['customerCode'];
     this.notice = '';
-
-    const initialCode = generateCustomerCode(name);
     this.codeConfirmed = false;
     if (this.codeTimer) clearTimeout(this.codeTimer);
+
+    if (name.length > 40) {
+      this.errors['companyName'] = 'Company name cannot exceed 40 characters.';
+      this.form.customerCode = '';
+      this.codeChecking = false;
+      return;
+    }
+
+    const initialCode = generateCustomerCode(name);
 
     if (initialCode) {
       this.form.customerCode = initialCode;
@@ -205,6 +212,8 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
 
     if (!this.form.companyName?.trim()) {
       e['companyName'] = 'Company name is required';
+    } else if (this.form.companyName.length > 40) {
+      e['companyName'] = 'Company name cannot exceed 40 characters.';
     }
 
     if (!this.form.customerCode?.trim()) {

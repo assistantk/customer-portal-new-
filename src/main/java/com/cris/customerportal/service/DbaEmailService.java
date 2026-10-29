@@ -3,6 +3,7 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
 import com.cris.customerportal.controller.AuthController;
 import com.cris.customerportal.dto.AuthUserDto;
+import com.cris.customerportal.repository.JdbcPortalUserLookupRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
@@ -17,24 +18,39 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class DbaEmailService {
 
+    private static final Set<String> COMPANY_NAME_COLUMNS = Set.of(
+            "MAVGLBLCUSTNAME",
+            "MAVHNDGAGNTNAME",
+            "MAVHNDAGNTNAME",
+            "MAVWGONOWNRSHIPDESC",
+            "MAVWGONOWNRPRTYDESC");
+
     private final JavaMailSender mailSender;
     private final String fromEmail;
     private final String dbaEmail;
+    private final JdbcPortalUserLookupRepository portalUserLookupRepository;
 
     @Autowired
     public DbaEmailService(
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
-            @Value("${app.dba-email:mondal.prasanta@cris.org.in}") String dbaEmail) {
+            @Value("${app.dba-email:mondal.prasanta@cris.org.in}") String dbaEmail,
+            JdbcPortalUserLookupRepository portalUserLookupRepository) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
+        this.portalUserLookupRepository = portalUserLookupRepository;
+    }
+
+    public DbaEmailService(JavaMailSender mailSender, String fromEmail, String dbaEmail) {
+        this(mailSender, fromEmail, dbaEmail, null);
     }
 
     public void sendDbaAuditEmail(DatabaseOperationAudit audit) {
@@ -53,9 +69,11 @@ public class DbaEmailService {
             message.setSubject(buildEmailSubject(operation, tableName, customerCode));
 
             String auditSql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
-            String sql = "INSERT".equalsIgnoreCase(audit.getOperationType())
+            boolean formatCustomerInsert = "INSERT".equalsIgnoreCase(audit.getOperationType())
                     && "MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
-                    && auditSql.regionMatches(true, 0, "INSERT INTO MEMGLBLCUST", 0, "INSERT INTO MEMGLBLCUST".length())
+                    && auditSql.regionMatches(true, 0, "INSERT INTO MEMGLBLCUST", 0, "INSERT INTO MEMGLBLCUST".length());
+            boolean formatUpdate = "UPDATE".equalsIgnoreCase(audit.getOperationType());
+            String sql = formatCustomerInsert || formatUpdate
                     ? formatSqlForEmail(new SqlRequest(
                             audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
                     : formatStringLiterals(toEmailSql(audit));
@@ -113,7 +131,6 @@ public class DbaEmailService {
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
                 + "Kindly execute the attached/below script on rfrn3t and training.\n\n");
         int index = 1;
-        String resolvedUserId = null;
         String resolvedEmailId = null;
         for (SqlRequest request : requests) {
             body.append("Operation: ")
@@ -127,9 +144,6 @@ public class DbaEmailService {
             }
             if (request.companyName() != null && !request.companyName().trim().isEmpty()) {
                 body.append("Company Name: ").append(request.companyName()).append('\n');
-            }
-            if (request.userId() != null && !request.userId().trim().isEmpty()) {
-                resolvedUserId = request.userId().trim();
             }
             if (request.emailId() != null && !request.emailId().trim().isEmpty()) {
                 resolvedEmailId = request.emailId().trim();
@@ -146,7 +160,7 @@ public class DbaEmailService {
                 body.append('\n');
             }
         }
-        body.append(buildUserFooter(resolvedUserId, resolvedEmailId));
+        body.append(buildUserFooter(resolvedEmailId));
         message.setText(body.toString());
 
         System.out.println("[DBA EMAIL] Initiating DBA notification email to " + dbaEmail + " (From: " + fromEmail + ", Requests: " + requests.size() + ")...");
@@ -187,11 +201,11 @@ public class DbaEmailService {
     }
 
     private String userFooter() {
-        return buildUserFooter(null, null);
+        return buildUserFooter(null);
     }
 
-    private String buildUserFooter(String providedUserId, String providedEmailId) {
-        String userId = firstNonBlank(providedUserId, resolveUserIdFromRequest());
+    private String buildUserFooter(String providedEmailId) {
+        String userId = resolveUserIdFromRequest();
         String emailId = firstNonBlank(providedEmailId, resolveUserEmailFromSession(), resolveUserEmailFromRequest());
         String phoneNumber = resolveUserPhoneNumberFromSession();
 
@@ -214,12 +228,12 @@ public class DbaEmailService {
         if (session == null) {
             return null;
         }
-        Object rawDivision = session.getAttribute("CURRENT_OPERATING_DIVISION");
-        if (!(rawDivision instanceof String)) {
+        Object sessionUser = session.getAttribute(AuthController.AUTH_SESSION_KEY);
+        if (!(sessionUser instanceof AuthUserDto) || portalUserLookupRepository == null) {
             return null;
         }
 
-        return DivisionDesignationResolver.resolve((String) rawDivision);
+        return portalUserLookupRepository.findUserId(((AuthUserDto) sessionUser).getUserId()).orElse(null);
     }
 
     private String resolveUserEmailFromSession() {
@@ -340,10 +354,13 @@ public class DbaEmailService {
                     || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {
             return sql;
         }
-        if ("UPDATE".equalsIgnoreCase(request.operation())
-                && ("MEMGLBLCUST".equalsIgnoreCase(request.table())
-                    || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table()))) {
-            return formatUpdateForEmail(sql, request.table()).toUpperCase(Locale.ROOT);
+        if ("UPDATE".equalsIgnoreCase(request.operation())) {
+            sql = normalizeCompanyNameUpdates(sql);
+            if ("MEMGLBLCUST".equalsIgnoreCase(request.table())
+                    || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table())) {
+                return formatUpdateForEmail(sql, request.table()).toUpperCase(Locale.ROOT);
+            }
+            return sql.toUpperCase(Locale.ROOT);
         }
         if (!"INSERT".equalsIgnoreCase(request.operation())
                 || (!"MEMGLBLCUST".equalsIgnoreCase(request.table())
@@ -431,6 +448,79 @@ public class DbaEmailService {
         return updatePrefix + " SET\n"
                 + String.join(",\n", assignments)
                 + "\n" + whereClause;
+    }
+
+    private String normalizeCompanyNameUpdates(String sql) {
+        int setStart = findKeywordOutsideString(sql, "SET", 0);
+        if (setStart < 0) {
+            return sql;
+        }
+        int assignmentsStart = setStart + "SET".length();
+        int whereStart = findKeywordOutsideString(sql, "WHERE", assignmentsStart);
+        if (whereStart < 0) {
+            return sql;
+        }
+
+        List<String> assignments = splitSqlAssignments(sql.substring(assignmentsStart, whereStart));
+        boolean changed = false;
+        for (int i = 0; i < assignments.size(); i++) {
+            String assignment = assignments.get(i);
+            int equalsIndex = findEqualsOutsideString(assignment);
+            if (equalsIndex < 0) {
+                continue;
+            }
+            String column = assignment.substring(0, equalsIndex).trim().toUpperCase(Locale.ROOT);
+            if (!COMPANY_NAME_COLUMNS.contains(column)) {
+                continue;
+            }
+            String expression = assignment.substring(equalsIndex + 1).trim();
+            String normalizedLiteral = normalizeCompanyNameLiteral(expression);
+            if (normalizedLiteral != null && !normalizedLiteral.equals(expression)) {
+                assignments.set(i, assignment.substring(0, equalsIndex + 1) + " " + normalizedLiteral);
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            return sql;
+        }
+        return sql.substring(0, assignmentsStart)
+                + " " + String.join(", ", assignments)
+                + " " + sql.substring(whereStart).trim();
+    }
+
+    private String normalizeCompanyNameLiteral(String expression) {
+        if (expression.length() < 2 || expression.charAt(0) != '\''
+                || expression.charAt(expression.length() - 1) != '\'') {
+            return null;
+        }
+        String value = expression.substring(1, expression.length() - 1).replace("''", "'");
+        String normalized = value.trim();
+        if (normalized.length() > 3
+                && normalized.regionMatches(true, 0, "M/S", 0, 3)
+                && Character.isWhitespace(normalized.charAt(3))) {
+            normalized = "M/S " + normalized.substring(4).trim();
+        } else {
+            normalized = "M/S " + normalized;
+        }
+        return "'" + normalized.replace("'", "''") + "'";
+    }
+
+    private int findEqualsOutsideString(String assignment) {
+        boolean inString = false;
+        for (int i = 0; i < assignment.length(); i++) {
+            char current = assignment.charAt(i);
+            if (current == '\'') {
+                if (inString && i + 1 < assignment.length() && assignment.charAt(i + 1) == '\'') {
+                    i++;
+                } else {
+                    inString = !inString;
+                }
+            } else if (current == '=' && !inString) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private int findKeywordOutsideString(String sql, String keyword, int start) {

@@ -4,7 +4,7 @@ import javax.validation.constraints.*;
 import java.util.List;
 
 public class CustomerRegistrationRequest {
-    @NotBlank(message="Company name is required") private String companyName;
+    @NotBlank(message="Company name is required") @Size(max=40, message="Company name cannot exceed 40 characters.") private String companyName;
     @NotBlank(message="Customer code is required") private String customerCode;
     @NotBlank(message="Address is required") private String address;
     @NotBlank(message="City is required") private String city;

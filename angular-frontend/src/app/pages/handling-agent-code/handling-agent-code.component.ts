@@ -100,8 +100,15 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     delete this.errors['agentCompanyName'];
     this.notice = '';
 
-    const initialCode = generateCustomerCode(name);
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    if (name.length > 40) {
+      this.errors['agentCompanyName'] = 'Agent / Company name cannot exceed 40 characters.';
+      this.generatedCode = '';
+      this.codeChecking = false;
+      return;
+    }
+
+    const initialCode = generateCustomerCode(name);
 
     if (initialCode) {
       this.generatedCode = initialCode;
@@ -205,6 +212,8 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
 
     if (!this.form.agentCompanyName?.trim()) {
       e['agentCompanyName'] = 'Agent / Company name is required';
+    } else if (this.form.agentCompanyName.length > 40) {
+      e['agentCompanyName'] = 'Agent / Company name cannot exceed 40 characters.';
     }
 
     const pan = (this.form.panNumber || '').trim().toUpperCase();

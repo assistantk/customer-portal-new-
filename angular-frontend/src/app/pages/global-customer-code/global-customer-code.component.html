@@ -56,6 +56,7 @@
                             name="companyName"
                             type="text"
                             [value]="form.companyName"
+                            maxlength="40"
                             (input)="handleCompanyNameChange($any($event.target).value)"
                             placeholder="Enter company name"
                         />

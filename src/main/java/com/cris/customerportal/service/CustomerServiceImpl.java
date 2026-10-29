@@ -23,6 +23,7 @@ import com.cris.customerportal.service.DbaEmailService;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
+ private static final int MAX_COMPANY_NAME_LENGTH = 40;
  @Autowired private DbaEmailService dbaEmailService;
  private final CustomerRepository repo;
  private final DataSource dataSource;
@@ -162,8 +163,7 @@ public class CustomerServiceImpl implements CustomerService {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
         + glblGstCol + " AS MAVCUSTGSTNUMB, "
-        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
-        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
         + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -176,13 +176,8 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
-    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
-     
-     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
-     if (amendmentDate != null && !amendmentDate.trim().isEmpty()) {
-         response.setCreationDate(amendmentDate);
-     }
+     response.setPincode(rs.getString("MAVPCOCODE"));
      
      return response;
     } else {
@@ -199,8 +194,7 @@ public class CustomerServiceImpl implements CustomerService {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
         + glblGstCol + " AS MAVCUSTGSTNUMB, "
-        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, "
-        + "TO_CHAR(" + glblDateCol + ", 'DD-MM-YYYY') AS MADEDMNDDATE_TEXT "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
         + "FROM MEMGLBLCUST WHERE " + glblGstCol + " LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -214,13 +208,8 @@ public class CustomerServiceImpl implements CustomerService {
      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
-    response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
-     
-     String amendmentDate = rs.getString("MADEDMNDDATE_TEXT");
-     if (amendmentDate != null && !amendmentDate.trim().isEmpty()) {
-         response.setCreationDate(amendmentDate);
-     }
+     response.setPincode(rs.getString("MAVPCOCODE"));
      
      responses.add(response);
     }
@@ -249,6 +238,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public String generateUniqueCodeJDBC(String companyName, String type) {
+  validateCompanyNameLength(companyName);
   String cleaned = (companyName != null ? companyName.replaceAll("[^A-Za-z]", "").toUpperCase() : "");
   if (cleaned.isEmpty()) cleaned = "CUST";
   
@@ -322,6 +312,7 @@ public class CustomerServiceImpl implements CustomerService {
     throw new IllegalArgumentException(field + " is required");
    }
   }
+  validateCompanyNameLength(firstValue(formData, "companyName", "customerName"));
   if (formData.get("address").length() > 100) {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
@@ -437,6 +428,7 @@ public class CustomerServiceImpl implements CustomerService {
  if (type != null) type = type.trim().toLowerCase(Locale.ROOT);
  if ("handling_agent".equals(type)) type = "handling";
  if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
+ validateCompanyNameLength(formData.get("companyName"));
  boolean isGlobal = "global".equals(type);
  String customerCode = firstValue(formData, "customerCode");
  if (customerCode == null) throw new IllegalArgumentException("Customer code is required");
@@ -499,6 +491,12 @@ public class CustomerServiceImpl implements CustomerService {
   dbaEmailService.sendDbaSqlEmail(emailRequests);
  }
 
+ private void validateCompanyNameLength(String companyName) {
+  if (companyName != null && companyName.length() > MAX_COMPANY_NAME_LENGTH) {
+   throw new IllegalArgumentException("Company name cannot exceed 40 characters.");
+  }
+ }
+
  private String normalizeNullableValue(String value) {
    return value == null || value.trim().isEmpty() ? null : value;
  }
@@ -545,7 +543,11 @@ public class CustomerServiceImpl implements CustomerService {
  // ===== Ownership: MEMWGONOWNRSHIP =====
 
  public java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode) {
-  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  initDbColumns();
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, "
+      + "MAVCUSTPANNUMB, " + glblGstCol + " AS MAVCUSTGSTNUMB, "
+      + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
+      + "FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVGLBLCUSTCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
@@ -554,6 +556,11 @@ public class CustomerServiceImpl implements CustomerService {
      java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
      result.put("ownershipCode", rs.getString("MAVGLBLCUSTCODE"));
      result.put("ownershipDesc", rs.getString("MAVGLBLCUSTNAME"));
+     result.put("address", rs.getString("MAVGLBLCUSTADDRTEXT"));
+     result.put("panNumber", rs.getString("MAVCUSTPANNUMB"));
+     result.put("gstinNumbers", rs.getString("MAVCUSTGSTNUMB"));
+     result.put("city", rs.getString("MAVGNBLCUSTCITYNAME"));
+     result.put("pincode", rs.getString("MAVPCOCODE"));
      return result;
     }
     return null;
@@ -565,25 +572,18 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
-  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP "
-      + "WHERE UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?";
-  try (Connection conn = dataSource.getConnection();
-       PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
-   try (ResultSet rs = ps.executeQuery()) {
-    if (rs.next()) {
-     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
-     result.put("ownershipCode", rs.getString("MAVWGONOWNRSHIPCODE"));
-     result.put("ownershipDesc", rs.getString("MAVWGONOWNRSHIPDESC"));
-     return result;
-    } else {
-     return null; // Code not found — caller handles null as "new record"
-    }
-   }
-  } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupOwnershipJDBC SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-   throw new RuntimeException("Database error while looking up ownership code: " + e.getMessage(), e);
+  String normalizedCode = normalizeOwnershipCode(ownershipCode);
+  Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
+  if (existing != null) {
+   existing.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
+   return existing;
   }
+
+  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnership(normalizedCode);
+  if (globalCustomer != null) {
+   globalCustomer.put("recordSource", "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
+  }
+  return globalCustomer;
  }
 
  public void saveOwnershipJDBC(String ownershipCode, String ownershipDesc) {
@@ -636,21 +636,48 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String generateOwnershipSql(String ownershipCode, String ownershipDesc) {
-  String normalizedCode = ownershipCode.trim().toUpperCase(Locale.ROOT);
-  Map<String, String> existing = lookupOwnershipJDBC(normalizedCode);
+  String normalizedCode = normalizeOwnershipCode(ownershipCode);
+  Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
   if (existing != null) {
    if (Objects.equals(normalizeOracleValue(existing.get("ownershipDesc")), normalizeOracleValue(ownershipDesc))) return null;
    return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
        + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
   }
+  if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
+   throw invalidOwnershipCode();
+  }
   return "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES ("
       + formatSqlValue(normalizedCode) + ", " + formatSqlValue(ownershipDesc) + ", 'Y');";
+ }
+
+ private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
+  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP "
+      + "WHERE UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, ownershipCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (!rs.next()) return null;
+    Map<String, String> result = new LinkedHashMap<>();
+    result.put("ownershipCode", rs.getString("MAVWGONOWNRSHIPCODE"));
+    result.put("ownershipDesc", rs.getString("MAVWGONOWNRSHIPDESC"));
+    return result;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupOwnershipJDBC SQLState=%s ErrorCode=%d Message=%s%n",
+       e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up ownership code: " + e.getMessage(), e);
+  }
  }
 
  // ===== Ownership Party: MEMWGONOWNRPRTY =====
 
  public java.util.Map<String, String> lookupGlobalCustomerForOwnershipParty(String partyCode) {
-  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
+  initDbColumns();
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, "
+      + "MAVCUSTPANNUMB, " + glblGstCol + " AS MAVCUSTGSTNUMB, "
+      + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
+      + "FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVGLBLCUSTCODE)) = ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
@@ -659,6 +686,11 @@ public class CustomerServiceImpl implements CustomerService {
      java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
      result.put("partyCode", rs.getString("MAVGLBLCUSTCODE"));
      result.put("partyDesc", rs.getString("MAVGLBLCUSTNAME"));
+     result.put("address", rs.getString("MAVGLBLCUSTADDRTEXT"));
+     result.put("panNumber", rs.getString("MAVCUSTPANNUMB"));
+     result.put("gstinNumbers", rs.getString("MAVCUSTGSTNUMB"));
+     result.put("city", rs.getString("MAVGNBLCUSTCITYNAME"));
+     result.put("pincode", rs.getString("MAVPCOCODE"));
      return result;
     }
     return null;
@@ -670,25 +702,18 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
-  String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY "
-      + "WHERE UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?";
-  try (Connection conn = dataSource.getConnection();
-       PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
-   try (ResultSet rs = ps.executeQuery()) {
-    if (rs.next()) {
-     java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
-     result.put("partyCode", rs.getString("MAVWGONOWNRPRTYCODE"));
-     result.put("partyDesc", rs.getString("MAVWGONOWNRPRTYDESC"));
-     return result;
-    } else {
-     return null; // Code not found — caller handles null as "new record"
-    }
-   }
-  } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupOwnershipPartyJDBC SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
-   throw new RuntimeException("Database error while looking up ownership party code: " + e.getMessage(), e);
+  String normalizedCode = normalizeOwnershipCode(partyCode);
+  Map<String, String> existing = lookupExistingOwnershipPartyRecord(normalizedCode);
+  if (existing != null) {
+   existing.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
+   return existing;
   }
+
+  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnershipParty(normalizedCode);
+  if (globalCustomer != null) {
+   globalCustomer.put("recordSource", "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
+  }
+  return globalCustomer;
  }
 
  public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
@@ -711,15 +736,51 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String generateOwnershipPartySql(String partyCode, String partyDesc) {
-  String normalizedCode = partyCode.trim().toUpperCase(Locale.ROOT);
-  Map<String, String> existing = lookupOwnershipPartyJDBC(normalizedCode);
+  String normalizedCode = normalizeOwnershipCode(partyCode);
+  Map<String, String> existing = lookupExistingOwnershipPartyRecord(normalizedCode);
   if (existing != null) {
    if (Objects.equals(normalizeOracleValue(existing.get("partyDesc")), normalizeOracleValue(partyDesc))) return null;
    return "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc)
        + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
   }
+  if (lookupGlobalCustomerForOwnershipParty(normalizedCode) == null) {
+   throw invalidOwnershipCode();
+  }
   return "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES ("
       + formatSqlValue(normalizedCode) + ", " + formatSqlValue(partyDesc) + ");";
+ }
+
+ private Map<String, String> lookupExistingOwnershipPartyRecord(String partyCode) {
+  String sql = "SELECT MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC FROM MEMWGONOWNRPRTY "
+      + "WHERE UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, partyCode);
+   try (ResultSet rs = ps.executeQuery()) {
+    if (!rs.next()) return null;
+    Map<String, String> result = new LinkedHashMap<>();
+    result.put("partyCode", rs.getString("MAVWGONOWNRPRTYCODE"));
+    result.put("partyDesc", rs.getString("MAVWGONOWNRPRTYDESC"));
+    return result;
+   }
+  } catch (SQLException e) {
+   System.err.printf("[DB ERROR] lookupOwnershipPartyJDBC SQLState=%s ErrorCode=%d Message=%s%n",
+       e.getSQLState(), e.getErrorCode(), e.getMessage());
+   throw new RuntimeException("Database error while looking up ownership party code: " + e.getMessage(), e);
+  }
+ }
+
+ private String normalizeOwnershipCode(String code) {
+  if (code == null || !code.trim().matches("(?i)[a-z0-9]{4}")) {
+   throw new IllegalArgumentException(
+       "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.");
+  }
+  return code.trim().toUpperCase(Locale.ROOT);
+ }
+
+ private IllegalArgumentException invalidOwnershipCode() {
+  return new IllegalArgumentException(
+      "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.");
  }
 
   private String formatBoundSql(String sql, List<String> parameters) {

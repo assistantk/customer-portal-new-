@@ -1,5 +1,5 @@
 import { ChangeDetectorRef } from '@angular/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
@@ -25,7 +25,23 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       })),
       submitDeleteRequest: vi.fn().mockReturnValue(of({ message: 'Delete request sent.' })),
       lookupOldCustomerJDBC: vi.fn().mockReturnValue(of({})),
-      lookupHandlingAgentJDBC: vi.fn().mockReturnValue(of({}))
+      lookupHandlingAgentJDBC: vi.fn().mockReturnValue(of({})),
+      lookupOwnershipJDBC: vi.fn().mockReturnValue(of({
+        found: true,
+        data: {
+          ownershipDesc: 'Railway Division',
+          recordSource: 'EXISTING_OWNERSHIP_RECORD'
+        }
+      })),
+      checkOwnershipDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
+      lookupOwnershipPartyJDBC: vi.fn().mockReturnValue(of({
+        found: true,
+        data: {
+          partyDesc: 'Sample Ownership Address',
+          recordSource: 'EXISTING_OWNERSHIP_RECORD'
+        }
+      })),
+      checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false }))
     };
     panOcrServiceMock = {
       extractGstinFromFile: vi.fn()
@@ -102,6 +118,13 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
       );
       expect(component.notice).toContain('TCOR');
+    });
+
+    it('rejects company names longer than 40 characters', () => {
+      component.form.companyName = 'A'.repeat(41);
+
+      expect(component.validate()).toBe(false);
+      expect(component.errors['companyName']).toBe('Company name cannot exceed 40 characters.');
     });
 
     it('should reset loading to false and display error notification on HTTP error', () => {
@@ -187,6 +210,46 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       ];
     });
 
+    it('loads the legacy customer details after entering a four-character code', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        companyName: 'Legacy Company',
+        address: 'Railway Road',
+        city: 'Delhi',
+        pincode: '110001',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '07ABCDE1234F1Z5'
+      }));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('SAEB');
+      vi.advanceTimersByTime(800);
+
+      expect(customerServiceMock.lookupOldCustomerJDBC).toHaveBeenCalledWith('SAEB');
+      expect(component.form.companyName).toBe('Legacy Company');
+      expect(component.form.address).toBe('Railway Road');
+      expect(component.form.city).toBe('Delhi');
+      expect(component.form.pincode).toBe('110001');
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.lookupDone).toBe(true);
+      expect(component.lookupLoading).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('shows a lookup error and clears loading state when the legacy lookup fails', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(throwError(() => ({
+        status: 500,
+        error: { message: 'Database lookup failed' }
+      })));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('SAEB');
+      vi.advanceTimersByTime(800);
+
+      expect(component.lookupError).toBe('Database lookup failed');
+      expect(component.lookupLoading).toBe(false);
+      vi.useRealTimers();
+    });
+
     it('should reset loading to false and display success notification on Old User update', () => {
       customerServiceMock.updateOldCustomerJDBC.mockReturnValue(
         of({
@@ -225,11 +288,95 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         'Customer code not found in database'
       );
     });
+
+    describe('Ownership lookup flow', () => {
+      beforeEach(() => {
+        component.mode = 'ownership';
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('fetches ownership section 1 data for a complete four-character code', () => {
+        component.handleOwnershipCodeChange('own1');
+        expect(customerServiceMock.lookupOwnershipJDBC).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(600);
+
+        expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('OWN1');
+        expect(component.form.ownershipAddress).toBe('Railway Division');
+        expect(component.ownSection1Found).toBe(true);
+        expect(component.ownSection1Loading).toBe(false);
+      });
+
+      it('fetches ownership section 2 data for a complete four-character code', () => {
+        component.handleOwnershipPartyCodeChange('prt1');
+
+        vi.advanceTimersByTime(600);
+
+        expect(customerServiceMock.lookupOwnershipPartyJDBC).toHaveBeenCalledWith('PRT1');
+        expect(component.form.ownershipPartyAddress).toBe('Sample Ownership Address');
+        expect(component.ownSection2Found).toBe(true);
+        expect(component.ownSection2Loading).toBe(false);
+      });
+
+      it('populates global-customer details and marks the record for insertion', () => {
+        customerServiceMock.lookupOwnershipJDBC.mockReturnValue(of({
+          found: true,
+          data: {
+            recordSource: 'NEW_RECORD_FROM_GLOBAL_CUSTOMER',
+            ownershipDesc: 'Global Company',
+            address: 'Global Address',
+            panNumber: 'ABCDE1234F',
+            city: 'Delhi',
+            pincode: '110001',
+            gstinNumbers: '07ABCDE1234F1Z5'
+          }
+        }));
+
+        component.handleOwnershipCodeChange('GLB1');
+        vi.advanceTimersByTime(600);
+
+        expect(component.ownSection1Source).toBe('NEW_RECORD_FROM_GLOBAL_CUSTOMER');
+        expect(component.form.ownershipAddress).toBe('Global Company');
+        expect(component.form.address).toBe('Global Address');
+        expect(component.form.panNumber).toBe('ABCDE1234F');
+        expect(component.form.city).toBe('Delhi');
+        expect(component.form.pincode).toBe('110001');
+        expect(component.gstins[0].gstin).toBe('07ABCDE1234F1Z5');
+      });
+
+      it('blocks submission when the code is absent from both source tables', () => {
+        customerServiceMock.lookupOwnershipJDBC.mockReturnValue(of({ found: false }));
+        component.handleOwnershipCodeChange('MISS');
+        vi.advanceTimersByTime(600);
+
+        expect(component.ownSection1Source).toBe('INVALID_CODE');
+        expect(component.ownSection1LookupError).toContain('does not exist in the Ownership table or Global Customer table');
+        expect(component.validate()).toBe(false);
+        expect(component.errors['ownershipCode']).toBe(component.ownSection1LookupError);
+      });
+
+      it('shows ownership lookup errors instead of silently reporting no record', () => {
+        customerServiceMock.lookupOwnershipJDBC.mockReturnValue(throwError(() => ({
+          error: { message: 'Ownership lookup unavailable' }
+        })));
+
+        component.handleOwnershipCodeChange('OWN1');
+        vi.advanceTimersByTime(600);
+
+        expect(component.ownSection1LookupError).toBe('Ownership lookup unavailable');
+      });
+    });
   });
 
   describe('Ownership Flow (mode: ownership)', () => {
     beforeEach(() => {
       component.mode = 'ownership';
+      component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+      component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
       component.form = {
         companyName: '',
         customerCode: '',
