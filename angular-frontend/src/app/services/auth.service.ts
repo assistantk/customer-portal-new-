@@ -125,13 +125,14 @@ export class AuthService {
   /**
    * Step 1: Validate User ID, Password, and Division Code
    */
-  validateUser(userId: string, password: string, divisionCode: string): Observable<RmsValidateUserResponse> {
+  validateUser(userId: string, password: string, divisionCode: string, captchaInput: string): Observable<RmsValidateUserResponse> {
     return this.http.post<RmsValidateUserResponse>(
       `${this.API}/validate-user`,
       {
         userId: userId.trim(),
         password: password,
-        divisionCode: divisionCode.trim().toUpperCase()
+        divisionCode: divisionCode.trim().toUpperCase(),
+        captchaInput: captchaInput.trim()
       },
       { withCredentials: true }
     );

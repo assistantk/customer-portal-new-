@@ -70,6 +70,7 @@ public class AuthController {
         String userId = requestDto != null ? requestDto.getUserId() : null;
         String password = requestDto != null ? requestDto.getPassword() : null;
         String divisionCode = requestDto != null ? requestDto.getDivisionCode() : null;
+        String captchaInput = requestDto != null ? requestDto.getCaptchaInput() : null;
 
         String safeUserId = sanitizeForLog(userId);
         String safeDiv = sanitizeForLog(divisionCode);
@@ -89,12 +90,23 @@ public class AuthController {
 
         if (userId == null || userId.trim().isEmpty()
                 || password == null || password.trim().isEmpty()
-                || divisionCode == null || divisionCode.trim().isEmpty()) {
+                || divisionCode == null || divisionCode.trim().isEmpty()
+                || captchaInput == null || captchaInput.trim().isEmpty()) {
             LOGGER.info("RMS authentication result: FAILED (missing required fields). Status: {}. Designation step can proceed: false",
                     HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "User ID, Password, and Division Code are required.");
+            body.put("message", "User ID, Password, Division Code, and CAPTCHA are required.");
+            return ResponseEntity.badRequest().body(body);
+        }
+
+        HttpSession captchaSession = request.getSession(false);
+        if (captchaSession == null || !captchaService.consumeChallenge(captchaSession, captchaInput.trim())) {
+            LOGGER.info("RMS authentication result: FAILED (CAPTCHA validation failed). Status: {}. Designation step can proceed: false",
+                    HttpStatus.BAD_REQUEST.value());
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "CAPTCHA validation failed. Please refresh and try again.");
             return ResponseEntity.badRequest().body(body);
         }
 
@@ -255,7 +267,7 @@ public class AuthController {
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
         try {
             String clientIp = extractClientIp(request);
-            rmsAuthOrchestrator.selectDesignationAndGenerateOtp(ctx, ctx.getSelectedDesignation(), clientIp);
+            rmsAuthOrchestrator.resendOtp(ctx, clientIp);
 
             Map<String, Object> data = new HashMap<>();
             data.put("destinationMasked", rmsAuthOrchestrator.getMaskedContact(ctx));

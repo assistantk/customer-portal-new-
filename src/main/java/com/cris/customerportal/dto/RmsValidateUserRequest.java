@@ -4,6 +4,7 @@ public class RmsValidateUserRequest {
     private String userId;
     private String password;
     private String divisionCode;
+    private String captchaInput;
 
     public RmsValidateUserRequest() {}
 
@@ -35,5 +36,13 @@ public class RmsValidateUserRequest {
 
     public void setDivisionCode(String divisionCode) {
         this.divisionCode = divisionCode;
+    }
+
+    public String getCaptchaInput() {
+        return captchaInput;
+    }
+
+    public void setCaptchaInput(String captchaInput) {
+        this.captchaInput = captchaInput;
     }
 }

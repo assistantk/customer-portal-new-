@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ChangeDetectorRef } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import { Subject, of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
@@ -9,6 +10,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
   let authServiceMock: any;
   let routerMock: any;
   let activatedRouteMock: any;
+  let cdrMock: ChangeDetectorRef;
   let fb: FormBuilder;
 
   beforeEach(() => {
@@ -16,6 +18,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     fb = new FormBuilder();
 
     authServiceMock = {
+      getCaptcha: vi.fn(() => of({ image: 'data:image/png;base64,captcha-image' })),
       validateUser: vi.fn(),
       selectDesignation: vi.fn(),
       verifyOtp: vi.fn(),
@@ -43,12 +46,14 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
         queryParams: { returnUrl: '/registration' }
       }
     };
+    cdrMock = { markForCheck: vi.fn() } as unknown as ChangeDetectorRef;
 
     component = new LoginComponent(
       fb,
       authServiceMock as AuthService,
       routerMock,
-      activatedRouteMock
+      activatedRouteMock,
+      cdrMock
     );
 
     component.ngOnInit();
@@ -62,14 +67,15 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.loginForm.setValue({
       userId: 'SREEJU',
       password: 'test@123',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
 
     component.onSubmitLogin();
 
     // While in-flight, loading must be true
     expect(component.loading).toBe(true);
-    expect(authServiceMock.validateUser).toHaveBeenCalledWith('SREEJU', 'test@123', 'TKD');
+    expect(authServiceMock.validateUser).toHaveBeenCalledWith('SREEJU', 'test@123', 'TKD', 'AbCd23');
 
     // Mock successful backend response
     responseSubject.next({
@@ -79,7 +85,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
         userId: 'SREEJU',
         userName: 'SREEJU KRISHNAN',
         divisionCode: 'TKD',
-        designations: ['SR.DCM', 'DCM', 'JDCM']
+        designations: ['SR-DCM', 'DCM', 'JDCM']
       }
     });
     responseSubject.complete();
@@ -87,10 +93,49 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.loading).toBe(false);
     expect(component.currentStep).toBe('DESIGNATION');
     expect(component.validatedUser?.userId).toBe('SREEJU');
-    expect(component.availableDesignations).toEqual(['SR.DCM', 'DCM', 'JDCM']);
-    expect(component.designationForm.get('designation')?.value).toBe('SR.DCM');
+    expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
+    expect(component.designationForm.get('designation')?.value).toBe('SR-DCM');
     expect(component.error).toBe('');
     expect(authServiceMock.setRmsTempUser).toHaveBeenCalled();
+    expect(cdrMock.markForCheck).toHaveBeenCalled();
+  });
+
+  it('starts on the credentials step and clears cached RMS flow data after reload', () => {
+    sessionStorage.setItem('customer-portal.rms-temp-user', JSON.stringify({
+      userId: 'SREEJU',
+      divisionCode: 'TKD',
+      designations: ['SR-DCM']
+    }));
+
+    const reloadedComponent = new LoginComponent(
+      fb,
+      authServiceMock as AuthService,
+      routerMock,
+      activatedRouteMock,
+      cdrMock
+    );
+    reloadedComponent.ngOnInit();
+
+    expect(reloadedComponent.currentStep).toBe('LOGIN');
+    expect(reloadedComponent.validatedUser).toBeNull();
+    expect(reloadedComponent.availableDesignations).toEqual([]);
+    expect(sessionStorage.getItem('customer-portal.rms-temp-user')).toBeNull();
+    expect(authServiceMock.getCaptcha).toHaveBeenCalledTimes(2);
+    expect(reloadedComponent.captchaImage).toBe('data:image/png;base64,captcha-image');
+  });
+
+  it('requires CAPTCHA before sending credentials for validation', () => {
+    component.loginForm.setValue({
+      userId: 'SREEJU',
+      password: 'test@123',
+      divisionCode: 'TKD',
+      captchaInput: ''
+    });
+
+    component.onSubmitLogin();
+
+    expect(component.error).toBe('Please enter the CAPTCHA shown.');
+    expect(authServiceMock.validateUser).not.toHaveBeenCalled();
   });
 
   // Scenario 2: Invalid mock credentials -> error appears and UI remains on Credentials
@@ -105,7 +150,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.loginForm.setValue({
       userId: 'SREEJU',
       password: 'wrongpassword',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
 
     component.onSubmitLogin();
@@ -127,7 +173,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.loginForm.setValue({
       userId: 'SREEJU',
       password: 'test@123',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
 
     component.onSubmitLogin();
@@ -154,7 +201,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.loginForm.setValue({
       userId: 'SREEJU',
       password: 'test@123',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
 
     component.onSubmitLogin();
@@ -173,7 +221,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
           userId: 'SREEJU',
           userName: 'SREEJU KRISHNAN',
           divisionCode: 'TKD',
-          designations: ['SR.DCM', 'DCM', 'JDCM']
+          designations: ['SR-DCM', 'DCM', 'JDCM']
         }
       })
     );
@@ -181,25 +229,26 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.loginForm.setValue({
       userId: 'SREEJU',
       password: 'test@123',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
 
     component.onSubmitLogin();
 
     expect(component.currentStep).toBe('DESIGNATION');
     expect(component.availableDesignations.length).toBe(3);
-    expect(component.availableDesignations).toEqual(['SR.DCM', 'DCM', 'JDCM']);
-    expect(component.designationForm.get('designation')?.value).toBe('SR.DCM');
+    expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
+    expect(component.designationForm.get('designation')?.value).toBe('SR-DCM');
   });
 
   // Scenario 6: Unauthorized designation -> access is denied
-  it('Scenario 6: denies access when unauthorized non-SR.DCM designation is selected', () => {
+  it('Scenario 6: denies access when unauthorized non-SR-DCM designation is selected', () => {
     component.validatedUser = {
       userId: 'SREEJU',
       divisionCode: 'TKD',
-      designations: ['SR.DCM', 'DCM']
+      designations: ['SR-DCM', 'DCM']
     };
-    component.availableDesignations = ['SR.DCM', 'DCM'];
+    component.availableDesignations = ['SR-DCM', 'DCM'];
     component.currentStep = 'DESIGNATION';
     component.designationForm.setValue({ designation: 'DCM' });
 
@@ -234,7 +283,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
         data: {
           userId: 'SREEJU',
           userName: 'SREEJU KRISHNAN',
-          userRole: 'SR.DCM',
+          userRole: 'SR-DCM',
           isActive: 'Y'
         }
       })

@@ -98,10 +98,10 @@ describe('AuthService', () => {
     expect(sessionStorage.getItem('customer-portal.authenticated-user')).toBe(JSON.stringify(user));
   });
 
-  it('calls validate-user with userId, password, and divisionCode', () => {
-    service.validateUser(' SREEJU ', 'test@123', ' tkd ').subscribe((res) => {
+  it('calls validate-user with userId, password, divisionCode, and CAPTCHA', () => {
+    service.validateUser(' SREEJU ', 'test@123', ' tkd ', ' AbCd23 ').subscribe((res) => {
       expect(res.success).toBe(true);
-      expect(res.data?.designations).toContain('SR.DCM');
+      expect(res.data?.designations).toContain('SR-DCM');
     });
 
     const req = httpTestingController.expectOne('/api/auth/validate-user');
@@ -109,27 +109,28 @@ describe('AuthService', () => {
     expect(req.request.body).toEqual({
       userId: 'SREEJU',
       password: 'test@123',
-      divisionCode: 'TKD'
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
     });
     req.flush({
       success: true,
       data: {
         userId: 'SREEJU',
         divisionCode: 'TKD',
-        designations: ['SR.DCM', 'DCM']
+        designations: ['SR-DCM', 'DCM']
       }
     });
   });
 
   it('calls select-designation and triggers OTP generation', () => {
-    service.selectDesignation('SR.DCM').subscribe((res) => {
+    service.selectDesignation('SR-DCM').subscribe((res) => {
       expect(res.success).toBe(true);
       expect(res.data?.destinationMasked).toBe('******3868');
     });
 
     const req = httpTestingController.expectOne('/api/auth/select-designation');
     expect(req.request.withCredentials).toBe(true);
-    expect(req.request.body).toEqual({ designation: 'SR.DCM' });
+    expect(req.request.body).toEqual({ designation: 'SR-DCM' });
     req.flush({
       success: true,
       data: { destinationMasked: '******3868' }
@@ -140,7 +141,7 @@ describe('AuthService', () => {
     service.verifyOtp('123456').subscribe((res) => {
       expect(res.success).toBe(true);
       expect(service.currentUser?.userId).toBe('SREEJU');
-      expect(service.currentUser?.userRole).toBe('SR.DCM');
+      expect(service.currentUser?.userRole).toBe('SR-DCM');
     });
 
     const req = httpTestingController.expectOne('/api/auth/verify-otp');
@@ -148,7 +149,7 @@ describe('AuthService', () => {
     expect(req.request.body).toEqual({ otp: '123456' });
     req.flush({
       success: true,
-      data: { userId: 'SREEJU', userName: 'SREEJU KRISHNAN', userRole: 'SR.DCM' }
+      data: { userId: 'SREEJU', userName: 'SREEJU KRISHNAN', userRole: 'SR-DCM' }
     });
   });
 });

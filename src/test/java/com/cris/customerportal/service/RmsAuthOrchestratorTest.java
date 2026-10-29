@@ -42,18 +42,18 @@ class RmsAuthOrchestratorTest {
         assertNotNull(ctx);
         assertEquals(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED, ctx.getStep());
         assertEquals("SREEJU", ctx.getUserId());
-        assertTrue(ctx.getDesignations().contains("SR.DCM"));
+        assertTrue(ctx.getDesignations().contains("SR-DCM"));
 
-        // Step 2: Select SR.DCM designation -> triggers OTP
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR.DCM", "127.0.0.1");
+        // Step 2: Select SR-DCM designation -> triggers OTP
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
-        assertEquals("SR.DCM", ctx.getSelectedDesignation());
+        assertEquals("SR-DCM", ctx.getSelectedDesignation());
 
         // Step 3: Verify with mock OTP 123456
         AuthUserDto user = orchestrator.verifyOtp(ctx, "123456", "127.0.0.1");
         assertNotNull(user);
         assertEquals("SREEJU", user.getUserId());
-        assertEquals("SR.DCM", user.getUserRole());
+        assertEquals("SR-DCM", user.getUserRole());
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ class RmsAuthOrchestratorTest {
     @Test
     void test5_unauthorizedDesignation_triggersAccessDenied() {
         RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        // User selects DCM (non-SR.DCM)
+        // User selects DCM (non-SR-DCM)
         assertThrows(RmsAuthOrchestrator.AccessDeniedException.class, () ->
                 orchestrator.selectDesignationAndGenerateOtp(ctx, "DCM", "127.0.0.1")
         );
@@ -106,7 +106,7 @@ class RmsAuthOrchestratorTest {
     @Test
     void test6_invalidOtp_failsVerification() {
         RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR.DCM", "127.0.0.1");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
 
         // Wrong OTP
         assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
@@ -150,7 +150,7 @@ class RmsAuthOrchestratorTest {
         successResponse.setRmrk("SUCCESS");
         successResponse.setUserId("SREEJU");
         successResponse.setUserName("SREEJU KRISHNAN");
-        successResponse.setDesignations("SR.DCM|DCM");
+        successResponse.setDesignations("SR-DCM|DCM");
         successResponse.setEmail("krishnan.sreeju@gmail.com");
         successResponse.setMobileNo("9910303868");
 
@@ -161,7 +161,7 @@ class RmsAuthOrchestratorTest {
         assertEquals("SREEJU", ctx.getUserId());
         assertEquals("SREEJU KRISHNAN", ctx.getUserName());
         assertEquals(2, ctx.getDesignations().size());
-        assertTrue(ctx.getDesignations().contains("SR.DCM"));
+        assertTrue(ctx.getDesignations().contains("SR-DCM"));
         assertTrue(ctx.getDesignations().contains("DCM"));
         verify(clientMock).validateUser(any(RmsLoginRequest.class));
     }
@@ -208,7 +208,7 @@ class RmsAuthOrchestratorTest {
         ctx.setUserName("SREEJU KRISHNAN");
         ctx.setEmail("krishnan.sreeju@gmail.com");
         ctx.setMobileNo("9910303868");
-        ctx.setDesignations(java.util.Collections.singletonList("SR.DCM"));
+        ctx.setDesignations(java.util.Collections.singletonList("SR-DCM"));
         ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
 
         RmsApiResponse otpGenResponse = new RmsApiResponse();
@@ -216,9 +216,9 @@ class RmsAuthOrchestratorTest {
         otpGenResponse.setRmrk("OTP GENERATED SUCCESSFULLY");
         when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(otpGenResponse);
 
-        liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR.DCM", "127.0.0.1");
+        liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
-        verify(clientMock).generateOtp(any(RmsOtpGenerateRequest.class));
+        verify(clientMock).generateOtp(argThat(req -> "GNRTOTP".equals(req.getF_SRVCNAME())));
 
         RmsApiResponse otpVerifyResponse = new RmsApiResponse();
         otpVerifyResponse.setErrorNo("0");
@@ -228,7 +228,7 @@ class RmsAuthOrchestratorTest {
         AuthUserDto user = liveOrchestrator.verifyOtp(ctx, "59521", "127.0.0.1");
         assertNotNull(user);
         assertEquals("SREEJU", user.getUserId());
-        assertEquals("SR.DCM", user.getUserRole());
+        assertEquals("SR-DCM", user.getUserRole());
         verify(clientMock).verifyOtp(any(RmsOtpVerifyRequest.class));
     }
 
@@ -239,13 +239,13 @@ class RmsAuthOrchestratorTest {
                 "  \"F_ERRORNO\": 0,\n" +
                 "  \"F_RMRK\": \"SUCCESS\",\n" +
                 "  \"F_USERID\": \"SREEJU\",\n" +
-                "  \"F_ROLEID\": [\"SR.DCM\", \"DCM\"]\n" +
+                "  \"F_ROLEID\": [\"SR-DCM\", \"DCM\"]\n" +
                 "}";
 
         RmsApiResponse parsed = mapper.readValue(jsonResponse, RmsApiResponse.class);
         assertTrue(parsed.isSuccess());
         assertEquals(2, parsed.extractAllDesignations().size());
-        assertTrue(parsed.extractAllDesignations().contains("SR.DCM"));
+        assertTrue(parsed.extractAllDesignations().contains("SR-DCM"));
         assertTrue(parsed.extractAllDesignations().contains("DCM"));
 
         RmsApiClient clientMock = mock(RmsApiClient.class);
@@ -257,7 +257,7 @@ class RmsAuthOrchestratorTest {
         assertNotNull(ctx);
         assertEquals("SREEJU", ctx.getUserId());
         assertEquals(2, ctx.getDesignations().size());
-        assertTrue(ctx.getDesignations().contains("SR.DCM"));
+        assertTrue(ctx.getDesignations().contains("SR-DCM"));
     }
 
     @Test
@@ -268,7 +268,7 @@ class RmsAuthOrchestratorTest {
                 "  \"F_RMRK\": \"SUCCESS\",\n" +
                 "  \"F_USERID\": \"SREEJU\",\n" +
                 "  \"F_ROLEID\": [\n" +
-                "    {\"ROLEID\": \"SR.DCM\", \"ROLEDESC\": \"Senior DCM\"},\n" +
+                "    {\"ROLEID\": \"SR-DCM\", \"ROLEDESC\": \"Senior DCM\"},\n" +
                 "    {\"ROLEID\": \"DCM\", \"ROLEDESC\": \"Divisional Commercial Manager\"}\n" +
                 "  ]\n" +
                 "}";
@@ -276,7 +276,108 @@ class RmsAuthOrchestratorTest {
         RmsApiResponse parsed = mapper.readValue(jsonResponse, RmsApiResponse.class);
         assertTrue(parsed.isSuccess());
         assertEquals(2, parsed.extractAllDesignations().size());
-        assertTrue(parsed.extractAllDesignations().contains("SR.DCM"));
+        assertTrue(parsed.extractAllDesignations().contains("SR-DCM"));
         assertTrue(parsed.extractAllDesignations().contains("DCM"));
+    }
+
+    @Test
+    void liveMode_emptyErrorNoForGnrtOtpAcknowledgement_advancesToOtpVerification() throws Exception {
+        String jsonResponse = "{\n" +
+                "  \"F_AJSTFLAG\": \"APP_LOGIN\",\n" +
+                "  \"F_CLNTID\": \"1.1.1.1\",\n" +
+                "  \"F_CNSR\": \"FreightCodeGenerator\",\n" +
+                "  \"F_ERRORNO\": \"\",\n" +
+                "  \"F_NEWRRNUMB\": \"9910303868\",\n" +
+                "  \"F_NEWRRTYPE\": \"krishnan.sreeju@gmail.com\",\n" +
+                "  \"F_USERID\": \"SREEJU\",\n" +
+                "  \"F_SRVCNAME\": \"GNRTOTP\"\n" +
+                "}";
+        RmsApiResponse response = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(jsonResponse, RmsApiResponse.class);
+        assertFalse(response.isSuccess());
+        assertTrue(response.isOtpGenerationAccepted("SREEJU"));
+        assertFalse(response.isOtpGenerationAccepted("OTHERUSER"));
+
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(response);
+        RmsAuthOrchestrator liveOrchestrator =
+                new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setEmail("krishnan.sreeju@gmail.com");
+        ctx.setMobileNo("9910303868");
+        ctx.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+
+        liveOrchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
+        verify(clientMock).generateOtp(any(RmsOtpGenerateRequest.class));
+    }
+
+    @Test
+    void otpGenerationAcknowledgementWithFailureRemark_isRejected() throws Exception {
+        String jsonResponse = "{\n" +
+                "  \"F_ERRORNO\": \"\",\n" +
+                "  \"F_RMRK\": \"OTP generation failed\",\n" +
+                "  \"F_USERID\": \"SREEJU\",\n" +
+                "  \"F_SRVCNAME\": \"GNRTOTP\"\n" +
+                "}";
+        RmsApiResponse response = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(jsonResponse, RmsApiResponse.class);
+
+        assertFalse(response.isOtpGenerationAccepted("SREEJU"));
+    }
+
+    @Test
+    void otpGenerationAcknowledgementWithoutServiceOrErrorFields_isAcceptedForMatchingUser() throws Exception {
+        String jsonResponse = "{\n" +
+                "  \"F_USERID\": \"SREEJU\"\n" +
+                "}";
+        RmsApiResponse response = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(jsonResponse, RmsApiResponse.class);
+
+        assertTrue(response.isOtpGenerationAccepted("SREEJU"));
+        assertFalse(response.isOtpGenerationAccepted("OTHERUSER"));
+    }
+
+    @Test
+    void resendOtp_usesRegnrtOtpServiceName() {
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        RmsApiResponse successResponse = new RmsApiResponse();
+        successResponse.setErrorNo("0");
+        when(clientMock.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(successResponse);
+
+        RmsAuthOrchestrator liveOrchestrator =
+                new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setSelectedDesignation("SR-DCM");
+        ctx.setDesignations(java.util.Collections.singletonList("SR-DCM"));
+        ctx.setEmail("krishnan.sreeju@gmail.com");
+        ctx.setMobileNo("9910303868");
+        ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
+
+        liveOrchestrator.resendOtp(ctx, "127.0.0.1");
+
+        verify(clientMock).generateOtp(argThat(req -> "REGNRTOTP".equals(req.getF_SRVCNAME())
+                && "SREEJU".equals(req.getF_USERID())
+                && "1.1.1.1".equals(req.getF_CLNTID())
+                && "FreightCodeGenerator".equals(req.getF_CNSR())
+                && "9910303868".equals(req.getF_NEWRRNUMB())
+                && "krishnan.sreeju@gmail.com".equals(req.getF_NEWRRTYPE())));
+    }
+
+    @Test
+    void resendOtp_blankErrorNoRegnrtOtpAcknowledgement_isAccepted() throws Exception {
+        String jsonResponse = "{\n" +
+                "  \"F_ERRORNO\": \"\",\n" +
+                "  \"F_USERID\": \"SREEJU\",\n" +
+                "  \"F_SRVCNAME\": \"REGNRTOTP\"\n" +
+                "}";
+        RmsApiResponse response = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(jsonResponse, RmsApiResponse.class);
+
+        assertTrue(response.isOtpGenerationAccepted("SREEJU"));
     }
 }

@@ -67,7 +67,6 @@ public class RmsApiClient {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(validateUserUrl, request, String.class);
             String rawJson = response.getBody();
-            LOGGER.info("ATVLDTUSER raw response: {}", rawJson);
             if (rawJson == null || rawJson.trim().isEmpty()) {
                 LOGGER.error("Empty response received from ATVLDTUSER at {}", validateUserUrl);
                 throw new RmsApiException("Empty response received from RMS validation service.");
@@ -94,7 +93,6 @@ public class RmsApiClient {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(generateOtpUrl, request, String.class);
             String rawJson = response.getBody();
-            LOGGER.info("RTGNRTOTP raw response: {}", rawJson);
             if (rawJson == null || rawJson.trim().isEmpty()) {
                 LOGGER.error("Empty response received from RTGNRTOTP at {}", generateOtpUrl);
                 throw new RmsApiException("Empty response received from RMS OTP generation service.");
@@ -121,7 +119,6 @@ public class RmsApiClient {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(verifyOtpUrl, request, String.class);
             String rawJson = response.getBody();
-            LOGGER.info("RTVRFYOTP raw response: {}", rawJson);
             if (rawJson == null || rawJson.trim().isEmpty()) {
                 LOGGER.error("Empty response received from RTVRFYOTP at {}", verifyOtpUrl);
                 throw new RmsApiException("Empty response received from RMS OTP verification service.");

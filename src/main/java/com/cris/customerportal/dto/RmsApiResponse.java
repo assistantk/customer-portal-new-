@@ -224,8 +224,8 @@ public class RmsApiResponse {
 
     /**
      * Resiliently extracts all designations from F_ROLEID, F_DESIG, and F_DATA.
-     * Handles string literals, delimited strings ("SR.DCM|DCM"), JSON arrays of strings (["SR.DCM", "DCM"]),
-     * and JSON arrays of objects ([{"ROLEID": "SR.DCM"}]).
+     * Handles string literals, delimited strings ("SR-DCM|DCM"), JSON arrays of strings (["SR-DCM", "DCM"]),
+     * and JSON arrays of objects ([{"ROLEID": "SR-DCM"}]).
      */
     public List<String> extractAllDesignations() {
         List<String> list = new ArrayList<>();
@@ -304,6 +304,7 @@ public class RmsApiResponse {
             if (!"0".equals(trimmedErr) && !"00".equals(trimmedErr) && !"SUCCESS".equalsIgnoreCase(trimmedErr)) {
                 return false;
             }
+
         }
 
         String st = getStatus();
@@ -369,5 +370,58 @@ public class RmsApiResponse {
         }
 
         return false;
+    }
+
+    /**
+     * Recognizes the RMS OTP-generation acknowledgement, which can contain an empty
+     * error number instead of the status and remark fields used by other responses.
+     */
+    public boolean isOtpGenerationAccepted(String expectedUserId) {
+        if (isSuccess()) {
+            return true;
+        }
+
+        String errorNo = getErrorNo();
+        String serviceName = getSrvcName();
+        String userId = getUserId();
+        if ((errorNo != null && !errorNo.trim().isEmpty())
+                || expectedUserId == null || expectedUserId.trim().isEmpty()
+                || userId == null || !expectedUserId.trim().equalsIgnoreCase(userId.trim())
+                || (serviceName != null && !serviceName.trim().isEmpty()
+                    && !"GNRTOTP".equalsIgnoreCase(serviceName.trim())
+                    && !"REGNRTOTP".equalsIgnoreCase(serviceName.trim()))) {
+            return false;
+        }
+
+        String status = getStatus();
+        if (status != null) {
+            String normalizedStatus = status.trim().toUpperCase(Locale.ROOT);
+            if ("E".equals(normalizedStatus) || "ERROR".equals(normalizedStatus)
+                    || "F".equals(normalizedStatus) || "FAIL".equals(normalizedStatus)
+                    || "FAILED".equals(normalizedStatus)) {
+                return false;
+            }
+        }
+
+        String validationFlag = getValdFlag();
+        if (validationFlag != null) {
+            String normalizedFlag = validationFlag.trim().toUpperCase(Locale.ROOT);
+            if ("N".equals(normalizedFlag) || "F".equals(normalizedFlag) || "E".equals(normalizedFlag)) {
+                return false;
+            }
+        }
+
+        return !containsFailureIndicator(getRmrk()) && !containsFailureIndicator(getMessage());
+    }
+
+    private boolean containsFailureIndicator(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return false;
+        }
+        String lower = value.trim().toLowerCase(Locale.ROOT);
+        return lower.contains("invalid") || lower.contains("error") || lower.contains("failed")
+                || lower.contains("not found") || lower.contains("wrong") || lower.contains("incorrect")
+                || lower.contains("denied") || lower.contains("locked") || lower.contains("expired")
+                || lower.contains("unauthorized");
     }
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, isDevMode } from "@angular/core";
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, isDevMode } from "@angular/core";
 import { FormBuilder, FormGroup, Validators } from "@angular/forms";
 import { Router, ActivatedRoute } from "@angular/router";
 import { finalize, timeout } from "rxjs/operators";
@@ -20,6 +20,8 @@ export class LoginComponent implements OnInit, OnDestroy {
   loginForm!: FormGroup;
   showPassword = false;
   readonly divisionSuggestions = RAILWAY_DIVISIONS;
+  captchaImage = '';
+  captchaError = '';
 
   // Step 2: Designation Selection
   designationForm!: FormGroup;
@@ -42,7 +44,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -50,7 +53,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loginForm = this.fb.group({
       userId: ["", [Validators.required, Validators.pattern(/^[A-Za-z0-9_.-]+$/)]],
       password: ["", Validators.required],
-      divisionCode: ["", Validators.required]
+      divisionCode: ["", Validators.required],
+      captchaInput: ["", Validators.required]
     });
 
     // Step 2 Form: Designation
@@ -66,18 +70,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     const qUrl = this.route.snapshot.queryParams['returnUrl'];
     this.returnUrl = qUrl ? qUrl : '/registration';
 
-    // Restore any existing in-flight RMS authentication context from session storage
-    const cachedRmsUser = this.authService.getRmsTempUser();
-    if (cachedRmsUser && cachedRmsUser.userId && cachedRmsUser.designations?.length) {
-      this.validatedUser = cachedRmsUser;
-      this.availableDesignations = [...cachedRmsUser.designations];
-      this.currentStep = 'DESIGNATION';
-      if (this.availableDesignations.length === 1) {
-        this.designationForm.patchValue({ designation: this.availableDesignations[0] });
-      } else if (this.availableDesignations.includes('SR.DCM')) {
-        this.designationForm.patchValue({ designation: 'SR.DCM' });
-      }
-    }
+    this.authService.setRmsTempUser(null);
+    this.loadCaptcha();
   }
 
   ngOnDestroy(): void {
@@ -105,11 +99,16 @@ export class LoginComponent implements OnInit, OnDestroy {
         this.error = "Please enter your Division Code.";
         return;
       }
+      if (this.loginForm.get('captchaInput')?.hasError('required')) {
+        this.error = "Please enter the CAPTCHA shown.";
+        return;
+      }
     }
 
     const userId = (this.loginForm.get('userId')?.value || '').trim();
     const password = this.loginForm.get('password')?.value || '';
     const divisionCode = (this.loginForm.get('divisionCode')?.value || '').trim().toUpperCase();
+    const captchaInput = (this.loginForm.get('captchaInput')?.value || '').trim();
 
     // Client-side division validation against verified Indian Railways division codes
     if (!isValidDivisionCode(divisionCode)) {
@@ -123,10 +122,15 @@ export class LoginComponent implements OnInit, OnDestroy {
       console.log('[RMS Auth] Request started: validate-user for userId:', userId, 'divisionCode:', divisionCode);
     }
 
-    this.authService.validateUser(userId, password, divisionCode).pipe(
+    this.authService.validateUser(userId, password, divisionCode, captchaInput).pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.loginForm.patchValue({ captchaInput: '' });
+        if (this.currentStep === 'LOGIN') {
+          this.loadCaptcha();
+        }
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res: RmsValidateUserResponse) => {
@@ -149,11 +153,11 @@ export class LoginComponent implements OnInit, OnDestroy {
           // Advance to Designation step
           this.currentStep = 'DESIGNATION';
 
-          // Pre-select if only 1 designation, or if SR.DCM is present
+          // Pre-select if only 1 designation, or if SR-DCM is present
           if (this.availableDesignations.length === 1) {
             this.designationForm.patchValue({ designation: this.availableDesignations[0] });
-          } else if (this.availableDesignations.includes('SR.DCM')) {
-            this.designationForm.patchValue({ designation: 'SR.DCM' });
+          } else if (this.availableDesignations.includes('SR-DCM')) {
+            this.designationForm.patchValue({ designation: 'SR-DCM' });
           }
           this.successMessage = res.message || "Credentials verified. Please select your designation to proceed.";
         } else {
@@ -215,6 +219,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
@@ -289,6 +294,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
@@ -343,6 +349,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       timeout(15000),
       finalize(() => {
         this.loading = false;
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
@@ -379,9 +386,16 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.successMessage = '';
     this.validatedUser = null;
     this.availableDesignations = [];
-    this.loginForm.reset({ userId: '', password: '', divisionCode: '' });
+    this.loginForm.reset({ userId: '', password: '', divisionCode: '', captchaInput: '' });
     this.designationForm.reset({ designation: '' });
     this.otpForm.reset({ otp: '' });
+    this.loadCaptcha();
+  }
+
+  refreshCaptcha(): void {
+    if (!this.loading) {
+      this.loadCaptcha();
+    }
   }
 
   getDivisionHelpText(): string {
@@ -396,10 +410,26 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.resendCooldown = seconds;
     this.cooldownInterval = setInterval(() => {
       this.resendCooldown--;
+      this.cdr.markForCheck();
       if (this.resendCooldown <= 0) {
         this.clearCooldownTimer();
       }
     }, 1000);
+  }
+
+  private loadCaptcha(): void {
+    this.captchaImage = '';
+    this.captchaError = '';
+    this.authService.getCaptcha().pipe(timeout(15000)).subscribe({
+      next: (response) => {
+        this.captchaImage = response.image;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.captchaError = err?.error?.message || "Unable to load CAPTCHA. Use refresh to try again.";
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   private clearCooldownTimer(): void {

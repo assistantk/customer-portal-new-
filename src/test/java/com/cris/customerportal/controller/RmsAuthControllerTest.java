@@ -27,13 +27,14 @@ class RmsAuthControllerTest {
 
     private AuthController controller;
     private RmsAuthOrchestrator orchestrator;
+    private CaptchaService captchaService;
     private HttpServletRequest request;
     private HttpSession session;
 
     @BeforeEach
     void setUp() {
         AuthService authService = mock(AuthService.class);
-        CaptchaService captchaService = mock(CaptchaService.class);
+        captchaService = mock(CaptchaService.class);
 
         RmsApiClient mockClient = new RmsApiClient(
                 new RestTemplateBuilder(),
@@ -44,7 +45,7 @@ class RmsAuthControllerTest {
                 5000,
                 10000
         );
-        orchestrator = new RmsAuthOrchestrator(mockClient, "mock", "FREIGHTCOD");
+        orchestrator = spy(new RmsAuthOrchestrator(mockClient, "mock", "FREIGHTCOD"));
         controller = new AuthController(authService, captchaService, orchestrator);
 
         request = mock(HttpServletRequest.class);
@@ -59,6 +60,8 @@ class RmsAuthControllerTest {
     @Test
     void validateUser_withValidCredentialsAndDivision_returnsOkWithDesignations() {
         RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
+        req.setCaptchaInput("AbCd23");
+        when(captchaService.consumeChallenge(session, "AbCd23")).thenReturn(true);
 
         ResponseEntity<?> response = controller.validateUser(req, request);
 
@@ -66,12 +69,40 @@ class RmsAuthControllerTest {
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertNotNull(body);
         assertTrue((Boolean) body.get("success"));
+        verify(captchaService).consumeChallenge(session, "AbCd23");
         verify(session).setAttribute(eq(AuthController.RMS_SESSION_CONTEXT_KEY), any(RmsAuthSessionContext.class));
+    }
+
+    @Test
+    void validateUser_invalidCaptcha_rejectsBeforeCredentialValidation() {
+        RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
+        req.setCaptchaInput("wrong");
+        when(captchaService.consumeChallenge(session, "wrong")).thenReturn(false);
+
+        ResponseEntity<?> response = controller.validateUser(req, request);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("CAPTCHA validation failed. Please refresh and try again.",
+                ((Map<?, ?>) response.getBody()).get("message"));
+        verify(orchestrator, never()).validateCredentials(anyString(), anyString(), anyString());
+        verify(session, never()).setAttribute(eq(AuthController.RMS_SESSION_CONTEXT_KEY), any());
+    }
+
+    @Test
+    void validateUser_missingCaptcha_rejectsRequest() {
+        RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
+
+        ResponseEntity<?> response = controller.validateUser(req, request);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        verify(captchaService, never()).consumeChallenge(any(), anyString());
+        verify(orchestrator, never()).validateCredentials(anyString(), anyString(), anyString());
     }
 
     @Test
     void validateUser_missingFields_returnsBadRequest() {
         RmsValidateUserRequest req = new RmsValidateUserRequest("", "pass", "TKD");
+        req.setCaptchaInput("AbCd23");
 
         ResponseEntity<?> response = controller.validateUser(req, request);
 
@@ -81,6 +112,8 @@ class RmsAuthControllerTest {
     @Test
     void validateUser_invalidDivision_returnsUnauthorizedOrBadRequest() {
         RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "NONEXISTENT_DIV");
+        req.setCaptchaInput("AbCd23");
+        when(captchaService.consumeChallenge(session, "AbCd23")).thenReturn(true);
 
         ResponseEntity<?> response = controller.validateUser(req, request);
 
@@ -99,10 +132,10 @@ class RmsAuthControllerTest {
         ctx.setUserId("SREEJU");
         ctx.setMobileNo("9910303868");
         ctx.setEmail("krishnan.sreeju@gmail.com");
-        ctx.setDesignations(Arrays.asList("SR.DCM", "DCM"));
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
-        RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("SR.DCM");
+        RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("SR-DCM");
         ResponseEntity<?> response = controller.selectDesignation(req, request);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -115,7 +148,7 @@ class RmsAuthControllerTest {
     void selectDesignation_nonSrDcm_returnsForbiddenWithAccessDenied() {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
-        ctx.setDesignations(Arrays.asList("SR.DCM", "DCM"));
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("DCM");
@@ -133,10 +166,24 @@ class RmsAuthControllerTest {
     void selectDesignation_noSession_returnsBadRequest() {
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(null);
 
-        RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("SR.DCM");
+        RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("SR-DCM");
         ResponseEntity<?> response = controller.selectDesignation(req, request);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+    }
+
+    @Test
+    void resendOtp_usesDedicatedResendFlow() {
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setSelectedDesignation("SR-DCM");
+        ctx.setDesignations(Arrays.asList("SR-DCM"));
+        when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
+
+        ResponseEntity<?> response = controller.resendOtp(request);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(orchestrator).resendOtp(eq(ctx), anyString());
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -147,7 +194,7 @@ class RmsAuthControllerTest {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
-        ctx.setSelectedDesignation("SR.DCM");
+        ctx.setSelectedDesignation("SR-DCM");
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         HttpSession newSession = mock(HttpSession.class);
@@ -169,7 +216,7 @@ class RmsAuthControllerTest {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
-        ctx.setSelectedDesignation("SR.DCM");
+        ctx.setSelectedDesignation("SR-DCM");
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
         RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("000000");

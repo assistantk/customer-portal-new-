@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  * Orchestrates the three-step RMS authentication flow using the real RMS APIs:
  *
  *   1. validateCredentials()      – calls ATVLDTUSER; validates credentials and retrieves designations.
- *   2. selectDesignation()        – enforces Senior DCM (SR.DCM) authorization; generates OTP via RTGNRTOTP.
+ *   2. selectDesignation()        – enforces Senior DCM (SR-DCM) authorization; generates OTP via RTGNRTOTP.
  *   3. verifyOtp()                – calls RTVRFYOTP; on verification success returns a ready-to-store AuthUserDto.
  *
  * Defaults to LIVE mode in production (rms.auth.mode=live).
@@ -36,7 +36,7 @@ public class RmsAuthOrchestrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(RmsAuthOrchestrator.class);
 
     /** Required canonical designation code for Senior DCM portal access. */
-    public static final String REQUIRED_DESIGNATION = "SR.DCM";
+    public static final String REQUIRED_DESIGNATION = "SR-DCM";
 
     private static final DateTimeFormatter APPLY_DATE_FMT =
             DateTimeFormatter.ofPattern("dd-MM-yyyy");
@@ -164,18 +164,26 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
 
     /**
-     * Validates the selected designation and, if authorized (SR.DCM), triggers OTP generation via RTGNRTOTP.
+     * Validates the selected designation and, if authorized (SR-DCM), triggers OTP generation via RTGNRTOTP.
      *
      * @param ctx              Session context from step 1
      * @param selectedDesig    Designation chosen by the user
      * @param clientIp         HTTP client IP
-     * @throws AccessDeniedException             if the designation is not SR.DCM
+     * @throws AccessDeniedException             if the designation is not SR-DCM
      * @throws InvalidRmsCredentialsException    if the designation is not in the allowed list
      * @throws RmsApiException                   on HTTP failure (live mode, no fallback)
      */
     public void selectDesignationAndGenerateOtp(
             RmsAuthSessionContext ctx, String selectedDesig, String clientIp) {
+        generateOtp(ctx, selectedDesig, clientIp, "GNRTOTP");
+    }
 
+    public void resendOtp(RmsAuthSessionContext ctx, String clientIp) {
+        generateOtp(ctx, ctx.getSelectedDesignation(), clientIp, "REGNRTOTP");
+    }
+
+    private void generateOtp(
+            RmsAuthSessionContext ctx, String selectedDesig, String clientIp, String serviceName) {
         String normalized = selectedDesig == null ? "" : selectedDesig.trim().toUpperCase(Locale.ROOT);
         LOGGER.info("RMS selectDesignation – userId={} designation={}", ctx.getUserId(), normalized);
 
@@ -189,9 +197,9 @@ public class RmsAuthOrchestrator {
 
         // Canonical Senior DCM authorization gate
         if (!REQUIRED_DESIGNATION.equalsIgnoreCase(normalized)) {
-            LOGGER.info("Access denied – userId={} selected non-SR.DCM designation {}", ctx.getUserId(), normalized);
+            LOGGER.info("Access denied – userId={} selected non-SR-DCM designation {}", ctx.getUserId(), normalized);
             throw new AccessDeniedException(
-                    "Access denied. Only Senior DCM (SR.DCM) users may access this portal.");
+                    "Access denied. Only Senior DCM (SR-DCM) users may access this portal.");
         }
 
         ctx.setSelectedDesignation(REQUIRED_DESIGNATION);
@@ -206,14 +214,17 @@ public class RmsAuthOrchestrator {
             req.setF_CNSR(projectName);
             req.setF_NEWRRNUMB(ctx.getMobileNo() != null ? ctx.getMobileNo() : "");
             req.setF_NEWRRTYPE(ctx.getEmail() != null ? ctx.getEmail() : "");
+            req.setF_SRVCNAME(serviceName);
 
             RmsApiResponse response = rmsApiClient.generateOtp(req);
-            if (!response.isSuccess()) {
+            if (!response.isOtpGenerationAccepted(ctx.getUserId())) {
                 String msg = response.getMessage() != null ? response.getMessage()
                         : "OTP generation failed. Please try again.";
-                LOGGER.warn("RTGNRTOTP non-success for userId={}: {}", ctx.getUserId(), msg);
+                LOGGER.warn("RTGNRTOTP response rejected for userId={}: serviceName={} errorNo={} status={} message={}",
+                        ctx.getUserId(), response.getSrvcName(), response.getErrorNo(), response.getStatus(), msg);
                 throw new RmsApiException(msg);
             }
+            LOGGER.info("RTGNRTOTP accepted for userId={}", ctx.getUserId());
         }
 
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
@@ -266,7 +277,7 @@ public class RmsAuthOrchestrator {
         return new AuthUserDto(
                 ctx.getUserId(),
                 ctx.getUserName() != null ? ctx.getUserName() : ctx.getUserId(),
-                REQUIRED_DESIGNATION,   // SR.DCM is the confirmed role
+                REQUIRED_DESIGNATION,   // SR-DCM is the confirmed role
                 "Y",
                 ctx.getEmail(),
                 ctx.getMobileNo());
@@ -325,7 +336,7 @@ public class RmsAuthOrchestrator {
             ctx.setMobileNo("9876543210");
         }
         ctx.setDivisionCode(divisionCode != null ? divisionCode.toUpperCase(Locale.ROOT) : "TKD");
-        ctx.setDesignations(Arrays.asList("SR.DCM", "DCM", "JDCM"));
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM", "JDCM"));
         return ctx;
     }
 

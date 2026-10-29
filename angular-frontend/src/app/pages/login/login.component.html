@@ -67,7 +67,7 @@
       </div>
 
       <!-- ═══════════════════════════════════════════════════════════ -->
-      <!-- STEP 1: USER ID, PASSWORD, DIVISION CODE                   -->
+      <!-- STEP 1: USER ID, PASSWORD, DIVISION CODE, CAPTCHA          -->
       <!-- ═══════════════════════════════════════════════════════════ -->
       <form *ngIf="currentStep === 'LOGIN'" [formGroup]="loginForm" (ngSubmit)="onSubmitLogin()" class="login-grid" autocomplete="off">
 
@@ -146,6 +146,35 @@
           </small>
         </div>
 
+        <!-- Server-validated CAPTCHA -->
+        <div class="login-field-wrap">
+          <label for="login-captcha">CAPTCHA <b>*</b></label>
+          <div class="captcha-challenge">
+            <img *ngIf="captchaImage" [src]="captchaImage" alt="CAPTCHA challenge" width="150" height="40" />
+            <span *ngIf="!captchaImage" class="captcha-unavailable">
+              {{ captchaError || 'Loading CAPTCHA…' }}
+            </span>
+            <button type="button" class="login-reset" (click)="refreshCaptcha()" [disabled]="loading">
+              Refresh CAPTCHA
+            </button>
+          </div>
+          <div class="login-control">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M7 8h.01M12 8h.01M17 8h.01M7 12h.01M12 12h.01M17 12h.01M7 16h.01M12 16h.01M17 16h.01" />
+            </svg>
+            <input
+              id="login-captcha"
+              type="text"
+              placeholder="Enter the characters shown"
+              formControlName="captchaInput"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </div>
+        </div>
+
         <!-- Action Buttons -->
         <div class="login-actions">
           <div class="login-secure">
@@ -208,12 +237,12 @@
             <select id="select-desig" formControlName="designation" class="login-select">
               <option value="" disabled>-- Select your designation --</option>
               <option *ngFor="let desig of availableDesignations" [value]="desig">
-                {{ desig }} {{ desig === 'SR.DCM' ? '(Senior Divisional Commercial Manager)' : '' }}
+                {{ desig }}
               </option>
             </select>
           </div>
           <small class="field-hint note-dcm">
-            Note: Portal access is authorized exclusively for <strong>Senior DCM (SR.DCM)</strong>.
+            Note: Portal access is authorized exclusively for <strong>SR-DCM</strong>.
           </small>
         </div>
 

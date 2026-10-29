@@ -311,6 +311,27 @@
   font-weight: 500;
 }
 
+.captcha-challenge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.captcha-challenge img {
+  display: block;
+  width: 150px;
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.captcha-unavailable {
+  min-width: 150px;
+  color: #64748b;
+  font-size: 11px;
+}
+
 .note-dcm {
   color: #475569;
 }
