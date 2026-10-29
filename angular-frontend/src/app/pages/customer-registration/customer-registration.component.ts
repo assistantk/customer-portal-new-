@@ -123,7 +123,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       : [{ ...blankGstin }];
   }
 
-  get currentLogo(): string {
+  get currentLogo(): string | null {
+    if (this.mode === 'delete') {
+      if (this.deleteCodeType === 'GLOBAL_CUSTOMER') {
+        return 'assets/glbl_transparent.png';
+      }
+      if (this.deleteCodeType === 'HANDLING_AGENT') {
+        return 'assets/handling_agent_code_transparent.png';
+      }
+      return null;
+    }
+
     if ((this.mode === 'old' || this.mode === 'new')
       && this.codeType === 'HANDLING_AGENT') {
       return 'assets/handling_agent_code_transparent.png';
@@ -134,6 +144,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   get currentLogoAlt(): string {
+    if (this.mode === 'delete') {
+      if (this.deleteCodeType === 'GLOBAL_CUSTOMER') {
+        return 'Global Customer Code Logo';
+      }
+      if (this.deleteCodeType === 'HANDLING_AGENT') {
+        return 'Handling Agent Code Logo';
+      }
+      return '';
+    }
+
     if ((this.mode === 'old' || this.mode === 'new')
       && this.codeType === 'HANDLING_AGENT') {
       return 'Handling Agent Code Logo';
@@ -159,6 +179,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   gstinCollapsed = false;
   ownershipLogoMissing = false;
   deleteCodeType: DeleteRequestCodeType | '' = '';
+  deleteLogoMissing = false;
   deleteCode = '';
   deleteCompanyName = '';
   verifiedDeleteRecord: { codeType: DeleteRequestCodeType; code: string; companyName: string } | null = null;
@@ -310,7 +331,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   onDeleteCodeTypeChange(event: Event): void {
     this.deleteCodeType = (event.target as HTMLSelectElement).value as DeleteRequestCodeType | '';
+    this.deleteLogoMissing = false;
     this.clearDeleteVerification();
+  }
+
+  onCurrentLogoError(): void {
+    if (this.mode === 'delete') {
+      this.deleteLogoMissing = true;
+    }
   }
 
   onDeleteCodeChange(event: Event): void {
