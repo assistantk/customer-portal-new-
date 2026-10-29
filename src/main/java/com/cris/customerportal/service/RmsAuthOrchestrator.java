@@ -7,6 +7,7 @@ import com.cris.customerportal.dto.RmsOtpVerifyRequest;
 import com.cris.customerportal.dto.AuthUserDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -52,6 +53,7 @@ public class RmsAuthOrchestrator {
         this(rmsApiClient, authMode, projectName, "1.1.1.1");
     }
 
+    @Autowired
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
             @Value("${rms.auth.mode:live}") String authMode,
