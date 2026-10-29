@@ -8,6 +8,7 @@ import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
 import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
+import { AuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -17,6 +18,7 @@ const routes: Routes = [
   {
     path: '',
     component: LayoutComponent,
+    canActivate: [AuthGuard],
     children: [
       { path: '', redirectTo: 'register', pathMatch: 'full' },
       { path: 'register', component: CustomerRegistrationComponent },

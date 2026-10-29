@@ -1,18 +1,30 @@
 package com.cris.customerportal.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * Request body for RMS RTVRFYOTP (OTP verification) API.
- * F_DOMN = OTP entered by user (mobile OTP).
- * F_SRVC = Email OTP entered by user (may be same as F_DOMN or separate).
+ * F_DOMN = OTP entered by user (mobile domain).
+ * F_SRVC = OTP entered by user (service domain).
  */
 public class RmsOtpVerifyRequest {
+    @JsonProperty("F_USERID")
     private String F_USERID;
+
+    @JsonProperty("F_CLNTID")
     private String F_CLNTID;
+
+    @JsonProperty("F_DOMN")
     private String F_DOMN;
+
+    @JsonProperty("F_SRVC")
     private String F_SRVC;
 
-    private final String F_SRVCNAME  = "VLDTOTP";
-    private final String F_AJSTFLAG  = "APP_LOGIN";
+    @JsonProperty("F_SRVCNAME")
+    private String F_SRVCNAME = "VLDTOTP";
+
+    @JsonProperty("F_AJSTFLAG")
+    private String F_AJSTFLAG = "APP_LOGIN";
 
     public RmsOtpVerifyRequest() {}
 
@@ -28,6 +40,9 @@ public class RmsOtpVerifyRequest {
     public String getF_SRVC()       { return F_SRVC; }
     public void setF_SRVC(String v) { this.F_SRVC = v; }
 
-    public String getF_SRVCNAME()  { return F_SRVCNAME; }
-    public String getF_AJSTFLAG() { return F_AJSTFLAG; }
+    public String getF_SRVCNAME()       { return F_SRVCNAME; }
+    public void setF_SRVCNAME(String v) { this.F_SRVCNAME = v; }
+
+    public String getF_AJSTFLAG()       { return F_AJSTFLAG; }
+    public void setF_AJSTFLAG(String v) { this.F_AJSTFLAG = v; }
 }

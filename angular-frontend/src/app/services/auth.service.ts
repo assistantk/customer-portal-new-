@@ -76,6 +76,7 @@ export interface RmsOtpResendResponse {
 export class AuthService {
   private readonly API = `${API_BASE_URL}/auth`;
   private readonly cachedUserKey = 'customer-portal.authenticated-user';
+  private readonly rmsTempUserKey = 'customer-portal.rms-temp-user';
   private currentUserSubject = new BehaviorSubject<AuthUserData | null>(this.readCachedUser());
   public currentUser$ = this.currentUserSubject.asObservable();
   private sessionCheckedSubject = new BehaviorSubject<boolean>(false);
@@ -93,6 +94,28 @@ export class AuthService {
 
   public setCurrentUser(user: AuthUserData | null): void {
     this.updateCurrentUser(user);
+  }
+
+  public setRmsTempUser(user: RmsValidatedUserData | null): void {
+    if (user) {
+      sessionStorage.setItem(this.rmsTempUserKey, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(this.rmsTempUserKey);
+    }
+  }
+
+  public getRmsTempUser(): RmsValidatedUserData | null {
+    const raw = sessionStorage.getItem(this.rmsTempUserKey);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.userId && Array.isArray(parsed.designations)) {
+        return parsed as RmsValidatedUserData;
+      }
+    } catch {
+      sessionStorage.removeItem(this.rmsTempUserKey);
+    }
+    return null;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -147,6 +170,7 @@ export class AuthService {
     ).pipe(
       tap((res) => {
         if (res && res.success && res.data) {
+          this.setRmsTempUser(null);
           this.updateCurrentUser(res.data);
         }
       })
@@ -180,9 +204,11 @@ export class AuthService {
   logout(): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/logout`, {}, { withCredentials: true }).pipe(
       tap(() => {
+        this.setRmsTempUser(null);
         this.updateCurrentUser(null);
       }),
       catchError(() => {
+        this.setRmsTempUser(null);
         this.updateCurrentUser(null);
         return of({ success: true, message: 'Logged out' });
       })
@@ -214,6 +240,7 @@ export class AuthService {
   }
 
   handleAuthExpired(): void {
+    this.setRmsTempUser(null);
     this.updateCurrentUser(null);
   }
 

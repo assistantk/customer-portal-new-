@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -20,9 +21,6 @@ import java.time.Duration;
  *   ATVLDTUSER  – credential validation / designation retrieval
  *   RTGNRTOTP   – OTP generation
  *   RTVRFYOTP   – OTP verification
- *
- * This class is ONLY used when rms.auth.mode=live.
- * For local development use MockRmsApiClient instead.
  */
 @Service
 public class RmsApiClient {
@@ -36,10 +34,10 @@ public class RmsApiClient {
 
     public RmsApiClient(
             RestTemplateBuilder builder,
-            @Value("${rms.api.base-url}") String baseUrl,
-            @Value("${rms.api.validate-user-path}") String validateUserPath,
-            @Value("${rms.api.generate-otp-path}") String generateOtpPath,
-            @Value("${rms.api.verify-otp-path}") String verifyOtpPath,
+            @Value("${rms.api.base-url:http://10.60.201.192:7101/RMS}") String baseUrl,
+            @Value("${rms.api.validate-user-path:/ATVLDTUSER}") String validateUserPath,
+            @Value("${rms.api.generate-otp-path:/RTGNRTOTP}") String generateOtpPath,
+            @Value("${rms.api.verify-otp-path:/RTVRFYOTP}") String verifyOtpPath,
             @Value("${rms.api.connect-timeout-ms:5000}") long connectTimeoutMs,
             @Value("${rms.api.read-timeout-ms:10000}") long readTimeoutMs) {
 
@@ -52,77 +50,73 @@ public class RmsApiClient {
                 .setReadTimeout(Duration.ofMillis(readTimeoutMs))
                 .build();
 
-        LOGGER.info("RmsApiClient configured. validateUser={} generateOtp={} verifyOtp={}",
-                validateUserUrl, generateOtpUrl, verifyOtpUrl);
+        LOGGER.info("RmsApiClient initialized. validateUserUrl={} generateOtpUrl={} verifyOtpUrl={} connectTimeoutMs={} readTimeoutMs={}",
+                validateUserUrl, generateOtpUrl, verifyOtpUrl, connectTimeoutMs, readTimeoutMs);
     }
 
-    /**
-     * Calls ATVLDTUSER to validate the user's credentials and retrieve their designations.
-     *
-     * @param request fully-populated {@link RmsLoginRequest}
-     * @return parsed {@link RmsApiResponse}
-     * @throws RmsApiException if the HTTP call fails or returns a non-success response
-     */
     public RmsApiResponse validateUser(RmsLoginRequest request) {
-        LOGGER.debug("Calling ATVLDTUSER for userId={} locn={}", request.getF_USERID(), request.getF_LOCN());
+        LOGGER.info("Dispatching ATVLDTUSER to {} for userId={} locn={}", validateUserUrl, request.getF_USERID(), request.getF_LOCN());
         try {
             ResponseEntity<RmsApiResponse> response =
                     restTemplate.postForEntity(validateUserUrl, request, RmsApiResponse.class);
             RmsApiResponse body = response.getBody();
             if (body == null) {
-                throw new RmsApiException("Empty response from ATVLDTUSER");
+                LOGGER.error("Empty response received from ATVLDTUSER at {}", validateUserUrl);
+                throw new RmsApiException("Empty response received from RMS validation service.");
             }
-            LOGGER.debug("ATVLDTUSER response: status={} msg={}", body.getStatus(), body.getMessage());
+            LOGGER.info("ATVLDTUSER response received: status={} errorNo={} msg={}",
+                    body.getStatus(), body.getErrorNo(), body.getMessage());
             return body;
+        } catch (ResourceAccessException ex) {
+            LOGGER.error("Network/timeout error calling ATVLDTUSER at {}: {}", validateUserUrl, ex.getMessage());
+            throw new RmsApiException("RMS validation service is currently unreachable (" + ex.getMessage() + "). Please check server network connectivity or try again.", ex);
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling ATVLDTUSER: {}", ex.getMessage());
-            throw new RmsApiException("Unable to reach RMS validation service. Please try again.", ex);
+            throw new RmsApiException("RMS validation service error: " + ex.getMessage(), ex);
         }
     }
 
-    /**
-     * Calls RTGNRTOTP to generate and dispatch an OTP.
-     *
-     * @param request fully-populated {@link RmsOtpGenerateRequest}
-     * @return parsed {@link RmsApiResponse}
-     */
     public RmsApiResponse generateOtp(RmsOtpGenerateRequest request) {
-        LOGGER.debug("Calling RTGNRTOTP for userId={}", request.getF_USERID());
+        LOGGER.info("Dispatching RTGNRTOTP to {} for userId={} cnsr={}", generateOtpUrl, request.getF_USERID(), request.getF_CNSR());
         try {
             ResponseEntity<RmsApiResponse> response =
                     restTemplate.postForEntity(generateOtpUrl, request, RmsApiResponse.class);
             RmsApiResponse body = response.getBody();
             if (body == null) {
-                throw new RmsApiException("Empty response from RTGNRTOTP");
+                LOGGER.error("Empty response received from RTGNRTOTP at {}", generateOtpUrl);
+                throw new RmsApiException("Empty response received from RMS OTP generation service.");
             }
-            LOGGER.debug("RTGNRTOTP response: status={} msg={}", body.getStatus(), body.getMessage());
+            LOGGER.info("RTGNRTOTP response received: status={} errorNo={} msg={}",
+                    body.getStatus(), body.getErrorNo(), body.getMessage());
             return body;
+        } catch (ResourceAccessException ex) {
+            LOGGER.error("Network/timeout error calling RTGNRTOTP at {}: {}", generateOtpUrl, ex.getMessage());
+            throw new RmsApiException("RMS OTP service is currently unreachable (" + ex.getMessage() + "). Please check server network connectivity or try again.", ex);
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling RTGNRTOTP: {}", ex.getMessage());
-            throw new RmsApiException("Unable to reach OTP generation service. Please try again.", ex);
+            throw new RmsApiException("RMS OTP service error: " + ex.getMessage(), ex);
         }
     }
 
-    /**
-     * Calls RTVRFYOTP to verify the OTP entered by the user.
-     *
-     * @param request fully-populated {@link RmsOtpVerifyRequest}
-     * @return parsed {@link RmsApiResponse}
-     */
     public RmsApiResponse verifyOtp(RmsOtpVerifyRequest request) {
-        LOGGER.debug("Calling RTVRFYOTP for userId={}", request.getF_USERID());
+        LOGGER.info("Dispatching RTVRFYOTP to {} for userId={}", verifyOtpUrl, request.getF_USERID());
         try {
             ResponseEntity<RmsApiResponse> response =
                     restTemplate.postForEntity(verifyOtpUrl, request, RmsApiResponse.class);
             RmsApiResponse body = response.getBody();
             if (body == null) {
-                throw new RmsApiException("Empty response from RTVRFYOTP");
+                LOGGER.error("Empty response received from RTVRFYOTP at {}", verifyOtpUrl);
+                throw new RmsApiException("Empty response received from RMS OTP verification service.");
             }
-            LOGGER.debug("RTVRFYOTP response: status={} msg={}", body.getStatus(), body.getMessage());
+            LOGGER.info("RTVRFYOTP response received: status={} errorNo={} msg={}",
+                    body.getStatus(), body.getErrorNo(), body.getMessage());
             return body;
+        } catch (ResourceAccessException ex) {
+            LOGGER.error("Network/timeout error calling RTVRFYOTP at {}: {}", verifyOtpUrl, ex.getMessage());
+            throw new RmsApiException("RMS OTP verification service is currently unreachable (" + ex.getMessage() + "). Please check server network connectivity or try again.", ex);
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling RTVRFYOTP: {}", ex.getMessage());
-            throw new RmsApiException("Unable to reach OTP verification service. Please try again.", ex);
+            throw new RmsApiException("RMS OTP verification service error: " + ex.getMessage(), ex);
         }
     }
 }

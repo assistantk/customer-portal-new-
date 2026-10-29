@@ -25,7 +25,16 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = { "http://localhost:4200", "http://127.0.0.1:4200", "http://localhost:5173", "http://127.0.0.1:5173" }, allowCredentials = "true")
+@CrossOrigin(originPatterns = {
+        "http://localhost:[*]",
+        "http://127.0.0.1:[*]",
+        "http://localhost:4200",
+        "http://127.0.0.1:4200",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://*:*",
+        "https://*:*"
+}, allowCredentials = "true")
 public class AuthController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
@@ -58,20 +67,31 @@ public class AuthController {
             @RequestBody RmsValidateUserRequest requestDto,
             HttpServletRequest request) {
 
+        String userId = requestDto != null ? requestDto.getUserId() : null;
+        String password = requestDto != null ? requestDto.getPassword() : null;
+        String divisionCode = requestDto != null ? requestDto.getDivisionCode() : null;
+
+        String safeUserId = sanitizeForLog(userId);
+        String safeDiv = sanitizeForLog(divisionCode);
+        String authMode = (rmsAuthOrchestrator != null && rmsAuthOrchestrator.isMockMode()) ? "MOCK" : "LIVE";
+
+        LOGGER.info("RMS validate-user request received: userId={} divisionCode={}", safeUserId, safeDiv);
+        LOGGER.info("RMS authentication mode: {}", authMode);
+
         if (rmsAuthOrchestrator == null) {
+            LOGGER.warn("RMS authentication result: FAILED (service not configured). Status: {}. Designation step can proceed: false",
+                    HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "RMS authentication service is not configured.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
 
-        String userId = requestDto != null ? requestDto.getUserId() : null;
-        String password = requestDto != null ? requestDto.getPassword() : null;
-        String divisionCode = requestDto != null ? requestDto.getDivisionCode() : null;
-
         if (userId == null || userId.trim().isEmpty()
                 || password == null || password.trim().isEmpty()
                 || divisionCode == null || divisionCode.trim().isEmpty()) {
+            LOGGER.info("RMS authentication result: FAILED (missing required fields). Status: {}. Designation step can proceed: false",
+                    HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "User ID, Password, and Division Code are required.");
@@ -87,6 +107,11 @@ public class AuthController {
             session.setAttribute(RMS_SESSION_CONTEXT_KEY, ctx);
             session.setMaxInactiveInterval(1800); // 30 min during auth flow
 
+            boolean canProceed = ctx != null && ctx.getDesignations() != null && !ctx.getDesignations().isEmpty();
+
+            LOGGER.info("RMS authentication result: SUCCESS (userId={}). Status: {}. Designation step can proceed: {}",
+                    safeUserId, HttpStatus.OK.value(), canProceed);
+
             Map<String, Object> userData = new HashMap<>();
             userData.put("userId", ctx.getUserId());
             userData.put("userName", ctx.getUserName());
@@ -100,20 +125,24 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
+            LOGGER.info("RMS authentication result: FAILED (userId={}): {}. Status: {}. Designation step can proceed: false",
+                    safeUserId, ex.getMessage(), HttpStatus.UNAUTHORIZED.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
 
         } catch (RmsApiException ex) {
-            LOGGER.error("RMS validation service error: {}", ex.getMessage());
+            LOGGER.error("RMS validation service error: {}. Status: {}. Designation step can proceed: false",
+                    ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
 
         } catch (Exception ex) {
-            LOGGER.error("Unexpected error in validate-user: {}", ex.getMessage(), ex);
+            LOGGER.error("Unexpected error in validate-user for userId={}: {}. Status: {}. Designation step can proceed: false",
+                    safeUserId, ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR.value(), ex);
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Authentication service error. Please try again.");
@@ -129,7 +158,12 @@ public class AuthController {
             @RequestBody RmsSelectDesignationRequest requestDto,
             HttpServletRequest request) {
 
+        String designation = requestDto != null ? requestDto.getDesignation() : null;
+        String safeDesig = sanitizeForLog(designation);
+        LOGGER.info("RMS select-designation request received: designation={}", safeDesig);
+
         if (rmsAuthOrchestrator == null) {
+            LOGGER.warn("RMS select-designation result: FAILED (service not configured). Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "RMS authentication service is not configured.");
@@ -138,6 +172,7 @@ public class AuthController {
 
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute(RMS_SESSION_CONTEXT_KEY) == null) {
+            LOGGER.info("RMS select-designation result: FAILED (session expired/missing). Status: {}", HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Session expired or invalid flow. Please start over.");
@@ -145,9 +180,9 @@ public class AuthController {
         }
 
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
-        String designation = requestDto != null ? requestDto.getDesignation() : null;
 
         if (designation == null || designation.trim().isEmpty()) {
+            LOGGER.info("RMS select-designation result: FAILED (empty designation). Status: {}", HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Please select a designation.");
@@ -161,6 +196,8 @@ public class AuthController {
             // Update session with pending OTP step
             session.setAttribute(RMS_SESSION_CONTEXT_KEY, ctx);
 
+            LOGGER.info("RMS select-designation result: SUCCESS. Status: {}. Proceeding to OTP step.", HttpStatus.OK.value());
+
             Map<String, Object> data = new HashMap<>();
             data.put("destinationMasked", rmsAuthOrchestrator.getMaskedContact(ctx));
             data.put("selectedDesignation", ctx.getSelectedDesignation());
@@ -172,7 +209,7 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("Access denied for user {}: {}", ctx.getUserId(), ex.getMessage());
+            LOGGER.warn("Access denied for user {}: {}. Status: {}", ctx.getUserId(), ex.getMessage(), HttpStatus.FORBIDDEN.value());
             // Clear intermediate auth context to prevent tampering
             session.removeAttribute(RMS_SESSION_CONTEXT_KEY);
             Map<String, Object> body = new HashMap<>();
@@ -182,13 +219,15 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
+            LOGGER.info("RMS select-designation result: FAILED (invalid credentials/designation): {}. Status: {}",
+                    ex.getMessage(), HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
             return ResponseEntity.badRequest().body(body);
 
         } catch (RmsApiException ex) {
-            LOGGER.error("OTP generation service error: {}", ex.getMessage());
+            LOGGER.error("OTP generation service error: {}. Status: {}", ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
@@ -201,6 +240,7 @@ public class AuthController {
     // ─────────────────────────────────────────────────────────────
     @PostMapping("/resend-otp")
     public ResponseEntity<?> resendOtp(HttpServletRequest request) {
+        LOGGER.info("RMS resend-otp request received");
         if (rmsAuthOrchestrator == null) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of("success", false, "message", "RMS authentication service is not configured."));
@@ -220,6 +260,8 @@ public class AuthController {
             Map<String, Object> data = new HashMap<>();
             data.put("destinationMasked", rmsAuthOrchestrator.getMaskedContact(ctx));
 
+            LOGGER.info("RMS resend-otp result: SUCCESS for user {}. Status: {}", ctx.getUserId(), HttpStatus.OK.value());
+
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "A new OTP has been dispatched to your registered contact.");
@@ -227,7 +269,7 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (Exception ex) {
-            LOGGER.error("OTP resend failed: {}", ex.getMessage());
+            LOGGER.error("OTP resend failed: {}. Status: {}", ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of("success", false, "message", "Unable to resend OTP. Please try again."));
         }
@@ -241,25 +283,32 @@ public class AuthController {
             @RequestBody RmsVerifyOtpRequest requestDto,
             HttpServletRequest request) {
 
+        HttpSession session = request.getSession(false);
+        RmsAuthSessionContext ctx = (session != null) ? (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY) : null;
+        String safeUserId = ctx != null ? sanitizeForLog(ctx.getUserId()) : "UNKNOWN";
+
+        LOGGER.info("RMS verify-otp request received for userId={}", safeUserId);
+
         if (rmsAuthOrchestrator == null) {
+            LOGGER.warn("RMS verify-otp result: FAILED (service not configured). Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "RMS authentication service is not configured.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
 
-        HttpSession session = request.getSession(false);
-        if (session == null || session.getAttribute(RMS_SESSION_CONTEXT_KEY) == null) {
+        if (session == null || ctx == null) {
+            LOGGER.info("RMS verify-otp result: FAILED (session expired/missing). Status: {}", HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Session expired or invalid flow. Please start over.");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         }
 
-        RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
         String otp = requestDto != null ? requestDto.getOtp() : null;
 
         if (otp == null || otp.trim().isEmpty()) {
+            LOGGER.info("RMS verify-otp result: FAILED (missing OTP). Status: {}", HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Please enter the OTP.");
@@ -279,8 +328,8 @@ public class AuthController {
             newSession.setAttribute(AUTH_SESSION_KEY, authenticatedUser);
             newSession.setMaxInactiveInterval(3600); // 1 hour session
 
-            LOGGER.info("User {} successfully verified OTP; authenticated session established",
-                    authenticatedUser.getUserId());
+            LOGGER.info("User {} successfully verified OTP. Status: {}. Authenticated session established.",
+                    authenticatedUser.getUserId(), HttpStatus.OK.value());
 
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
@@ -289,14 +338,14 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
-            LOGGER.info("OTP verification failed for user {}: {}", ctx.getUserId(), ex.getMessage());
+            LOGGER.info("RMS verify-otp result: FAILED for user {}: {}. Status: {}", safeUserId, ex.getMessage(), HttpStatus.UNAUTHORIZED.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
 
         } catch (RmsApiException ex) {
-            LOGGER.error("OTP verification service error: {}", ex.getMessage());
+            LOGGER.error("RMS verify-otp error: {}. Status: {}", ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
@@ -309,8 +358,6 @@ public class AuthController {
     // ─────────────────────────────────────────────────────────────
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
-        // Enforce the requirement: "Do not leave the existing authentication endpoint active as an undocumented bypass."
-        // If CAPTCHA is provided with valid credentials, require completion via the RMS multi-step flow
         String userId = loginRequest != null ? loginRequest.getEffectiveUserId() : null;
         String password = loginRequest != null ? loginRequest.getPassword() : null;
         String captchaInput = loginRequest != null ? loginRequest.getCaptchaInput() : null;
@@ -395,5 +442,12 @@ public class AuthController {
         }
         String remoteAddr = request.getRemoteAddr();
         return (remoteAddr != null && !remoteAddr.isEmpty()) ? remoteAddr : "1.1.1.1";
+    }
+
+    private String sanitizeForLog(String input) {
+        if (input == null) {
+            return "null";
+        }
+        return input.replaceAll("[\r\n]", "_").trim();
     }
 }
