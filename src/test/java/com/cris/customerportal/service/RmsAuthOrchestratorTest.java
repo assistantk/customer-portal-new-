@@ -231,4 +231,52 @@ class RmsAuthOrchestratorTest {
         assertEquals("SR.DCM", user.getUserRole());
         verify(clientMock).verifyOtp(any(RmsOtpVerifyRequest.class));
     }
+
+    @Test
+    void test13_liveMode_roleIdAsJsonArray_parsesSuccessfully() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String jsonResponse = "{\n" +
+                "  \"F_ERRORNO\": 0,\n" +
+                "  \"F_RMRK\": \"SUCCESS\",\n" +
+                "  \"F_USERID\": \"SREEJU\",\n" +
+                "  \"F_ROLEID\": [\"SR.DCM\", \"DCM\"]\n" +
+                "}";
+
+        RmsApiResponse parsed = mapper.readValue(jsonResponse, RmsApiResponse.class);
+        assertTrue(parsed.isSuccess());
+        assertEquals(2, parsed.extractAllDesignations().size());
+        assertTrue(parsed.extractAllDesignations().contains("SR.DCM"));
+        assertTrue(parsed.extractAllDesignations().contains("DCM"));
+
+        RmsApiClient clientMock = mock(RmsApiClient.class);
+        when(clientMock.validateUser(any(RmsLoginRequest.class))).thenReturn(parsed);
+
+        RmsAuthOrchestrator liveOrchestrator = new RmsAuthOrchestrator(clientMock, "live", "FreightCodeGenerator", "1.1.1.1");
+        RmsAuthSessionContext ctx = liveOrchestrator.validateCredentials("SREEJU", "test@123", "CSTM");
+
+        assertNotNull(ctx);
+        assertEquals("SREEJU", ctx.getUserId());
+        assertEquals(2, ctx.getDesignations().size());
+        assertTrue(ctx.getDesignations().contains("SR.DCM"));
+    }
+
+    @Test
+    void test14_liveMode_roleIdAsJsonArrayOfObjects_parsesSuccessfully() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String jsonResponse = "{\n" +
+                "  \"F_ERRORNO\": \"0\",\n" +
+                "  \"F_RMRK\": \"SUCCESS\",\n" +
+                "  \"F_USERID\": \"SREEJU\",\n" +
+                "  \"F_ROLEID\": [\n" +
+                "    {\"ROLEID\": \"SR.DCM\", \"ROLEDESC\": \"Senior DCM\"},\n" +
+                "    {\"ROLEID\": \"DCM\", \"ROLEDESC\": \"Divisional Commercial Manager\"}\n" +
+                "  ]\n" +
+                "}";
+
+        RmsApiResponse parsed = mapper.readValue(jsonResponse, RmsApiResponse.class);
+        assertTrue(parsed.isSuccess());
+        assertEquals(2, parsed.extractAllDesignations().size());
+        assertTrue(parsed.extractAllDesignations().contains("SR.DCM"));
+        assertTrue(parsed.extractAllDesignations().contains("DCM"));
+    }
 }
