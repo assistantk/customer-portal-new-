@@ -477,22 +477,34 @@
   color: #64748b;
 }
 
+.btn-resend-otp,
 .btn-resend-link {
-  background: none;
-  border: none;
-  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #1e40af;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 4px;
   cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
+  text-decoration: none;
+  transition: all 0.15s ease;
 }
 
-.btn-resend-link:hover {
+.btn-resend-otp:hover:not(:disabled),
+.btn-resend-link:hover:not(:disabled) {
+  background-color: #e2e8f0;
+  border-color: #94a3b8;
   color: #1d4ed8;
 }
 
+.btn-resend-otp:disabled,
 .btn-resend-link:disabled {
+  background-color: #f8fafc;
+  border-color: #e2e8f0;
   color: #94a3b8;
   cursor: not-allowed;
   text-decoration: none;
