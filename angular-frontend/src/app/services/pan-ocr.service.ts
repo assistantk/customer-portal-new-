@@ -140,8 +140,64 @@ function correctGstinCandidate(candidate: string): string | null {
   return GSTIN_REGEX.test(corrected) ? corrected : null;
 }
 
+const GSTIN_CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const GSTIN_CONFUSABLES: Record<string, string[]> = {
+  '0': ['O', 'D', 'Q'], O: ['0', 'D', 'Q'], D: ['0', 'O'], Q: ['0', 'O'],
+  '1': ['I', 'L'], I: ['1'], L: ['1'],
+  '5': ['S'], S: ['5'], '8': ['B'], B: ['8'], '2': ['Z'], Z: ['2'], '6': ['G'], G: ['6'],
+};
+
+/** GSTN check-digit (mod-36) validation of the 15th character. */
+export function isValidGstinChecksum(gstin: string): boolean {
+  if (!/^[0-9A-Z]{15}$/.test(gstin)) return false;
+  let sum = 0;
+  for (let i = 0; i < 14; i++) {
+    const product = GSTIN_CHARSET.indexOf(gstin[i]) * (i % 2 === 0 ? 1 : 2);
+    sum += Math.floor(product / 36) + (product % 36);
+  }
+  return GSTIN_CHARSET[(36 - (sum % 36)) % 36] === gstin[14];
+}
+
+/** Returns a checksum-valid GSTIN, fixing a single OCR confusion (0/O, 1/I, 5/S, 8/B ...) if needed. */
+export function repairGstinByChecksum(gstin: string | null | undefined): string | null {
+  const g = (gstin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (g.length !== 15) return null;
+  if (GSTIN_REGEX.test(g) && isValidGstinChecksum(g)) return g;
+  for (let i = 0; i < 15; i++) {
+    for (const alt of GSTIN_CONFUSABLES[g[i]] || []) {
+      const candidate = g.slice(0, i) + alt + g.slice(i + 1);
+      if (GSTIN_REGEX.test(candidate) && isValidGstinChecksum(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/** All checksum-valid GSTINs found anywhere in the text (tolerates spaces and OCR confusions). */
+export function extractGstinCandidates(text: string): string[] {
+  // Drop every non-alphanumeric (OCR often inserts stray '.', ',', '|' inside the GSTIN)
+  const clean = text.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  const found: string[] = [];
+  for (const m of clean.matchAll(/(?=([A-Z0-9]{15,16}))/g)) {
+    const window = m[1];
+    for (const raw of [window.slice(0, 15), window.length === 16 ? window.replace(/Z0([A-Z0-9])$/, 'Z$1') : '']) {
+      if (raw.length !== 15) continue;
+      const fixed = repairGstinByChecksum(correctGstinCandidate(raw) || raw);
+      if (fixed && !found.includes(fixed)) found.push(fixed);
+    }
+  }
+  return found;
+}
+
+function pickBestGstin(texts: string[], fallback: string | null): string | null {
+  const votes = new Map<string, number>();
+  texts.forEach(text => extractGstinCandidates(text).forEach(g => votes.set(g, (votes.get(g) || 0) + 1)));
+  const ranked = [...votes.entries()].sort((a, b) => b[1] - a[1]);
+  return ranked[0]?.[0] || repairGstinByChecksum(fallback) || fallback;
+}
+
 function cleanText(value: string): string {
   return value
+    .replace(/(?<=[A-Za-z])[\]!](?=[\s,.]|$)/g, 'I')
     .replace(/[|]/g, 'I')
     .replace(/\s+/g, ' ')
     .replace(/\s*,\s*/g, ', ')
@@ -275,6 +331,8 @@ function extractAddressSection(text: string): string | null {
   // Strip stray table-header labels like 'Business' or 'Address' at line start or before address
   section = section.replace(/(?:^|\n|\r)\s*(?:Business|Address|Principal)\s*[:\-]?\s*/gi, '\n');
   section = section.replace(/\bBusiness\s+(?=[A-Z0-9])/g, '');
+  // Drop the next table row number the OCR leaves at the end (e.g. "5. |")
+  section = section.replace(/[\s,;:.\-]*\b\d{1,2}\s*(?:[.)]\s*)?[|¦_\[\]{}]+\s*$|[\s,;:.\-]*\b\d{1,2}\s*[.)]\s*$/, '');
   return section.trim();
 }
 
@@ -481,13 +539,15 @@ export function combineMultiPageDetails(pages: Array<{ text: string; pageNumber:
   }
   const businessName = tradeName || legalName || null;
 
-  let gstin = extractGstin(reg06.text);
-  if (!gstin) {
+  let rawGstin = extractGstin(reg06.text);
+  if (!rawGstin) {
     for (const p of validPages) {
-      gstin = extractGstin(p.text);
-      if (gstin) break;
+      rawGstin = extractGstin(p.text);
+      if (rawGstin) break;
     }
   }
+  // Vote across reg06 + annexures and keep only checksum-valid GSTINs (fixes 0/O etc.)
+  const gstin = pickBestGstin([reg06.text, ...validPages.filter(p => p !== reg06).map(p => p.text)], rawGstin);
 
   const explicitPan = extractExplicitPan(reg06.text) || validPages.map(p => extractExplicitPan(p.text)).find(Boolean) || null;
   const gstinDerivedPan = gstin && gstin.length === 15 ? gstin.slice(2, 12) : null;
@@ -522,7 +582,7 @@ export function combineMultiPageDetails(pages: Array<{ text: string; pageNumber:
 }
 
 export function extractGstinDetailsFromText(text: string): ExtractedGstinDetails {
-  const gstin = extractGstin(text);
+  const gstin = pickBestGstin([text], extractGstin(text));
   const address = parsePrincipalAddress(text);
   const legal = extractLegalName(text);
   const trade = extractTradeName(text);
