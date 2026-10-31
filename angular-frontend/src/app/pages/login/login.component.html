@@ -267,8 +267,8 @@
             <input
               id="otp-input"
               type="text"
-              maxlength="8"
-              placeholder="Enter OTP"
+              maxlength="5"
+              placeholder="Enter 5-digit OTP"
               formControlName="otp"
               autocomplete="one-time-code"
               autofocus
@@ -276,15 +276,18 @@
           </div>
           <div class="resend-row">
             <span *ngIf="resendCooldown > 0" class="cooldown-text" aria-live="polite">
-              Resend OTP available in <strong>{{ resendCooldownDisplay }}</strong>
+              Regenerate OTP in <strong>{{ resendCooldownDisplay }}</strong>
             </span>
             <button
               type="button"
-              class="btn-resend-link"
-              (click)="resendOtp()"
-              [disabled]="loading || resendCooldown > 0"
+              class="btn-resend-otp btn-regenerate-otp"
+              (click)="regenerateOtp()"
+              [disabled]="loading || loadingOperation === 'REGENERATE'"
             >
-              {{ loadingOperation === 'RESEND' ? 'Resending…' : 'Resend OTP' }}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              {{ loadingOperation === 'REGENERATE' ? 'Regenerating OTP…' : 'Regenerate OTP' }}
             </button>
           </div>
         </div>

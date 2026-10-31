@@ -114,7 +114,7 @@ export class DeleteRequestComponent {
     ).subscribe({
       next: (result) => {
         if (!result.found) {
-          this.verificationMessage = 'This code is not present in the table, so it cannot be deleted.';
+          this.verificationMessage = 'This code is not present in the records, so it cannot be deleted.';
           return;
         }
         const verifiedCode = result.code || code;

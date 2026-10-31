@@ -906,6 +906,41 @@ class CustomerServiceImplTest {
         ));
     }
 
+    @Test
+    void register_validatesFileUploadSecurity() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        CustomerServiceImpl service = service(dataSource, mailSender);
+
+        com.cris.customerportal.dto.CustomerRegistrationRequest request =
+            new com.cris.customerportal.dto.CustomerRegistrationRequest(
+                "TEST CORP", "TEST", "ADDR", "CITY", "110001",
+                java.util.Collections.singletonList(new com.cris.customerportal.dto.GstinRequest("07", "07AAAAA0000A1Z5")),
+                "AAAAA0000A", "DIV", "ZONE", "a@b.com", "9999999999", "GLOBAL"
+            );
+
+        // Path traversal rejection
+        org.springframework.mock.web.MockMultipartFile traversalFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "../bad.pdf", "application/pdf", "%PDF-1.4 test".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(traversalFile)));
+
+        // Non-PDF mime type
+        org.springframework.mock.web.MockMultipartFile nonPdfFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "test.txt", "text/plain", "hello".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(nonPdfFile)));
+
+        // Invalid magic bytes (spoofed .pdf)
+        org.springframework.mock.web.MockMultipartFile spoofedFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "fake.pdf", "application/pdf", "MZexecutable".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(spoofedFile)));
+    }
+
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
         CustomerServiceImpl service = new CustomerServiceImpl(
             mock(CustomerRepository.class),

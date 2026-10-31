@@ -589,7 +589,7 @@ public class DbaEmailService {
                 return i;
             }
         }
-        throw new IllegalArgumentException("Unclosed column list in the MEMGLBLCUST INSERT statement.");
+        throw new IllegalArgumentException("Unclosed column list in the customer registration statement.");
     }
 
     private String toEmailSql(DatabaseOperationAudit audit) {

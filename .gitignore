@@ -27,3 +27,5 @@ npm-debug.log*
 # OS files
 Thumbs.db
 .DS_Store
+
+0.30.0

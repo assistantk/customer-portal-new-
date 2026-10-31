@@ -77,6 +77,20 @@ export interface RmsOtpResendResponse {
   error?: string;
 }
 
+export interface RmsOtpStatusResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    step?: string;
+    userId?: string;
+    userName?: string;
+    divisionCode?: string;
+    selectedDesignation?: string;
+    destinationMasked?: string;
+    resendCooldownSeconds?: number;
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly API = `${API_BASE_URL}/auth`;
@@ -164,12 +178,38 @@ export class AuthService {
   }
 
   /**
+   * Generate OTP function (calls /generate-otp)
+   */
+  generateOtp(designation: string): Observable<RmsSelectDesignationResponse> {
+    return this.http.post<RmsSelectDesignationResponse>(
+      `${this.API}/generate-otp`,
+      { designation: designation.trim() },
+      { withCredentials: true }
+    );
+  }
+
+  /**
+   * Regenerate OTP function (calls /regenerate-otp)
+   */
+  regenerateOtp(designation?: string): Observable<RmsOtpResendResponse> {
+    const payload = designation ? { designation: designation.trim() } : {};
+    return this.http.post<RmsOtpResendResponse>(
+      `${this.API}/regenerate-otp`,
+      payload,
+      { withCredentials: true }
+    );
+  }
+
+  /**
    * Resend OTP with cooldown
    */
-  resendOtp(): Observable<RmsOtpResendResponse> {
-    return this.http.post<RmsOtpResendResponse>(
-      `${this.API}/resend-otp`,
-      {},
+  resendOtp(designation?: string): Observable<RmsOtpResendResponse> {
+    return this.regenerateOtp(designation);
+  }
+
+  getOtpStatus(): Observable<RmsOtpStatusResponse> {
+    return this.http.get<RmsOtpStatusResponse>(
+      `${this.API}/otp-status`,
       { withCredentials: true }
     );
   }
@@ -293,3 +333,4 @@ export class AuthService {
     return null;
   }
 }
+

@@ -52,7 +52,7 @@ public class DeleteRequestService {
         String normalizedCompanyName = normalizeCompanyName(companyName);
         VerifiedRecord record = verify(codeType, code);
         if (record == null) {
-            throw new IllegalArgumentException("This code is not present in the table, so it cannot be deleted.");
+            throw new IllegalArgumentException("This code was not found in the records, so it cannot be deleted.");
         }
         String verifiedCompanyName = record.companyName == null ? "" : record.companyName.trim();
         if (verifiedCompanyName.isEmpty()

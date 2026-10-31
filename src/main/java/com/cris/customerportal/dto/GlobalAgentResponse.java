@@ -8,7 +8,7 @@ public class GlobalAgentResponse {
     private String email;
     private String mobile;
     private String status;
-    // Additional MEMGLBLHNDGAGNT columns exposed for Old User / Handling Agent mode
+    // Additional Handling Agent columns exposed for Old User / Handling Agent mode
     private String panNumber;
     private String gstinNumbers;
     private String centBlng;

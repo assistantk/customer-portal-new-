@@ -233,7 +233,9 @@ class RmsAuthControllerTest {
         HttpSession newSession = mock(HttpSession.class);
         when(request.getSession(true)).thenReturn(newSession);
 
-        RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("123456");
+        RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("78901");
+        doReturn(new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y", "sreeju@cris.org.in", "9910303868"))
+                .when(orchestrator).verifyOtp(eq(ctx), eq("78901"), anyString());
         ResponseEntity<?> response = controller.verifyOtp(req, request);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -252,12 +254,48 @@ class RmsAuthControllerTest {
         ctx.setSelectedDesignation("SR-DCM");
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
 
-        RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("000000");
+        RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("00000");
+        doThrow(new RmsAuthOrchestrator.InvalidRmsCredentialsException("Invalid OTP. Please enter the valid OTP."))
+                .when(orchestrator).verifyOtp(eq(ctx), eq("00000"), anyString());
         ResponseEntity<?> response = controller.verifyOtp(req, request);
 
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertNotNull(body);
         assertFalse((Boolean) body.get("success"));
+    }
+
+    @Test
+    void getOtpStatus_noSession_returnsNotSuccess() {
+        when(request.getSession(false)).thenReturn(null);
+        ResponseEntity<?> response = controller.getOtpStatus(request);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+    }
+
+    @Test
+    void getOtpStatus_activeSession_returnsContextAndCooldown() {
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setUserName("SREEJU KRISHNAN");
+        ctx.setDivisionCode("TKD");
+        ctx.setSelectedDesignation("SR-DCM");
+        ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
+        when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
+
+        ResponseEntity<?> response = controller.getOtpStatus(request);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertNotNull(body);
+        assertTrue((Boolean) body.get("success"));
+        Map<?, ?> data = (Map<?, ?>) body.get("data");
+        assertNotNull(data);
+        assertEquals("OTP_PENDING", data.get("step"));
+        assertEquals("SREEJU", data.get("userId"));
+        assertEquals("TKD", data.get("divisionCode"));
+        assertEquals("SR-DCM", data.get("selectedDesignation"));
+        assertNotNull(data.get("resendCooldownSeconds"));
     }
 }

@@ -437,14 +437,16 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   });
 
   describe('Address OCR autofill', () => {
-    it('keeps a manually edited address when OCR finishes', async () => {
+    it('displays validation error and does not truncate when OCR extracts company name > 40 chars', async () => {
       component.mode = 'new';
-      component.form.companyName = 'Test Corporation';
-      component.form.address = 'Manual business address';
-      component.handleAddressInput();
+      component.form.companyName = '';
+      const longName = 'BHARAT HEAVY LOGISTICS ENTERPRISES PRIVATE LIMITED';
       panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
         gstin: '07ABCDE1234F1Z5',
-        address: 'Extracted address from GST certificate, 110001',
+        businessName: longName,
+        tradeName: longName,
+        companyNameTooLong: true,
+        address: '10 Industrial Area, Delhi',
         city: 'Delhi',
         pincode: '110001',
         stateName: 'Delhi'
@@ -455,8 +457,139 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         target: { files: [file] }
       } as unknown as Event);
 
-      expect(component.addressManuallyEdited).toBe(true);
-      expect(component.form.address).toBe('Manual business address');
+      expect(component.form.companyName).toBe(longName);
+      expect(component.errors['companyName']).toBe(
+        'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.'
+      );
+    });
+
+    it('displays validation error when OCR extracts a PAN that mismatches GSTIN', async () => {
+      component.mode = 'new';
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07ABCDE1234F1Z5',
+        pan: 'XYZAB9999K',
+        panMismatch: true,
+        businessName: 'Valid Co',
+        tradeName: 'Valid Co',
+        companyNameTooLong: false,
+        address: '10 Industrial Area, Delhi',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+      const file = new File(['pdf'], 'gst.pdf', { type: 'application/pdf' });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [file] }
+      } as unknown as Event);
+
+      expect(component.errors['panNumber']).toBe('Extracted PAN does not match the GSTIN.');
+    });
+
+    it('clears previous OCR data and populates new certificate data when uploading a certificate', async () => {
+      component.mode = 'new';
+      // Previously populated Company A data
+      component.form.companyName = 'Company A';
+      component.form.customerCode = 'COMA';
+      component.form.panNumber = 'AAAAA1111A';
+      component.form.address = 'Old Address A';
+      component.form.city = 'Old City A';
+      component.form.pincode = '111111';
+      component.gstins[0].gstin = '07AAAAA1111A1Z1';
+
+      // Uploading Certificate B
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '27BBBBB2222B1Z2',
+        businessName: 'Company B',
+        tradeName: 'Company B',
+        pan: 'BBBBB2222B',
+        address: 'New Address B, 400001',
+        city: 'Mumbai',
+        pincode: '400001',
+        stateName: 'Maharashtra'
+      });
+      const fileB = new File(['pdf'], 'cert_b.pdf', { type: 'application/pdf' });
+      const mockInput = { files: [fileB], value: 'cert_b.pdf' };
+
+      await component.handleGstinFileChange(0, {
+        target: mockInput
+      } as unknown as Event);
+
+      // All fields should now contain Company B information only
+      expect(component.gstins[0].gstin).toBe('27BBBBB2222B1Z2');
+      expect(component.form.companyName).toBe('Company B');
+      expect(component.form.panNumber).toBe('BBBBB2222B');
+      expect(component.form.address).toContain('New Address B');
+      expect(component.form.city).toBe('Mumbai');
+      expect(component.form.pincode).toBe('400001');
+      expect(mockInput.value).toBe('');
+    });
+
+    it('clears previous data and leaves fields empty when new certificate OCR fails', async () => {
+      component.mode = 'new';
+      // Previously populated Company A data
+      component.form.companyName = 'Company A';
+      component.form.panNumber = 'AAAAA1111A';
+      component.form.address = 'Old Address A';
+      component.form.city = 'Old City A';
+      component.form.pincode = '111111';
+      component.gstins[0].gstin = '07AAAAA1111A1Z1';
+
+      // Certificate B fails OCR
+      panOcrServiceMock.extractGstinFromFile.mockRejectedValue(new Error('Corrupt document'));
+      const file = new File(['pdf'], 'corrupt.pdf', { type: 'application/pdf' });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [file] }
+      } as unknown as Event);
+
+      // Previous data should NOT be retained; all fields must remain empty
+      expect(component.form.companyName).toBe('');
+      expect(component.form.panNumber).toBe('');
+      expect(component.form.address).toBe('');
+      expect(component.form.city).toBe('');
+      expect(component.form.pincode).toBe('');
+      expect(component.gstins[0].gstin).toBe('');
+      expect(component.errors['gstin_0_gstin']).toContain('GSTIN could not be extracted');
+    });
+
+    it('discards results of older OCR requests when a newer upload is initiated', async () => {
+      component.mode = 'new';
+      let resolveSlowOcr: (val: any) => void;
+      const slowPromise = new Promise((resolve) => { resolveSlowOcr = resolve; });
+
+      panOcrServiceMock.extractGstinFromFile.mockReturnValueOnce(slowPromise);
+      const fileA = new File(['pdf'], 'cert_a.pdf', { type: 'application/pdf' });
+      const promiseA = component.handleGstinFileChange(0, { target: { files: [fileA] } } as unknown as Event);
+
+      // Now upload Certificate B which resolves quickly
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValueOnce({
+        gstin: '27BBBBB2222B1Z2',
+        businessName: 'Company B',
+        pan: 'BBBBB2222B',
+        address: 'Address B',
+        city: 'Mumbai',
+        pincode: '400001'
+      });
+      const fileB = new File(['pdf'], 'cert_b.pdf', { type: 'application/pdf' });
+      await component.handleGstinFileChange(0, { target: { files: [fileB] } } as unknown as Event);
+
+      // Now Certificate A resolves after Certificate B
+      resolveSlowOcr!({
+        gstin: '07AAAAA1111A1Z1',
+        businessName: 'Company A',
+        pan: 'AAAAA1111A',
+        address: 'Address A',
+        city: 'Delhi',
+        pincode: '110001'
+      });
+      await promiseA;
+
+      // Only Company B information should be present in the form
+      expect(component.gstins[0].gstin).toBe('27BBBBB2222B1Z2');
+      expect(component.form.companyName).toBe('Company B');
+      expect(component.form.panNumber).toBe('BBBBB2222B');
+      expect(component.form.city).toBe('Mumbai');
     });
 
     it('rejects a manually entered address longer than 100 characters', () => {
