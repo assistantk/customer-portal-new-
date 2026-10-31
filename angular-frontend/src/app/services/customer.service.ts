@@ -311,7 +311,7 @@ export class CustomerService {
     });
   }
 
-  /* ---------- Ownership Section 1: MEMWGONOWNRSHIP ---------- */
+  /* ---------- Ownership Section 1: Ownership Code ---------- */
   lookupOwnershipJDBC(code: string): Observable<any> {
     const trimmed = (code || '').trim().toUpperCase();
     return this.http.get<any>(`${this.API}/customers/ownership-lookup`, {
@@ -345,7 +345,7 @@ export class CustomerService {
     }, { withCredentials: true });
   }
 
-  /* ---------- Ownership Section 2: MEMWGONOWNRPRTY ---------- */
+  /* ---------- Ownership Section 2: Ownership Party Code ---------- */
   lookupOwnershipPartyJDBC(code: string): Observable<any> {
     const trimmed = (code || '').trim().toUpperCase();
     return this.http.get<any>(`${this.API}/customers/ownership-party-lookup`, {

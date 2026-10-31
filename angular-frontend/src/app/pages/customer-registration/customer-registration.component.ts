@@ -190,6 +190,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   deleteSubmitting = false;
   private codeTimer: any = null;
   private codeRequestId = 0;
+  private ocrRequestId = 0;
 
   // Dropdown states
   zoneOpen = false;
@@ -374,7 +375,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (result) => {
         if (!result.found) {
-          this.deleteVerificationMessage = 'This code is not present in the table, so it cannot be deleted.';
+          this.deleteVerificationMessage = 'This code is not present in the records, so it cannot be deleted.';
           return;
         }
         const verifiedCode = result.code || code;
@@ -444,7 +445,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteSuccessMessage = '';
   }
 
-  /* ===== Ownership Section 1: lookup in MEMWGONOWNRSHIP ===== */
+  /* ===== Ownership Section 1: Ownership Code lookup ===== */
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
@@ -511,7 +512,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
-  /* ===== Ownership Section 2: lookup in MEMWGONOWNRPRTY ===== */
+  /* ===== Ownership Section 2: Ownership Party Code lookup ===== */
   handleOwnershipPartyCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipPartyCode = upperCode;
@@ -672,7 +673,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.codeTimer) clearTimeout(this.codeTimer);
 
     if (newName.length > 40) {
-      this.errors['companyName'] = 'Company name cannot exceed 40 characters.';
+      this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
       this.form.customerCode = '';
       this.codeChecking = false;
       return;
@@ -753,7 +754,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (!this.form[k]) e[k] = 'This field is required';
     });
     if ((this.form.companyName || '').length > 40) {
-      e['companyName'] = 'Company name cannot exceed 40 characters.';
+      e['companyName'] = this.errors['companyName'] || 'Company name cannot exceed 40 characters.';
     }
 
     if (this.form.address && this.form.address.length > 100) e['address'] = 'Address cannot exceed 100 characters.';
@@ -1143,47 +1144,85 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
-    const selected = input.files?.[0];
+    const selected = input?.files?.[0];
+    if (input) {
+      input.value = '';
+    }
     if (!selected) return;
+
+    const currentReqId = ++this.ocrRequestId;
+
+    // 1. Immediately clear all previously extracted OCR values across the 6 fields
+    this.form.companyName = '';
+    this.form.customerCode = '';
+    this.form.panNumber = '';
+    this.form.address = '';
+    this.form.city = '';
+    this.form.pincode = '';
+    this.addressStatus = '';
+    this.addressManuallyEdited = false;
+    this.ocrAutoFillApplied = false;
+
+    // Clear previous OCR validation errors and warnings
+    delete this.errors['companyName'];
+    delete this.errors['customerCode'];
+    delete this.errors['panNumber'];
+    delete this.errors['address'];
+    delete this.errors['city'];
+    delete this.errors['pincode'];
+    delete this.errors[`gstin_${index}_gstin`];
+    delete this.errors[`gstin_${index}_file`];
+    delete this.errors[`gstin_${index}_state`];
+
+    // Clear previous GSTIN processing results for this entry
+    if (this.gstins[index]) {
+      this.gstins[index].gstin = '';
+      this.gstins[index].state = '';
+    }
+    if (index === 0 && this.gstins.length > 1) {
+      this.gstins = [this.gstins[0]];
+    }
+
     const error = this.checkFile(selected);
     if (error) {
       this.handleGstinChange(index, { file: null, scanning: false, scanStatus: 'error', scanError: error });
       this.errors[`gstin_${index}_file`] = error;
+      this.cdr.markForCheck();
       return;
     }
 
     this.handleGstinChange(index, { file: selected, scanning: true, scanStatus: 'processing', scanError: '' });
-    delete this.errors[`gstin_${index}_file`];
+    this.cdr.markForCheck();
 
     try {
-      const { gstin, stateName, address, city, pincode, tradeName, legalName, businessName } = await this.panOcrService.extractGstinFromFile(selected);
-      const extractedCompany = businessName || tradeName || legalName;
+      const {
+        gstin,
+        stateName,
+        address,
+        city,
+        pincode,
+        tradeName,
+        legalName,
+        businessName,
+        pan: ocrPan,
+        panMismatch,
+        companyNameTooLong
+      } = await this.panOcrService.extractGstinFromFile(selected);
 
-      if (index === 0 && extractedCompany && (!this.form.companyName || !this.form.companyName.trim() || this.form.companyName === 'NA')) {
-        if (this.mode === 'new') {
-          this.handleNewCompanyNameChange(extractedCompany);
-        } else {
-          this.form.companyName = extractedCompany;
-        }
-        delete this.errors['companyName'];
-        this.ocrAutoFillApplied = true;
+      // Prevent an older OCR request from overwriting a newer upload
+      if (currentReqId !== this.ocrRequestId) {
+        return;
       }
 
       const normalizedGstin = normalizeDocumentNumber(gstin);
-      const extractedPan = gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '';
+      const gstinDerivedPan = gstinRe.test(normalizedGstin) ? normalizedGstin.slice(2, 12) : '';
+      const extractedPan = ocrPan || gstinDerivedPan;
 
       if (!gstinRe.test(normalizedGstin)) {
         const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
         this.handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
         this.errors[`gstin_${index}_gstin`] = message;
-        return;
-      }
-
-      if (!panRe.test(extractedPan)) {
-        const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
-        this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
-        this.errors['panNumber'] = 'PAN could not be derived because the extracted GSTIN is invalid.';
-        this.errors[`gstin_${index}_gstin`] = message;
+        // Keep form fields empty as requested
         return;
       }
 
@@ -1198,39 +1237,64 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         updates.state = derivedState;
       }
       this.handleGstinChange(index, updates);
-
-      this.form.panNumber = extractedPan;
-      delete this.errors['panNumber'];
-
-      if (index === 0) {
-        if (city && (!this.form.city || !this.form.city.trim())) {
-          this.form.city = city;
-          delete this.errors['city'];
-        }
-        if (pincode && (!this.form.pincode || !this.form.pincode.trim())) {
-          this.form.pincode = pincode;
-          delete this.errors['pincode'];
-        }
-        const cleanedAddress = cleanAndShortenAddress(address);
-        if (cleanedAddress && !this.addressManuallyEdited) {
-          if (this.form.address && addressesMatch(this.form.address, cleanedAddress)) {
-            this.addressStatus = 'verified';
-          } else {
-            this.addressStatus = !this.form.address ? 'auto-filled' : 'auto-corrected';
-            this.form.address = cleanedAddress;
-            delete this.errors['address'];
-            if (pincode && (!this.form.pincode || !this.form.pincode.trim())) this.form.pincode = pincode;
-            if (city && (!this.form.city || !this.form.city.trim())) this.form.city = city;
-          }
-        } else if (!cleanedAddress && !this.addressManuallyEdited) {
-          this.addressStatus = 'extraction-failed';
-        }
-        this.ocrAutoFillApplied = true;
-      }
-
       delete this.errors[`gstin_${index}_gstin`];
       delete this.errors[`gstin_${index}_state`];
+
+      // 1. Company Name
+      const extractedCompany = businessName || tradeName || legalName;
+      if (extractedCompany) {
+        if (this.mode === 'new') {
+          this.handleNewCompanyNameChange(extractedCompany);
+        } else {
+          this.form.companyName = extractedCompany;
+        }
+        if (extractedCompany.length > 40 || companyNameTooLong) {
+          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+        } else {
+          delete this.errors['companyName'];
+        }
+      }
+
+      // 2. PAN Number
+      if (panMismatch || (ocrPan && gstinDerivedPan && ocrPan !== gstinDerivedPan)) {
+        this.errors['panNumber'] = 'Extracted PAN does not match the GSTIN.';
+        this.form.panNumber = ocrPan || gstinDerivedPan;
+      } else if (!panRe.test(extractedPan)) {
+        const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
+        this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
+        this.errors['panNumber'] = 'PAN could not be derived because the extracted GSTIN is invalid.';
+        this.errors[`gstin_${index}_gstin`] = message;
+        return;
+      } else {
+        this.form.panNumber = extractedPan;
+        delete this.errors['panNumber'];
+      }
+
+      // 3. Address
+      const cleanedAddress = cleanAndShortenAddress(address);
+      if (cleanedAddress) {
+        this.form.address = cleanedAddress;
+        this.addressStatus = 'auto-filled';
+        delete this.errors['address'];
+      } else {
+        this.addressStatus = 'extraction-failed';
+      }
+
+      // 4. City Name
+      if (city) {
+        this.form.city = city;
+        delete this.errors['city'];
+      }
+
+      // 5. PIN Code
+      if (pincode) {
+        this.form.pincode = pincode;
+        delete this.errors['pincode'];
+      }
+
+      this.ocrAutoFillApplied = true;
     } catch (err) {
+      if (currentReqId !== this.ocrRequestId) return;
       console.error('GSTIN OCR scan failed:', err);
       const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
         ? `${err.message} Please upload a shorter PDF.`
@@ -1238,7 +1302,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
     } finally {
-      this.cdr.markForCheck();
+      if (currentReqId === this.ocrRequestId) {
+        this.cdr.markForCheck();
+      }
     }
   }
 

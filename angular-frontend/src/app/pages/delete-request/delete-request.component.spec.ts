@@ -151,7 +151,7 @@ describe('DeleteRequestComponent', () => {
     customerService.verifyDeleteRequest.mockReturnValue(of({ success: true, found: false }));
     component.verifyCode();
     expect(component.verificationMessage)
-      .toBe('This code is not present in the table, so it cannot be deleted.');
+      .toBe('This code is not present in the records, so it cannot be deleted.');
 
     customerService.verifyDeleteRequest.mockReturnValue(throwError(() => new Error('offline')));
     component.verifyCode();

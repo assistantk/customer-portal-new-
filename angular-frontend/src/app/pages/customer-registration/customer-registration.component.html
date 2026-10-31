@@ -199,8 +199,8 @@
                     />
                     <!-- Ownership Section 1 status icons -->
                     <svg *ngIf="mode === 'ownership' && ownSection1Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && ownSection1Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in MEMWGONOWNRSHIP" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === true" width="14" height="14" class="field-status code-ok" title="Found in MEMWGONOWNRSHIP" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && ownSection1Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in Ownership Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg *ngIf="mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === true" width="14" height="14" class="field-status code-ok" title="Found in Ownership Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     <svg *ngIf="mode === 'ownership' && !ownSection1Loading && !ownSection1Duplicate && ownSection1Found === false" width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);" title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <!-- Old mode status icons -->
                     <svg *ngIf="mode !== 'ownership' && lookupLoading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -213,7 +213,7 @@
                 <small *ngIf="mode === 'ownership' && !errors['ownershipCode'] && ownSection1Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Global Customer record found - a new ownership INSERT request can be submitted.</small>
                 <small *ngIf="mode === 'ownership' && ownSection1LookupError" class="error">{{ ownSection1LookupError }}</small>
                 <small *ngIf="mode === 'ownership' && ownSection1Duplicate && !errors['ownershipCode']" class="error" style="display: flex; align-items: center; gap: 4px;">
-                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Code already exists in MEMWGONOWNRSHIP. Duplicate entries are not allowed.
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Code already exists in Ownership Code records. Duplicate entries are not allowed.
                 </small>
             </div>
 
@@ -250,7 +250,7 @@
                 <label for="companyName">{{ codeType === 'HANDLING_AGENT' ? 'Agent / Company Name' : 'Company Name' }} <b>*</b></label>
                 <div class="control" [class.invalid]="errors['companyName']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                    <input id="companyName" name="companyName" [(ngModel)]="form.companyName" maxlength="40" [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'" />
+                    <input id="companyName" name="companyName" [(ngModel)]="form.companyName" [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40" [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'" />
                 </div>
                 <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
             </div>
@@ -274,7 +274,7 @@
                         id="companyName"
                         name="companyName"
                         [value]="form.companyName"
-                        maxlength="40"
+                        [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40"
                         [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'"
                         (input)="handleNewCompanyNameChange($any($event.target).value)"
                     />
@@ -433,7 +433,7 @@
 
         </div>
 
-        <!-- === Ownership Details (Section 2: MEMWGONOWNRPRTY) - shown only in ownership mode === -->
+        <!-- === Ownership Details (Section 2: Ownership Party Code) - shown only in ownership mode === -->
         <div *ngIf="mode === 'ownership'" class="gstins-container" style="margin-top: 16px;">
             <div class="gstins-header">
                 <h3>Ownership Details</h3>
@@ -454,14 +454,14 @@
                             style="text-transform: uppercase;"
                         />
                         <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in MEMWGONOWNRPRTY" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status code-ok" title="Found in MEMWGONOWNRPRTY" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in Ownership Party Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status code-ok" title="Found in Ownership Party Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                         <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === false" width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);" title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     </div>
                     <small *ngIf="errors['ownershipPartyCode']" class="error">{{ errors['ownershipPartyCode'] }}</small>
                     <small *ngIf="ownSection2LookupError" class="error">{{ ownSection2LookupError }}</small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error" style="display: flex; align-items: center; gap: 4px;">
-                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Code already exists in MEMWGONOWNRPRTY. Duplicate entries are not allowed.
+                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Party Code already exists in Ownership Party Code records. Duplicate entries are not allowed.
                     </small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Existing ownership record found - changes will be sent as an UPDATE request.</small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Global Customer record found - a new ownership INSERT request can be submitted.</small>
@@ -545,8 +545,8 @@
                                 <option value="HANDLING_AGENT">Handling Agent Code</option>
                             </select>
                         </div>
-                        <small *ngIf="deleteCodeType === 'GLOBAL_CUSTOMER'">Table: MEMGLBLCUST</small>
-                        <small *ngIf="deleteCodeType === 'HANDLING_AGENT'">Table: MEMGLBLHNDGAGNT</small>
+                        <small *ngIf="deleteCodeType === 'GLOBAL_CUSTOMER'">Record Type: Global Customer Code</small>
+                        <small *ngIf="deleteCodeType === 'HANDLING_AGENT'">Record Type: Handling Agent Code</small>
                     </div>
 
                     <div class="field">
