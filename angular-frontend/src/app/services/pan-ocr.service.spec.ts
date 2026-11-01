@@ -5,17 +5,17 @@ describe('GSTIN OCR text extraction', () => {
   it('removes repeated place names while preserving their first spelling and order', () => {
     expect(cleanAndShortenAddress(
       'Paradip, Madhuban, Madhuban, Madhuban, Paradip, Jagatsinghapur, Odisha, 754142'
-    )).toBe('Paradip, Madhuban, Jagatsinghapur, Odisha, 754142');
+    )).toBe('Paradip,Madhuban,Jagatsinghapur,Odisha,754142');
   });
 
   it('removes repeated words without changing legitimate place names or digits', () => {
     expect(cleanAndShortenAddress('JAGATSINGHAPUR, Plot Plot 12, Road Road No. 4, 754142'))
-      .toBe('JAGATSINGHAPUR, Plot 12, Road No. 4, 754142');
+      .toBe('JAGATSINGHAPUR,Plot 12,Road No. 4,754142');
   });
 
   it('cleans whitespace and punctuation without shortening addresses under the limit', () => {
     expect(cleanAndShortenAddress('  Address: 10,, Sunrise Complex\n  MG Road  '))
-      .toBe('10, Sunrise Complex, MG Road');
+      .toBe('10,Sunrise Complex,MG Road');
   });
 
   it('shortens long addresses while preserving the house number, locality, and PIN code', () => {
@@ -28,6 +28,12 @@ describe('GSTIN OCR text extraction', () => {
     expect(address).toContain('Industrial Area Phase Three');
     expect(address).toContain('411001');
     expect(address).not.toContain('Central Railway Station');
+  });
+
+  it('removes spaces immediately following commas without removing spaces between words', () => {
+    const input = 'SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004';
+    const expected = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004';
+    expect(cleanAndShortenAddress(input)).toBe(expected);
   });
 
   it('handles empty OCR results safely', () => {
@@ -78,7 +84,7 @@ describe('GSTIN OCR text extraction', () => {
       pan: 'AAPFU0939F',
       panMismatch: false,
       companyNameTooLong: false,
-      address: '10, Sunrise Complex, Mg Road, Central Market, Pune, Maharashtra, 411001',
+      address: '10,Sunrise Complex,Mg Road,Central Market,Pune,Maharashtra,411001',
       city: 'Pune',
       pincode: '411001',
       state: 'Maharashtra',

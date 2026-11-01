@@ -320,6 +320,11 @@ public class CustomerServiceImpl implements CustomerService {
   return null;
  }
 
+ public static String normalizeAddress(String address) {
+  if (address == null) return null;
+  return address.replaceAll(",\\s+", ",").trim();
+ }
+
  public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
   String type = formData.get("codeType");
   if (type != null) type = type.trim().toLowerCase(Locale.ROOT);
@@ -333,7 +338,12 @@ public class CustomerServiceImpl implements CustomerService {
    }
   }
   validateCompanyNameLength(firstValue(formData, "companyName", "customerName"));
-  if (formData.get("address").length() > 100) {
+  String rawAddress = firstValue(formData, "address");
+  String address = normalizeAddress(rawAddress);
+  if (address == null || address.isEmpty()) {
+   throw new IllegalArgumentException("address is required");
+  }
+  if (address.length() > 100) {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
   String pincode = firstValue(formData, "pincode");
@@ -382,7 +392,7 @@ public class CustomerServiceImpl implements CustomerService {
   }
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
-   String address = formData.get("address");
+
 
   String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
   sql = "global".equals(type)
@@ -492,7 +502,12 @@ public class CustomerServiceImpl implements CustomerService {
   current.put(gstColumn, oldCustomer.getGstinNumbers());
   Map<String, String> requested = new LinkedHashMap<>();
   requested.put(nameColumn, formData.get("companyName"));
-  requested.put(addressColumn, formData.get("address"));
+  String rawAddress = formData.get("address");
+  String updateAddress = normalizeAddress(rawAddress);
+  if (updateAddress != null && updateAddress.length() > 100) {
+   throw new IllegalArgumentException("Address cannot exceed 100 characters.");
+  }
+  requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, formData.get("city"));
   requested.put(panColumn, formData.get("panNumber"));
   requested.put(gstColumn, formData.get("gstinNumbers"));

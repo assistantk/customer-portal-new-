@@ -218,7 +218,7 @@ export function cleanAndShortenAddress(address: string | null | undefined, maxLe
     .replace(/\s+/g, ' ')
     .replace(/[,;:]\s*[,;:]+/g, ',')
     .replace(/\.{2,}/g, '.')
-    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s*,\s*/g, ',')
     .trim();
 
   const pinLabel = /\b(?:pin\s*code|pincode)\b\s*[:\-]?\s*([1-9]\d{5})\b/i.exec(normalized);
@@ -254,7 +254,7 @@ export function cleanAndShortenAddress(address: string | null | undefined, maxLe
     return cleaned;
   }).filter(Boolean);
 
-  const needsShortening = [...segments, ...(pin ? [pin] : [])].join(', ').length > limit;
+  const needsShortening = [...segments, ...(pin ? [pin] : [])].join(',').length > limit;
   const abbreviated = needsShortening
     ? segments.map(segment => segment
       .replace(/\bNEAR\b/gi, 'Nr')
@@ -273,7 +273,7 @@ export function cleanAndShortenAddress(address: string | null | undefined, maxLe
     if (/\b(?:road|rd|street|st|locality|sector|colony|area|nagar)\b/i.test(segment)) return 4;
     return 1;
   };
-  const render = () => [...abbreviated, ...(pin ? [pin] : [])].join(', ');
+  const render = () => [...abbreviated, ...(pin ? [pin] : [])].join(',').replace(/,\s+/g, ',').trim();
 
   while (render().length > limit && abbreviated.length > 1) {
     let removeIndex = 1;
@@ -290,7 +290,7 @@ export function cleanAndShortenAddress(address: string | null | undefined, maxLe
   const result = render();
   if (result.length <= limit) return result;
 
-  const pinSuffix = pin && pin.length < limit ? `, ${pin}` : '';
+  const pinSuffix = pin && pin.length < limit ? `,${pin}` : '';
   const addressBudget = Math.max(0, limit - pinSuffix.length);
   const coreAddress = abbreviated[0] || '';
   const words: string[] = [];
@@ -303,7 +303,7 @@ export function cleanAndShortenAddress(address: string | null | undefined, maxLe
   if (!shortened && coreAddress && addressBudget > 0) {
     shortened = coreAddress.slice(0, addressBudget);
   }
-  return `${shortened}${pinSuffix}`.slice(0, limit).trim();
+  return `${shortened}${pinSuffix}`.replace(/,\s+/g, ',').slice(0, limit).trim();
 }
 
 function titleCase(value: string): string {

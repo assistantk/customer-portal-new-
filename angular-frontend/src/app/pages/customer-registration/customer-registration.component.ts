@@ -476,7 +476,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 this.ownSection1Source = resp.data.recordSource;
               } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.form.address = resp.data.address || '';
+                this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
                 this.form.panNumber = resp.data.panNumber || '';
                 this.form.city = resp.data.city || '';
                 this.form.pincode = resp.data.pincode || '';
@@ -606,7 +606,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             if (requestId !== this.lookupRequestId) return;
             this.form.companyName = customer.companyName || '';
             this.form.customerCode = code;
-            this.form.address = customer.address || '';
+            this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
             this.form.city = customer.city || '';
             this.form.pincode = customer.pincode || '';
             this.form.panNumber = customer.panNumber || '';
@@ -757,6 +757,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       e['companyName'] = this.errors['companyName'] || 'Company name cannot exceed 40 characters.';
     }
 
+    if (this.form.address) {
+      this.form.address = this.getNormalizedAddress(this.form.address);
+    }
     if (this.form.address && this.form.address.length > 100) e['address'] = 'Address cannot exceed 100 characters.';
     if (this.form.email?.trim() && !/^\S+@\S+\.\S+$/.test(this.form.email.trim())) e['email'] = 'Invalid email';
     if (this.form.mobile?.trim() && !mobileRe.test(this.form.mobile.trim())) e['mobile'] = 'Enter a valid 10-digit Indian mobile number';
@@ -1022,7 +1025,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 next: (refreshed: any) => {
                   if (refreshed) {
                     this.form.companyName = refreshed.companyName || this.form.companyName;
-                    this.form.address = refreshed.address || this.form.address;
+                    this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
                     this.form.city = refreshed.city || this.form.city;
                     this.form.panNumber = refreshed.panNumber || this.form.panNumber;
                     this.form.email = refreshed.email || refreshed.emailId || this.form.email;
@@ -1134,10 +1137,39 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     });
   }
 
+  get normalizedAddressLength(): number {
+    return this.getNormalizedAddress(this.form.address).length;
+  }
+
+  getNormalizedAddress(address: string | null | undefined): string {
+    if (!address) return '';
+    return address.replace(/,\s+/g, ',').trim();
+  }
+
+  handleAddressBlur(): void {
+    if (this.form.address) {
+      this.form.address = this.getNormalizedAddress(this.form.address);
+    }
+  }
+
+  handleAddressPaste(e: ClipboardEvent): void {
+    const text = e.clipboardData?.getData('text');
+    if (text && /,\s+/.test(text)) {
+      e.preventDefault();
+      const normalized = text.replace(/,\s+/g, ',');
+      const target = e.target as HTMLInputElement;
+      const start = target?.selectionStart ?? (this.form.address || '').length;
+      const end = target?.selectionEnd ?? (this.form.address || '').length;
+      const current = this.form.address || '';
+      this.form.address = current.slice(0, start) + normalized + current.slice(end);
+      this.handleAddressInput();
+    }
+  }
+
   handleAddressInput(): void {
     this.addressManuallyEdited = true;
     this.addressStatus = '';
-    if (this.errors['address'] === 'Address cannot exceed 100 characters.' && this.form.address.length <= 100) {
+    if (this.errors['address'] === 'Address cannot exceed 100 characters.' && this.normalizedAddressLength <= 100) {
       delete this.errors['address'];
     }
   }
