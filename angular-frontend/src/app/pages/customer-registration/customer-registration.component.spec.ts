@@ -603,6 +603,37 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.validate()).toBe(false);
       expect(component.errors['address']).toBe('Address cannot exceed 100 characters.');
     });
+
+    it('calculates normalized address length and removes spaces after commas on blur and submit', () => {
+      const enteredAddress = 'SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004';
+      component.form.address = enteredAddress;
+      component.handleAddressInput();
+      expect(component.form.address).toBe(enteredAddress);
+      expect(component.normalizedAddressLength).toBe(85);
+
+      component.handleAddressBlur();
+      expect(component.form.address).toBe('SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004');
+
+      component.form.address = ' 123 MAIN ST,  APT 4B, NEW DELHI ';
+      component.handleAddressBlur();
+      expect(component.form.address).toBe('123 MAIN ST,APT 4B,NEW DELHI');
+    });
+
+    it('allows address that exceeds 100 characters with comma spaces but fits within 100 characters when normalized', () => {
+      component.mode = 'old';
+      component.form.companyName = 'Test Corporation';
+      component.form.customerCode = 'TEST';
+      const rawAddress = 'SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004, SUITE 101';
+      expect(rawAddress.length).toBeGreaterThan(100);
+      component.form.address = rawAddress;
+      component.form.city = 'Raipur';
+      component.form.panNumber = 'ABCDE1234F';
+
+      expect(component.validate()).toBe(true);
+      expect(component.errors['address']).toBeUndefined();
+      expect(component.form.address.length).toBeLessThanOrEqual(100);
+      expect(component.form.address).toBe('SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004,SUITE 101');
+    });
   });
 
   describe('Delete Request Mode', () => {

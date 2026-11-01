@@ -309,18 +309,20 @@
                         id="address"
                         name="address"
                         [(ngModel)]="form.address"
-                        maxlength="100"
+
                         placeholder="Enter complete business address"
                         (input)="handleAddressInput()"
+                        (blur)="handleAddressBlur()"
+                        (paste)="handleAddressPaste($event)"
                     />
                 </div>
                 <small *ngIf="errors['address']" class="error">{{ errors['address'] }}</small>
                 <small
                     *ngIf="!errors['address']"
-                    [style.color]="form.address && form.address.length > 90 ? (form.address.length >= 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)'"
+                    [style.color]="normalizedAddressLength > 90 ? (normalizedAddressLength > 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)'"
                     style="font-size: 0.75rem; margin-top: 2px; display: block; text-align: right;"
                 >
-                    {{ (form.address || '').length }}/100 characters
+                    {{ normalizedAddressLength }}/100 characters
                 </small>
                 <small *ngIf="!errors['address'] && addressStatus === 'verified'" class="address-status success" style="color: var(--success, #16a34a); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Verified against GSTIN document
