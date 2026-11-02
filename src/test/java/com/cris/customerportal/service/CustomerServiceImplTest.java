@@ -82,6 +82,8 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
         when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("DELHI");
         when(lookupRs.getString("MAVPCOCODE")).thenReturn("110001");
+        when(lookupRs.getString("MAVIMPLREMK")).thenReturn("SR.DCM/RNY");
+        when(lookupRs.getString("MAVVERIFICATIONDATE")).thenReturn("2026-11-02");
 
         com.cris.customerportal.dto.OldCustomerResponse result =
                 service(dataSource, mailSender).lookupOldCustomerByCode("saeb");
@@ -90,9 +92,14 @@ class CustomerServiceImplTest {
         assertEquals("RAILWAY ROAD", result.getAddress());
         assertEquals("DELHI", result.getCity());
         assertEquals("110001", result.getPincode());
+        assertEquals("SR.DCM/RNY", result.getDivision());
+        assertEquals("2026-11-02", result.getCreationDate());
         assertEquals("ABCDE1234F", result.getPanNumber());
         verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("MAVPCOCODE") && !sql.contains("TO_CHAR(")));
+                sql.contains("MAVPCOCODE")
+                    && sql.contains("MAVIMPLREMK")
+                    && sql.contains("NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE")
+                    && !sql.contains("TO_CHAR(")));
     }
 
     @Test
@@ -252,7 +259,7 @@ class CustomerServiceImplTest {
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
             "codeType", "handling_agent",
             "customerCode", "JDPL",
-            "companyName", "M/S JINDAL PIPES LIMITED",
+            "companyName", "JINDAL PIPES LIMITED",
             "address", "22ND MILE STONE, DELHI HAPUR ROAD",
             "city", "PARBHANI",
             "pincode", "431401",
@@ -269,6 +276,38 @@ class CustomerServiceImplTest {
         ));
         assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
         verify(existsPs, never()).executeUpdate();
+    }
+
+    @Test
+    void dbaSqlEmailPrefixesHandlingAgentInsertNameWithoutChangingOtherValues() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        emailService.sendDbaSqlEmail(List.of(
+            new DbaEmailService.SqlRequest(
+                "INSERT",
+                "MEMGLBLHNDGAGNT",
+                "RINK",
+                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME, ADDRESS, CITY, COL5, COL6, COL7, COL8, COL9, COL10, GSTIN, PAN) "
+                    + "VALUES ('RINK', 'RINKU BORUAH', 'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501', "
+                    + "'TEZPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/RNY', NULL, '18AMKPB8046M2ZM', 'AMKPB8046M');"
+            ),
+            new DbaEmailService.SqlRequest(
+                "INSERT",
+                "MEMGLBLHNDGAGNT",
+                "EXISTING",
+                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('EXISTING', 'm/s Already Prefixed');"
+            )
+        ));
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        String body = message.getValue().getText();
+        assertTrue(body.contains(
+            "VALUES ('RINK', 'M/S RINKU BORUAH', 'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501', "
+                + "'TEZPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/RNY', NULL, '18AMKPB8046M2ZM', 'AMKPB8046M');"
+        ));
+        assertTrue(body.contains("VALUES ('EXISTING', 'M/S ALREADY PREFIXED');"));
+        assertFalse(body.contains("'M/S M/S"));
     }
 
     @Test
@@ -461,15 +500,17 @@ class CustomerServiceImplTest {
         when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("PT34");
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("PARTY & CO");
 
-        service(dataSource, mailSender).submitOwnershipJDBC("AB12", "O'Brien ownership", "PT34", "Party & Co");
+        service(dataSource, mailSender).submitOwnershipJDBC("AB12", "O'Brien ownership", "PT34", "m/s Party & Co");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES ('AB12', 'O''BRIEN OWNERSHIP', 'Y');"
+            "INSERT INTO MEMWGONOWNRSHIP VALUES ('AB12', 'M/S O''BRIEN OWNERSHIP', NULL, 'Y', SYSDATE, NULL);"
         ));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES ('PT34', 'PARTY & CO');"
+            "INSERT INTO MEMWGONOWNRPRTY VALUES ('PT34', 'M/S PARTY & CO');"
         ));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP ("));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY ("));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
             + "----------------------------------------1 INSERT---------------------------"));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRPRTY\nCode: PT34\n\nSQL QUERY:\n"
@@ -803,6 +844,12 @@ class CustomerServiceImplTest {
             "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
                 + "WHERE MAVHNDAGNTCODE = 'ALPS';");
         assertUpdateEmailSql(
+            "MEMGLBLHNDGAGNT",
+            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = 'm/s ALPS LOGISTICS' "
+                + "WHERE MAVHNDAGNTCODE = 'ALPS';",
+            "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
+                + "WHERE MAVHNDAGNTCODE = 'ALPS';");
+        assertUpdateEmailSql(
             "MEMWGONOWNRSHIP",
             "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'ALPS LOGISTICS' "
                 + "WHERE MAVWGONOWNRSHIPCODE = 'ALPS';",
@@ -834,6 +881,24 @@ class CustomerServiceImplTest {
         assertTrue(message.getValue().getText().contains(
             "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING'\n"
                 + "WHERE MAVGLBLCUSTCODE = 'ALPS';"));
+    }
+
+    @Test
+    void dbaAuditInsertEmailPrefixesHandlingAgentName() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        DatabaseOperationAudit audit = new DatabaseOperationAudit();
+        audit.setOperationType("INSERT");
+        audit.setTableName("MEMGLBLHNDGAGNT");
+        audit.setCustomerCode("RINK");
+        audit.setSqlStatement("INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('RINK', 'RINKU BORUAH');");
+
+        emailService.sendDbaAuditEmail(audit);
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES ('RINK', 'M/S RINKU BORUAH');"));
     }
 
     private void assertUpdateEmailSql(String table, String sql, String expectedSql) {

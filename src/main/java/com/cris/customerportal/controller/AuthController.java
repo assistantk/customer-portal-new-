@@ -1,11 +1,9 @@
 package com.cris.customerportal.controller;
 
 import com.cris.customerportal.dto.AuthUserDto;
-import com.cris.customerportal.dto.LoginRequest;
 import com.cris.customerportal.dto.RmsSelectDesignationRequest;
 import com.cris.customerportal.dto.RmsValidateUserRequest;
 import com.cris.customerportal.dto.RmsVerifyOtpRequest;
-import com.cris.customerportal.service.AuthService;
 import com.cris.customerportal.service.CaptchaService;
 import com.cris.customerportal.service.RmsApiException;
 import com.cris.customerportal.service.RmsAuthOrchestrator;
@@ -40,29 +38,25 @@ public class AuthController {
     public static final String AUTH_SESSION_KEY = "AUTHENTICATED_USER";
     public static final String RMS_SESSION_CONTEXT_KEY = "RMS_AUTH_CONTEXT";
 
-    private final AuthService authService;
     private final CaptchaService captchaService;
     private final RmsAuthOrchestrator rmsAuthOrchestrator;
     private final boolean requireHttps;
 
-    public AuthController(AuthService authService, CaptchaService captchaService) {
-        this(authService, captchaService, null, false);
+    public AuthController(CaptchaService captchaService) {
+        this(captchaService, null, false);
     }
 
     public AuthController(
-            AuthService authService,
             CaptchaService captchaService,
             RmsAuthOrchestrator rmsAuthOrchestrator) {
-        this(authService, captchaService, rmsAuthOrchestrator, false);
+        this(captchaService, rmsAuthOrchestrator, false);
     }
 
     @Autowired
     public AuthController(
-            AuthService authService,
             CaptchaService captchaService,
             @Autowired(required = false) RmsAuthOrchestrator rmsAuthOrchestrator,
             @Value("${app.security.require-https:true}") boolean requireHttps) {
-        this.authService = authService;
         this.captchaService = captchaService;
         this.rmsAuthOrchestrator = rmsAuthOrchestrator;
         this.requireHttps = requireHttps;
@@ -81,6 +75,12 @@ public class AuthController {
             return transportError;
         }
 
+        HttpSession existingSession = request.getSession(false);
+        if (existingSession != null) {
+            existingSession.removeAttribute(RMS_SESSION_CONTEXT_KEY);
+            existingSession.removeAttribute(AUTH_SESSION_KEY);
+        }
+
         String userId = requestDto != null ? requestDto.getUserId() : null;
         String password = requestDto != null ? requestDto.getPassword() : null;
         String divisionCode = requestDto != null ? requestDto.getDivisionCode() : null;
@@ -88,10 +88,8 @@ public class AuthController {
 
         String safeUserId = sanitizeForLog(userId);
         String safeDiv = sanitizeForLog(divisionCode);
-        String authMode = (rmsAuthOrchestrator != null && rmsAuthOrchestrator.isMockMode()) ? "MOCK" : "LIVE";
-
         LOGGER.info("RMS validate-user request received: userId={} divisionCode={}", safeUserId, safeDiv);
-        LOGGER.info("RMS authentication mode: {}", authMode);
+        LOGGER.info("RMS authentication mode: LIVE");
 
         if (rmsAuthOrchestrator == null) {
             LOGGER.warn("RMS authentication result: FAILED (service not configured). Status: {}. Designation step can proceed: false",
@@ -128,7 +126,7 @@ public class AuthController {
             RmsAuthSessionContext ctx = rmsAuthOrchestrator.validateCredentials(
                     userId.trim(), password, divisionCode.trim());
 
-            // Bind context to intermediate session
+            request.changeSessionId();
             HttpSession session = request.getSession(true);
             session.setAttribute(RMS_SESSION_CONTEXT_KEY, ctx);
             session.setMaxInactiveInterval(1800); // 30 min during auth flow
@@ -155,7 +153,7 @@ public class AuthController {
                     safeUserId, HttpStatus.UNAUTHORIZED.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "Invalid User ID, Email, or Password.");
+            body.put("message", ex.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
 
         } catch (RmsApiException ex) {
@@ -208,12 +206,6 @@ public class AuthController {
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
 
         if (designation == null || designation.trim().isEmpty()) {
-            if (ctx.getSelectedDesignation() != null && !ctx.getSelectedDesignation().trim().isEmpty()) {
-                designation = ctx.getSelectedDesignation();
-            }
-        }
-
-        if (designation == null || designation.trim().isEmpty()) {
             LOGGER.info("RMS select-designation result: FAILED (empty designation). Status: {}", HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
@@ -255,7 +247,7 @@ public class AuthController {
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("accessDenied", true);
-            body.put("message", "Access Restricted: This website is available only to authorized Senior DCM / Senior DFM users. Your selected designation does not have permission to access this application.");
+            body.put("message", "Access Restricted: This website is available only to users with the SR-DCM role.");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
@@ -299,8 +291,9 @@ public class AuthController {
         }
 
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
-        if (requestDto != null && requestDto.getDesignation() != null && !requestDto.getDesignation().trim().isEmpty()) {
-            ctx.setSelectedDesignation(requestDto.getDesignation().trim());
+        if (requestDto != null && requestDto.getDesignation() != null
+                && !requestDto.getDesignation().trim().equalsIgnoreCase(ctx.getSelectedDesignation())) {
+            return ResponseEntity.badRequest().body(errorBody("Selected designation does not match the authenticated session."));
         }
         try {
             String clientIp = extractClientIp(request);
@@ -454,50 +447,18 @@ public class AuthController {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Legacy Login (Deprecated - multi-step login enforced)
+    // Legacy local authentication is disabled; credentials must use the RMS validation flow.
     // ─────────────────────────────────────────────────────────────
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
-        ResponseEntity<?> transportError = requireHttps(request);
-        if (transportError != null) {
-            return transportError;
+    public ResponseEntity<?> legacyLogin(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
         }
-
-        String userId = loginRequest != null ? loginRequest.getEffectiveUserId() : null;
-        String password = loginRequest != null ? loginRequest.getPassword() : null;
-        String captchaInput = loginRequest != null ? loginRequest.getCaptchaInput() : null;
-
-        if (userId == null || userId.isEmpty() || password == null || password.isEmpty()
-                || captchaInput == null || captchaInput.trim().isEmpty()) {
-            Map<String, Object> body = new HashMap<>();
-            body.put("success", false);
-            body.put("message", "User ID, Password, and CAPTCHA are required.");
-            return ResponseEntity.badRequest().body(body);
-        }
-
-        HttpSession captchaSession = request.getSession(false);
-        if (captchaSession == null || !captchaService.consumeChallenge(captchaSession, captchaInput.trim())) {
-            Map<String, Object> body = new HashMap<>();
-            body.put("success", false);
-            body.put("message", "CAPTCHA validation failed. Please refresh and try again.");
-            return ResponseEntity.badRequest().body(body);
-        }
-
-        // Authenticate against AEM if available
-        AuthUserDto user = authService.authenticate(userId, password);
-        HttpSession oldSession = request.getSession(false);
-        if (oldSession != null) {
-            oldSession.invalidate();
-        }
-        HttpSession newSession = request.getSession(true);
-        newSession.setAttribute(AUTH_SESSION_KEY, user);
-        newSession.setMaxInactiveInterval(3600);
-
         Map<String, Object> body = new HashMap<>();
-        body.put("success", true);
-        body.put("message", "Login successful.");
-        body.put("data", user);
-        return ResponseEntity.ok(body);
+        body.put("success", false);
+        body.put("message", "Use the RMS credential validation flow to log in.");
+        return ResponseEntity.status(HttpStatus.GONE).body(body);
     }
 
     @GetMapping("/captcha")

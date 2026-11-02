@@ -27,11 +27,11 @@ public class RmsApiResponse {
     private JsonNode statusNode;
 
     @JsonProperty("F_MSG")
-    @JsonAlias({"message", "MESSAGE", "F_MESSAGE", "msg"})
+    @JsonAlias({"message", "MESSAGE", "F_MESSAGE", "F_MESGTEXT", "msg"})
     private JsonNode msgNode;
 
     @JsonProperty("F_ERRORNO")
-    @JsonAlias({"errorNo", "ERRORNO", "F_ERRNO", "errno"})
+    @JsonAlias({"errorNo", "ERRORNO", "F_ERRNO", "F_ERORNO", "errno"})
     private JsonNode errorNoNode;
 
     @JsonProperty("F_RMRK")
@@ -238,6 +238,80 @@ public class RmsApiResponse {
                 .filter(s -> !s.isEmpty())
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    public List<String> extractRoleIds() {
+        List<String> list = new ArrayList<>();
+        extractRoleIdsFromNode(roleIdNode, list);
+        return list.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private void extractRoleIdsFromNode(JsonNode node, List<String> target) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                if (item == null || item.isNull()) {
+                    continue;
+                }
+                if (item.isObject()) {
+                    for (String key : new String[]{"F_ROLEID", "ROLEID", "ROLE_ID", "ROLE", "CODE"}) {
+                        JsonNode roleId = item.get(key);
+                        if (roleId != null && roleId.isTextual()) {
+                            addStringTokens(roleId.asText(), target);
+                            break;
+                        }
+                    }
+                } else if (item.isValueNode()) {
+                    addStringTokens(item.asText(), target);
+                }
+            }
+        } else if (node.isValueNode()) {
+            addStringTokens(node.asText(), target);
+        }
+    }
+
+    public boolean isCredentialValidationSuccessful(String expectedUserId) {
+        // A role list, account-active flag, or echoed password alone must never validate credentials.
+        if (errorNoNode == null || errorNoNode.isNull()
+                || (!errorNoNode.isTextual() && !errorNoNode.isNumber())) {
+            return false;
+        }
+        String errorNo = getErrorNo();
+        if (errorNo == null || (!errorNo.trim().isEmpty()
+                && !"0".equals(errorNo.trim()) && !"00".equals(errorNo.trim()))) {
+            return false;
+        }
+
+        if (expectedUserId == null || getUserId() == null
+                || !expectedUserId.trim().equalsIgnoreCase(getUserId().trim())
+                || !"ATVLDTUSER".equalsIgnoreCase(getSrvcName() == null ? "" : getSrvcName().trim())) {
+            return false;
+        }
+
+        return !hasFailureIndicator(getStatus())
+                && !hasFailureIndicator(getMessage())
+                && !hasFailureIndicator(getRmrk());
+    }
+
+    private boolean hasFailureIndicator(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("e") || normalized.equals("f")
+                || normalized.equals("n") || normalized.equals("fail")
+                || normalized.equals("failed") || normalized.equals("error")
+                || normalized.contains("invalid") || normalized.contains("not found")
+                || normalized.contains("wrong") || normalized.contains("incorrect")
+                || normalized.contains("denied") || normalized.contains("locked")
+                || normalized.contains("expired") || normalized.contains("unauthorized");
     }
 
     private void extractFromNode(JsonNode node, List<String> target) {

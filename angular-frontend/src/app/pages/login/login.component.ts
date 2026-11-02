@@ -7,7 +7,7 @@ import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../.
 import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
-const OTP_RESEND_COOLDOWN_SECONDS = 300;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 @Component({
   selector: "app-login",
@@ -139,9 +139,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.loadingOperation = 'LOGIN';
 
-    if (isDevMode()) {
-      console.log('[RMS Auth] Request started: validate-user for userId:', userId, 'divisionCode:', divisionCode);
-    }
+    this.authService.setCurrentUser(null);
+    this.authService.setRmsTempUser(null);
+    this.validatedUser = null;
+    this.availableDesignations = [];
+    this.designationForm.reset({ designation: '' });
+    this.otpForm.reset({ otp: '' });
+    this.clearCooldownTimer();
+    this.resendCooldown = 0;
 
     this.authService.validateUser(userId, password, divisionCode, captchaInput).pipe(
       timeout(15000),
@@ -156,18 +161,14 @@ export class LoginComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (res: RmsValidateUserResponse) => {
-        const passed = Boolean(res && res.success && res.data && Array.isArray(res.data.designations) && res.data.designations.length > 0);
-        const nextStep: AuthStep = passed ? 'DESIGNATION' : 'LOGIN';
-
-        if (isDevMode()) {
-          console.log('[RMS Auth] Response received. HTTP status: 200');
-          console.log('[RMS Auth] Whether the response passed validation:', passed);
-          console.log('[RMS Auth] The next authentication step:', nextStep);
-        }
+        const apiDesignations = res?.success && Array.isArray(res.data?.designations)
+          ? res.data.designations.filter((role): role is string => typeof role === 'string').map((role) => role.trim()).filter(Boolean)
+          : [];
+        const passed = Boolean(res?.success && res.data && apiDesignations.length > 0);
 
         if (passed && res.data) {
           this.validatedUser = res.data;
-          this.availableDesignations = [...res.data.designations];
+          this.availableDesignations = apiDesignations;
 
           // Store temporary authentication-flow state securely
           this.authService.setRmsTempUser(res.data);
@@ -179,6 +180,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.successMessage = res.message || "Credentials verified. Please select your designation to proceed.";
         } else {
           this.currentStep = 'LOGIN';
+          this.availableDesignations = [];
           if (res && res.data && (!res.data.designations || res.data.designations.length === 0)) {
             this.error = "No designations found for your account. Please contact your administrator.";
           } else {
@@ -188,10 +190,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       },
       error: (err: any) => {
         if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during validate-user:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-          console.log('[RMS Auth] Whether the response passed validation: false');
-          console.log('[RMS Auth] The next authentication step: LOGIN');
+          console.warn('[RMS Auth] Credential validation failed. HTTP status:', err?.status ?? 'UNKNOWN');
         }
 
         this.currentStep = 'LOGIN';
@@ -229,7 +228,8 @@ export class LoginComponent implements OnInit, OnDestroy {
       this.error = "Please select a designation.";
       return;
     }
-    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())) {
+    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())
+        || !this.isPortalDesignation(selectedDesig)) {
       this.error = "The selected designation is not permitted for this account.";
       return;
     }
@@ -284,6 +284,12 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       }
     });
+  }
+
+  private isPortalDesignation(designation: string): boolean {
+    if (typeof designation !== 'string') return false;
+    const normalized = designation.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalized === 'SRDCM';
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -424,6 +430,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   restartLogin(): void {
     this.authService.setRmsTempUser(null);
+    this.authService.setCurrentUser(null);
     this.loading = false;
     this.loadingOperation = null;
     this.currentStep = 'LOGIN';
@@ -437,7 +444,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loginForm.reset({ userId: '', password: '', divisionCode: '', captchaInput: '' });
     this.designationForm.reset({ designation: '' });
     this.otpForm.reset({ otp: '' });
-    this.loadCaptcha();
+    this.authService.logout().subscribe(() => this.loadCaptcha());
   }
 
   refreshCaptcha(): void {
@@ -527,6 +534,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   private resetFlowAfterCredentialChange(): void {
     this.authService.setRmsTempUser(null);
+    this.authService.setCurrentUser(null);
     this.currentStep = 'LOGIN';
     this.error = '';
     this.successMessage = '';
@@ -537,7 +545,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.otpForm.reset({ otp: '' });
     this.clearCooldownTimer();
     this.resendCooldown = 0;
-    this.loadCaptcha();
+    this.authService.logout().subscribe(() => this.loadCaptcha());
     this.cdr.markForCheck();
   }
 }
