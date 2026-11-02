@@ -11,6 +11,8 @@ public class AuthUserDto implements Serializable {
     private String isActive;
     private String email;
     private String phoneNumber;
+    private String divisionCode;
+    private String designation;
 
     public AuthUserDto() {}
 
@@ -48,4 +50,9 @@ public class AuthUserDto implements Serializable {
 
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+    public String getDivisionCode() { return divisionCode; }
+    public void setDivisionCode(String divisionCode) { this.divisionCode = divisionCode; }
+
+    public String getDesignation() { return designation; }
+    public void setDesignation(String designation) { this.designation = designation; }
 }

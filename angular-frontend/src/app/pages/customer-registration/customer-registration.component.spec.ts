@@ -475,8 +475,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   describe('Delete Request Mode', () => {
     it('shows the selected code-type logo and switches immediately between both delete options', () => {
       component.mode = 'delete';
-      expect(component.currentLogo).toBeNull();
-      expect(component.currentLogoAlt).toBe('');
+      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
       component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
       expect(component.currentLogo).toBe('assets/glbl_transparent.png');

@@ -1,3 +1,4 @@
+import { PdfGeneratorService } from '../../services/pdf-generator.service';
 import { Component, OnInit, ChangeDetectorRef } from "@angular/core";
 import { FormBuilder, FormGroup } from "@angular/forms";
 import { finalize } from "rxjs";
@@ -18,7 +19,8 @@ export class VerificationComponent implements OnInit {
 
   constructor(
     private customerService: CustomerService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private pdfGeneratorService?: PdfGeneratorService
   ) {}
 
   ngOnInit(): void {}
@@ -87,6 +89,26 @@ export class VerificationComponent implements OnInit {
         }
       });
     }
+  }
+
+
+  downloadCustomerPdf(c: any): void {
+    if (!this.pdfGeneratorService) return;
+    const gstins = this.getGstinList(c)
+      .filter((g) => g && g !== '-')
+      .map((g) => ({ gstin: g, state: c.state || c.city }));
+
+    this.pdfGeneratorService.downloadRegistrationPdf({
+      code: c.customerCode || this.code,
+      codeType: 'GLOBAL',
+      companyName: c.companyName,
+      panNumber: c.panNumber,
+      address: c.address,
+      city: c.city,
+      state: c.state,
+      pincode: c.pincode,
+      gstins: gstins.length > 0 ? gstins : undefined
+    });
   }
 
   reset(): void {

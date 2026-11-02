@@ -335,13 +335,16 @@ public class RmsAuthOrchestrator {
             }
         }
 
-        return new AuthUserDto(
+        AuthUserDto authUser = new AuthUserDto(
                 ctx.getUserId(),
                 ctx.getUserName() != null ? ctx.getUserName() : ctx.getUserId(),
-                REQUIRED_DESIGNATION,   // SR-DCM is the confirmed role
+                REQUIRED_DESIGNATION,
                 "Y",
                 ctx.getEmail(),
                 ctx.getMobileNo());
+        authUser.setDivisionCode(ctx.getDivisionCode());
+        authUser.setDesignation(ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION);
+        return authUser;
     }
 
     // ─────────────────────────────────────────────────
