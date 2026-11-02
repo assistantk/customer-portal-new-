@@ -75,7 +75,7 @@ public class RmsApiClient {
         String normalizedOtpBaseUrl = otpBaseUrl.replaceAll("/+$", "");
         this.validateUserUrl = normalizedBaseUrl + validateUserPath;
         this.generateOtpUrl  = normalizedOtpBaseUrl + generateOtpPath;
-        this.verifyOtpUrl    = normalizedBaseUrl + verifyOtpPath;
+        this.verifyOtpUrl    = normalizedOtpBaseUrl + verifyOtpPath;
 
         this.restTemplate = builder
                 .setConnectTimeout(Duration.ofMillis(connectTimeoutMs))

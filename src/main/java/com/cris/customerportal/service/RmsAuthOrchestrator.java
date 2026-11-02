@@ -345,7 +345,7 @@ public class RmsAuthOrchestrator {
         otpResendAllowedAt.remove(userKey);
 
         LOGGER.info("Authentication complete for userId={} role={}", ctx.getUserId(), confirmedRole);
-        return new AuthUserDto(
+        AuthUserDto authUser = new AuthUserDto(
                 ctx.getUserId(),
                 ctx.getUserName() != null ? ctx.getUserName() : ctx.getUserId(),
                 confirmedRole,
