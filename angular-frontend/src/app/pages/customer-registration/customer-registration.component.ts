@@ -170,6 +170,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   lookupLoading = false;
   lookupDone = false;
   lookupError = '';
+  lastLookupRecord: any = null;
   codeConfirmed = false;
   codeChecking = false;
   addressStatus = '';
@@ -604,6 +605,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         ).subscribe({
           next: (customer: any) => {
             if (requestId !== this.lookupRequestId) return;
+            this.lastLookupRecord = customer;
             this.form.companyName = customer.companyName || '';
             this.form.customerCode = code;
             this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
@@ -882,6 +884,36 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return 'Your request could not be submitted. Please try again.';
   }
 
+
+  downloadPdfSummary(): void {
+    if (!this.pdfGeneratorService) {
+      return;
+    }
+    const code = this.form.customerCode || this.form.ownershipCode || 'REGISTRATION';
+    const gstins = (this.gstins || [])
+      .filter((g) => g.gstin && g.gstin.trim() !== '')
+      .map((g) => ({ gstin: g.gstin.trim(), state: g.state }));
+
+    const state = gstins.length > 0 ? gstins[0].state : '';
+
+    this.pdfGeneratorService.downloadRegistrationPdf({
+      code: code,
+      codeType: this.codeType === 'HANDLING_AGENT' ? 'HANDLING_AGENT' : (this.mode === 'ownership' ? 'OWNERSHIP' : 'GLOBAL'),
+      companyName: this.form.companyName || this.form.ownershipAddress || 'N/A',
+      tradeName: this.form.companyName,
+      panNumber: this.form.panNumber,
+      address: this.form.address || this.form.ownershipPartyAddress,
+      city: this.form.city,
+      state: state,
+      pincode: this.form.pincode,
+      gstins: gstins.length > 0 ? gstins : undefined,
+      ownershipCode: this.form.ownershipCode,
+      ownershipDesc: this.form.ownershipAddress,
+      partyCode: this.form.ownershipPartyCode,
+      partyDesc: this.form.ownershipPartyAddress,
+      recordDate: this.lastLookupRecord?.creationDate || this.lastLookupRecord?.date || this.lastLookupRecord?.createdDate
+    });
+  }
 
   submit(e?: Event): void {
     if (e) {

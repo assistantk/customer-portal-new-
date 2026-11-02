@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
 import { AuthService, AuthUserData } from './auth.service';
+import { OFFICIAL_SIGNATURE_BASE64, OFFICIAL_SIGNATURE_ASPECT_RATIO } from './signature-asset';
 
 export interface RegistrationPdfData {
   title?: string;
@@ -18,6 +19,7 @@ export interface RegistrationPdfData {
   ownershipDesc?: string;
   partyCode?: string;
   partyDesc?: string;
+  recordDate?: string | Date; // Record's date column value from table/API
   generatedAt?: Date;
 }
 
@@ -34,7 +36,9 @@ export interface SignatureBlockDetails {
   eSignedByLabel: string;
   signerIdentity: string;
   designationDivisionOrg: string;
+  designationDivision: string;
   formattedTimestamp: string;
+  signatureImageBase64: string;
 }
 
 /**
@@ -57,6 +61,44 @@ export function formatIstTimestamp(date: Date = new Date()): string {
   return `${dayName} ${monthName} ${dateNum} ${hours}:${minutes}:${seconds} IST ${year}`;
 }
 
+/**
+ * Parses and formats the date column associated with the source record.
+ * Falls back dynamically to the system date/time in IST if the record date is unavailable or invalid.
+ */
+export function parseAndFormatRecordDate(recordDate?: string | Date | null, fallbackDate: Date = new Date()): string {
+  if (!recordDate) {
+    return formatIstTimestamp(fallbackDate);
+  }
+  if (recordDate instanceof Date) {
+    return !isNaN(recordDate.getTime()) ? formatIstTimestamp(recordDate) : formatIstTimestamp(fallbackDate);
+  }
+  const s = String(recordDate).trim();
+  if (!s || s === '-' || s.toUpperCase() === 'N/A') {
+    return formatIstTimestamp(fallbackDate);
+  }
+  // If already in IST formatted pattern, retain as-is
+  if (s.includes('IST') && s.length >= 20) {
+    return s;
+  }
+  // Try DD-MM-YYYY or DD/MM/YYYY
+  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(.*)$/);
+  if (dmy) {
+    const day = parseInt(dmy[1], 10);
+    const month = parseInt(dmy[2], 10) - 1;
+    const year = parseInt(dmy[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      return formatIstTimestamp(d);
+    }
+  }
+  // Try ISO or standard Date parsing
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return formatIstTimestamp(parsed);
+  }
+  return formatIstTimestamp(fallbackDate);
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -64,41 +106,56 @@ export class PdfGeneratorService {
   constructor(private authService: AuthService) {}
 
   /**
-   * Resolves dynamic signature details from the authenticated user and generation time.
+   * Resolves dynamic signature details from the authenticated user and generation/record time.
    * Format:
    *   Signature Not Verified
    *   eSigned by
    *   [LOGGED-IN USER FULL NAME], [EMPLOYEE ID]
    *   [DESIGNATION]/[DIVISION]/CRIS
-   *   [DATE AND TIME]
+   *   [DYNAMIC DATE AND TIME]
    */
-  resolveSignatureDetails(user?: AuthUserData | null, date: Date = new Date()): SignatureBlockDetails {
+  resolveSignatureDetails(
+    user?: AuthUserData | null,
+    date: Date = new Date(),
+    recordDate?: string | Date | null
+  ): SignatureBlockDetails {
     const authUser = user !== undefined ? user : this.authService.currentUser;
 
     const fullName = (authUser?.userName || authUser?.userId || 'AUTHORIZED USER').trim();
     const employeeId = (authUser?.userId || 'N/A').trim();
 
-    // Normalize designation: convert 'SR-DCM' to 'SR.DCM' if hyphenated
-    let designation = (authUser?.designation || authUser?.userRole || 'SR.DCM').trim();
-    if (designation.toUpperCase() === 'SR-DCM') {
-      designation = 'SR.DCM';
+    // Fetch designation from currently authenticated user's selected designation
+    let rawDesignation = (authUser?.designation || authUser?.userRole || 'SR.DCM').trim();
+    if (rawDesignation.toUpperCase() === 'SR-DCM') {
+      rawDesignation = 'SR.DCM';
     }
+    // Remove any trailing slashes (e.g. 'SR.DCM/' -> 'SR.DCM')
+    const designation = rawDesignation.replace(/\/+$/, '');
 
+    // Fetch division code from authenticated profile
     const division = (authUser?.divisionCode || 'CSTM').trim().toUpperCase() || 'CSTM';
     const organization = 'CRIS';
-    const formattedTimestamp = formatIstTimestamp(date);
+
+    // Format: [DESIGNATION]/[DIVISION]/CRIS
+    const designationDivisionOrg = `${designation}/${division}/${organization}`;
+    const designationDivision = `${designation}/${division}`;
+
+    // Prefer record date from source table/API, fallback to system IST date/time
+    const formattedTimestamp = parseAndFormatRecordDate(recordDate, date);
 
     return {
       verifiedStatus: 'Signature Not Verified',
       eSignedByLabel: 'eSigned by',
       signerIdentity: `${fullName}, ${employeeId}`,
-      designationDivisionOrg: `${designation}/${division}/${organization}`,
-      formattedTimestamp
+      designationDivisionOrg,
+      designationDivision,
+      formattedTimestamp,
+      signatureImageBase64: OFFICIAL_SIGNATURE_BASE64
     };
   }
 
   /**
-   * Generates a jsPDF document for the given registration data and appends the official signature block.
+   * Generates a jsPDF document for the given registration data and appends the official signature section.
    */
   generateRegistrationPdf(data: RegistrationPdfData, userOverride?: AuthUserData | null): jsPDF {
     const doc = new jsPDF({
@@ -107,7 +164,11 @@ export class PdfGeneratorService {
       format: 'a4'
     });
 
-    const signature = this.resolveSignatureDetails(userOverride, data.generatedAt || new Date());
+    const signature = this.resolveSignatureDetails(
+      userOverride,
+      data.generatedAt || new Date(),
+      data.recordDate
+    );
 
     // Top decorative banner (Railways navy blue)
     doc.setFillColor(30, 58, 138);
@@ -210,7 +271,6 @@ export class PdfGeneratorService {
 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(15, 23, 42);
-      // Truncate long value if necessary to prevent overlap
       const safeVal = val.length > 70 ? val.substring(0, 67) + '...' : val;
       doc.text(safeVal || '-', 70, y + 5);
       y += 7;
@@ -256,14 +316,17 @@ export class PdfGeneratorService {
       y += 6.5;
     });
 
-    // ==========================================
-    // DYNAMIC eSIGNATURE BLOCK (Bottom Right)
-    // ==========================================
-    // Positioned safely without overlapping table content
-    const sigX = 110;
-    const sigY = Math.max(y + 12, 222);
-    const sigWidth = 85;
-    const sigHeight = 44;
+    // ========================================================
+    // DYNAMIC eSIGNATURE SECTION (Bottom Right on Final Page)
+    // ========================================================
+    // Requirement: For multi-page PDFs, display signature on final page only
+    const totalPages = doc.getNumberOfPages();
+    doc.setPage(totalPages);
+
+    const sigX = 105;
+    const sigY = Math.max(y + 8, 220);
+    const sigWidth = 90;
+    const sigHeight = 54;
 
     // Signature box container
     doc.setFillColor(250, 250, 252);
@@ -272,54 +335,91 @@ export class PdfGeneratorService {
     doc.setLineWidth(0.4);
     doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
 
-    const centerX = sigX + sigWidth / 2;
+    // 1. Embed official reference e-signature image preserving original aspect ratio
+    const imgWidth = 36;
+    const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
+    const imgX = sigX + 3.5;
+    const imgY = sigY + (sigHeight - imgHeight) / 2;
 
-    // Line 1: Signature Not Verified
+    try {
+      doc.addImage(OFFICIAL_SIGNATURE_BASE64, 'PNG', imgX, imgY, imgWidth, imgHeight);
+    } catch (e) {
+      console.warn('Could not embed signature image in PDF:', e);
+    }
+
+    // 2. Render dynamic authenticated text beside the image
+    const textX = sigX + 41.5;
+
+    // Line 1: Signature Heading
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
+    doc.setFontSize(8.5);
     doc.setTextColor(185, 28, 28);
-    doc.text(signature.verifiedStatus, centerX, sigY + 8, { align: 'center' });
+    doc.text(signature.verifiedStatus, textX, sigY + 8);
 
     // Line 2: eSigned by
     doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(signature.eSignedByLabel, centerX, sigY + 16, { align: 'center' });
+    doc.text(signature.eSignedByLabel, textX, sigY + 15);
 
     // Line 3: [LOGGED-IN USER FULL NAME], [EMPLOYEE ID]
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
-    doc.text(signature.signerIdentity, centerX, sigY + 23, { align: 'center' });
+    doc.text(signature.signerIdentity, textX, sigY + 22);
 
     // Line 4: [DESIGNATION]/[DIVISION]/CRIS
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text(signature.designationDivisionOrg, centerX, sigY + 30, { align: 'center' });
+    doc.text(signature.designationDivisionOrg, textX, sigY + 29);
 
-    // Line 5: [DATE AND TIME]
+    // Line 5: [DYNAMIC DATE AND TIME]
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.8);
     doc.setTextColor(100, 116, 139);
-    doc.text(signature.formattedTimestamp, centerX, sigY + 37, { align: 'center' });
+    doc.text(signature.formattedTimestamp, textX, sigY + 36);
 
-    // Page Footer
-    doc.setDrawColor(226, 232, 240);
-    doc.line(15, 280, 195, 280);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text('This is a system generated document from the Freight Code Generator portal (CRIS). Page 1 of 1', 105, 285, { align: 'center' });
+    // Line 6: Authority branding
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(59, 130, 246);
+    doc.text('CDAC | CRIS', textX, sigY + 44);
+
+    // Page Footers for all pages
+    const finalPageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= finalPageCount; p++) {
+      doc.setPage(p);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, 280, 195, 280);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        `This is a system generated document from the Freight Code Generator portal (CRIS). Page ${p} of ${finalPageCount}`,
+        105,
+        285,
+        { align: 'center' }
+      );
+    }
 
     return doc;
   }
 
   /**
+   * Generates a preview blob URL of the PDF document.
+   */
+  previewRegistrationPdf(data: RegistrationPdfData, userOverride?: AuthUserData | null): string {
+    const doc = this.generateRegistrationPdf(data, userOverride);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  }
+
+  /**
    * Generates and triggers browser download of the registration acknowledgement PDF.
    */
-  downloadRegistrationPdf(data: RegistrationPdfData, filename?: string): void {
-    const doc = this.generateRegistrationPdf(data);
+  downloadRegistrationPdf(data: RegistrationPdfData, filename?: string, userOverride?: AuthUserData | null): void {
+    const doc = this.generateRegistrationPdf(data, userOverride);
     const defaultFilename = `${(data.code || 'registration').toUpperCase()}_acknowledgement.pdf`;
     doc.save(filename || defaultFilename);
   }
