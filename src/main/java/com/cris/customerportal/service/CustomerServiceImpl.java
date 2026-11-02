@@ -9,6 +9,8 @@ import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -234,7 +236,25 @@ public class CustomerServiceImpl implements CustomerService {
   if(f==null||f.isEmpty())throw new IllegalArgumentException("GSTIN file is required");
   if(f.getSize()>5*1024*1024)throw new IllegalArgumentException("File size must not exceed 5MB");
   String type = f.getContentType() != null ? f.getContentType() : "";
+  String originalFilename = f.getOriginalFilename();
+  if (originalFilename != null) {
+   if (originalFilename.contains("..") || originalFilename.contains("/") || originalFilename.contains("\\") || originalFilename.contains("\0")) {
+    throw new IllegalArgumentException("Invalid filename. Path traversal sequences are not allowed.");
+   }
+   if (!originalFilename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+    throw new IllegalArgumentException("Only PDF files are allowed");
+   }
+  }
   if(!ALLOWED_CONTENT_TYPES.contains(type))throw new IllegalArgumentException("Only PDF files are allowed");
+  try (InputStream is = f.getInputStream()) {
+   byte[] header = new byte[4];
+   int bytesRead = is.read(header);
+   if (bytesRead < 4 || header[0] != 0x25 || header[1] != 0x50 || header[2] != 0x44 || header[3] != 0x46) {
+    throw new IllegalArgumentException("Invalid file format. File must be a valid PDF document.");
+   }
+  } catch (IOException e) {
+   throw new IllegalArgumentException("Unable to read file content for validation: " + e.getMessage(), e);
+  }
  }
 
  public String generateUniqueCodeJDBC(String companyName, String type) {
@@ -300,6 +320,11 @@ public class CustomerServiceImpl implements CustomerService {
   return null;
  }
 
+ public static String normalizeAddress(String address) {
+  if (address == null) return null;
+  return address.replaceAll(",\\s+", ",").trim();
+ }
+
  public String registerNewEntryJDBC(java.util.Map<String, String> formData) {
   String type = formData.get("codeType");
   if (type != null) type = type.trim().toLowerCase(Locale.ROOT);
@@ -313,7 +338,12 @@ public class CustomerServiceImpl implements CustomerService {
    }
   }
   validateCompanyNameLength(firstValue(formData, "companyName", "customerName"));
-  if (formData.get("address").length() > 100) {
+  String rawAddress = firstValue(formData, "address");
+  String address = normalizeAddress(rawAddress);
+  if (address == null || address.isEmpty()) {
+   throw new IllegalArgumentException("address is required");
+  }
+  if (address.length() > 100) {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
   String pincode = firstValue(formData, "pincode");
@@ -362,7 +392,7 @@ public class CustomerServiceImpl implements CustomerService {
   }
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
-   String address = formData.get("address");
+
 
   String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
   sql = "global".equals(type)
@@ -472,7 +502,12 @@ public class CustomerServiceImpl implements CustomerService {
   current.put(gstColumn, oldCustomer.getGstinNumbers());
   Map<String, String> requested = new LinkedHashMap<>();
   requested.put(nameColumn, formData.get("companyName"));
-  requested.put(addressColumn, formData.get("address"));
+  String rawAddress = formData.get("address");
+  String updateAddress = normalizeAddress(rawAddress);
+  if (updateAddress != null && updateAddress.length() > 100) {
+   throw new IllegalArgumentException("Address cannot exceed 100 characters.");
+  }
+  requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, formData.get("city"));
   requested.put(panColumn, formData.get("panNumber"));
   requested.put(gstColumn, formData.get("gstinNumbers"));

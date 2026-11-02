@@ -197,7 +197,7 @@ class CustomerServiceImplTest {
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: ASEB"));
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
-                + "'FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014','PATNA',"
+                + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
                 + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'10ABACA6462C1ZD','ABACA6462C');"
         ));
         assertFalse(body.contains("INSERT INTO MEMGLBLCUST ("));
@@ -264,7 +264,7 @@ class CustomerServiceImplTest {
 
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLHNDGAGNT VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', "
-                + "'22ND MILE STONE, DELHI HAPUR ROAD', 'PARBHANI', NULL, NULL, NULL, SYSDATE, "
+                + "'22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', NULL, NULL, NULL, SYSDATE, "
                 + "'SR.DCM/MDU', NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K');"
         ));
         assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
@@ -302,7 +302,7 @@ class CustomerServiceImplTest {
         assertTrue(emailedBody(mailSender).contains(
             "UPDATE MEMGLBLCUST SET\n"
                 + "MAVGLBLCUSTNAME = 'M/S NEW NAME',\n"
-                + "MAVGLBLCUSTADDRTEXT = 'O''BRIEN, STREET'\n"
+                + "MAVGLBLCUSTADDRTEXT = 'O''BRIEN,STREET'\n"
                 + "WHERE MAVGLBLCUSTCODE = 'AB12';"
         ));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?"));
@@ -904,6 +904,158 @@ class CustomerServiceImplTest {
             "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL & ROAD','MIXED CASE ADDRESS','NEW TOWN',"
                 + "NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
         ));
+    }
+
+    @Test
+    void register_validatesFileUploadSecurity() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        CustomerServiceImpl service = service(dataSource, mailSender);
+
+        com.cris.customerportal.dto.CustomerRegistrationRequest request =
+            new com.cris.customerportal.dto.CustomerRegistrationRequest(
+                "TEST CORP", "TEST", "ADDR", "CITY", "110001",
+                java.util.Collections.singletonList(new com.cris.customerportal.dto.GstinRequest("07", "07AAAAA0000A1Z5")),
+                "AAAAA0000A", "DIV", "ZONE", "a@b.com", "9999999999", "GLOBAL"
+            );
+
+        // Path traversal rejection
+        org.springframework.mock.web.MockMultipartFile traversalFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "../bad.pdf", "application/pdf", "%PDF-1.4 test".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(traversalFile)));
+
+        // Non-PDF mime type
+        org.springframework.mock.web.MockMultipartFile nonPdfFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "test.txt", "text/plain", "hello".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(nonPdfFile)));
+
+        // Invalid magic bytes (spoofed .pdf)
+        org.springframework.mock.web.MockMultipartFile spoofedFile =
+            new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "fake.pdf", "application/pdf", "MZexecutable".getBytes()
+            );
+        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(spoofedFile)));
+    }
+
+    @Test
+    void normalizeAddress_removesSpacesAfterCommasPreservingWordSpaces() {
+        String input = "SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004";
+        String expected = "SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004";
+        assertEquals(expected, CustomerServiceImpl.normalizeAddress(input));
+    }
+
+    @Test
+    void normalizeAddress_handlesMultipleSpacesAndNull() {
+        assertNull(CustomerServiceImpl.normalizeAddress(null));
+        assertEquals("A,B,C", CustomerServiceImpl.normalizeAddress("  A,   B,  C  "));
+        assertEquals("123 MAIN ST,APT 4B", CustomerServiceImpl.normalizeAddress("123 MAIN ST, APT 4B"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_allowsAddressUnder100CharsAfterRemovingCommaSpaces() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement checkCodePs = mock(PreparedStatement.class);
+        ResultSet checkCodeRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("WHERE MAVGLBLCUSTCODE = ?"))).thenReturn(checkCodePs);
+        when(checkCodePs.executeQuery()).thenReturn(checkCodeRs);
+        when(checkCodeRs.next()).thenReturn(false);
+
+        String addressWithSpaces = "SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004, SUITE 101";
+        assertTrue(addressWithSpaces.length() > 100);
+        assertTrue(CustomerServiceImpl.normalizeAddress(addressWithSpaces).length() <= 100);
+
+        String code = service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "G100",
+            "companyName", "TEST CO",
+            "address", addressWithSpaces,
+            "city", "RAIPUR",
+            "operatingDivision", "RAIPUR",
+            "zone", "SECR",
+            "panNumber", "ABCDE1234F",
+            "gstinNumbers", "22ABCDE1234F1Z5"
+        ));
+
+        assertEquals("G100", code);
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(CustomerServiceImpl.normalizeAddress(addressWithSpaces).toUpperCase(java.util.Locale.ROOT)));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsAddressExceeding100CharsEvenAfterRemovingCommaSpaces() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        String excessiveAddress = "A".repeat(101);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", excessiveAddress,
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "22ABCDE1234F1Z5"
+            ))
+        );
+        assertEquals("Address cannot exceed 100 characters.", ex.getMessage());
+    }
+
+    @Test
+    void dbaEmailService_normalizesAddressInUpdateSqlAutomatically() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+
+        String rawSql = "UPDATE MEMGLBLCUST SET MAVGLBLCUSTADDRTEXT = 'SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004' WHERE MAVGLBLCUSTCODE = 'AB12';";
+        emailService.sendDbaSqlEmail("UPDATE", rawSql);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(captor.capture());
+        String body = captor.getValue().getText();
+        assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
+        assertFalse(body.contains("SHOP NO 209, EDGE"));
+    }
+
+    @Test
+    void updateOldCustomerJDBC_normalizesAddressWithCommaSpacesBeforeSqlGenerationAndEmail() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S TEST CO");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ADDR");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAECR3577N");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAECR3577NLZE");
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("RAIPUR");
+
+        String enteredAddress = "SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004";
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "AB12",
+            "companyName", "M/S TEST CO",
+            "address", enteredAddress,
+            "city", "RAIPUR",
+            "panNumber", "AAECR3577N",
+            "gstinNumbers", "27AAECR3577NLZE"
+        ));
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
+        assertFalse(body.contains("SHOP NO 209, EDGE"));
     }
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {

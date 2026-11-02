@@ -22,8 +22,11 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
       getCaptcha: vi.fn(() => of({ image: 'data:image/png;base64,captcha-image' })),
       validateUser: vi.fn(),
       selectDesignation: vi.fn(),
+      generateOtp: vi.fn(() => of({ success: true, message: 'OTP sent.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
+      regenerateOtp: vi.fn(() => of({ success: true, message: 'OTP regenerated.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
       verifyOtp: vi.fn(),
-      resendOtp: vi.fn(),
+      resendOtp: vi.fn(() => of({ success: true, message: 'OTP regenerated.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
+      getOtpStatus: vi.fn(() => of({ success: false })),
       setRmsTempUser: vi.fn((user) => {
         if (user) {
           sessionStorage.setItem('customer-portal.rms-temp-user', JSON.stringify(user));
@@ -262,12 +265,13 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
       message: 'OTP sent.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
     }));
 
     component.onSubmitDesignation();
 
-    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('SR-DCM');
+    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('SR-DCM');
+    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('SR-DCM');
     expect(component.currentStep).toBe('OTP');
     expect(component.resendCooldown).toBe(60);
   });
@@ -278,7 +282,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.resendCooldown = 0;
     authServiceMock.resendOtp.mockReturnValue(of({
       success: true,
-      data: { resendCooldownSeconds: 300 }
+      data: { resendCooldownSeconds: 60 }
     }));
 
     component.resendOtp();
@@ -297,6 +301,94 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     vi.useRealTimers();
   });
 
+  it('calls regenerateOtp independently when Regenerate OTP button is clicked', () => {
+    component.currentStep = 'OTP';
+    component.availableDesignations = ['Senior DFM'];
+    component.designationForm.setValue({ designation: 'Senior DFM' });
+    authServiceMock.regenerateOtp.mockReturnValue(of({
+      success: true,
+      message: 'OTP regenerated successfully and sent to your registered contact.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+    }));
+
+    component.regenerateOtp();
+
+    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DFM');
+    expect(component.successMessage).toContain('OTP regenerated successfully');
+  });
+
+  it('recovers pending OTP step and remaining cooldown on page reload', () => {
+    vi.useFakeTimers();
+    authServiceMock.getOtpStatus.mockReturnValue(of({
+      success: true,
+      data: {
+        step: 'OTP_PENDING',
+        userId: 'SREEJU',
+        divisionCode: 'TKD',
+        selectedDesignation: 'SR-DCM',
+        destinationMasked: '*****3868',
+        resendCooldownSeconds: 45
+      }
+    }));
+
+    const freshComponent = new LoginComponent(
+      fb,
+      authServiceMock as AuthService,
+      routerMock,
+      activatedRouteMock,
+      cdrMock
+    );
+    freshComponent.ngOnInit();
+
+    expect(freshComponent.currentStep).toBe('OTP');
+    expect(freshComponent.maskedDestination).toBe('*****3868');
+    expect(freshComponent.resendCooldown).toBe(45);
+    expect(freshComponent.resendCooldownDisplay).toBe('00:45');
+
+    vi.advanceTimersByTime(1000);
+    expect(freshComponent.resendCooldown).toBe(44);
+    expect(freshComponent.resendCooldownDisplay).toBe('00:44');
+
+    freshComponent.ngOnDestroy();
+    vi.useRealTimers();
+  });
+
+
+  it('initiates OTP when Senior SR-DCM or Senior DCM designation is selected', () => {
+    component.currentStep = 'DESIGNATION';
+    component.availableDesignations = ['Senior SR-DCM', 'Senior DCM', 'DCM'];
+    component.designationForm.setValue({ designation: 'Senior DCM' });
+    authServiceMock.generateOtp.mockReturnValue(of({
+      success: true,
+      message: 'OTP sent.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+    }));
+
+    component.onSubmitDesignation();
+
+    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('Senior DCM');
+    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DCM');
+    expect(component.currentStep).toBe('OTP');
+    expect(component.resendCooldown).toBe(60);
+  });
+
+  it('initiates both Generate OTP and Regenerate OTP automatically when Senior DFM is selected', () => {
+    component.currentStep = 'DESIGNATION';
+    component.availableDesignations = ['Senior DFM', 'Senior DCM', 'DCM'];
+    component.designationForm.setValue({ designation: 'Senior DFM' });
+    authServiceMock.generateOtp.mockReturnValue(of({
+      success: true,
+      message: 'OTP sent.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+    }));
+
+    component.onSubmitDesignation();
+
+    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('Senior DFM');
+    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DFM');
+    expect(component.currentStep).toBe('OTP');
+  });
+
   // Scenario 6: Unauthorized designation -> access is denied without leaving the login card
   it('Scenario 6: reports an unauthorized designation without navigating away', () => {
     component.validatedUser = {
@@ -308,16 +400,17 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.currentStep = 'DESIGNATION';
     component.designationForm.setValue({ designation: 'DCM' });
 
-    authServiceMock.selectDesignation.mockReturnValue(
-      throwError(() => ({
-        status: 403,
-        error: {
-          success: false,
-          accessDenied: true,
-          message: 'Access Restricted: This website is available only to authorized Senior DCM users.'
-        }
-      }))
-    );
+    const forbiddenError = {
+      status: 403,
+      error: {
+        success: false,
+        accessDenied: true,
+        message: 'Access Restricted: This website is available only to authorized Senior DCM users.'
+      }
+    };
+    authServiceMock.generateOtp.mockReturnValue(throwError(() => forbiddenError));
+    authServiceMock.regenerateOtp.mockReturnValue(throwError(() => forbiddenError));
+    authServiceMock.selectDesignation.mockReturnValue(throwError(() => forbiddenError));
 
     component.onSubmitDesignation();
 
@@ -333,7 +426,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     vi.useFakeTimers();
 
     component.currentStep = 'OTP';
-    component.otpForm.setValue({ otp: '123456' });
+    component.otpForm.setValue({ otp: '78901' });
 
     authServiceMock.verifyOtp.mockReturnValue(
       of({

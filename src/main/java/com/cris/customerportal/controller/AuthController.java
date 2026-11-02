@@ -179,9 +179,9 @@ public class AuthController {
     // ─────────────────────────────────────────────────────────────
     // RMS Step 2: Designation Selection & OTP Generation
     // ─────────────────────────────────────────────────────────────
-    @PostMapping("/select-designation")
+    @PostMapping({"/select-designation", "/generate-otp"})
     public ResponseEntity<?> selectDesignation(
-            @RequestBody RmsSelectDesignationRequest requestDto,
+            @RequestBody(required = false) RmsSelectDesignationRequest requestDto,
             HttpServletRequest request) {
 
         String designation = requestDto != null ? requestDto.getDesignation() : null;
@@ -206,6 +206,12 @@ public class AuthController {
         }
 
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
+
+        if (designation == null || designation.trim().isEmpty()) {
+            if (ctx.getSelectedDesignation() != null && !ctx.getSelectedDesignation().trim().isEmpty()) {
+                designation = ctx.getSelectedDesignation();
+            }
+        }
 
         if (designation == null || designation.trim().isEmpty()) {
             LOGGER.info("RMS select-designation result: FAILED (empty designation). Status: {}", HttpStatus.BAD_REQUEST.value());
@@ -249,7 +255,7 @@ public class AuthController {
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("accessDenied", true);
-            body.put("message", "Access Restricted: This website is available only to authorized Senior DCM users. Your selected designation does not have permission to access this application.");
+            body.put("message", "Access Restricted: This website is available only to authorized Senior DCM / Senior DFM users. Your selected designation does not have permission to access this application.");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
@@ -272,8 +278,14 @@ public class AuthController {
     // ─────────────────────────────────────────────────────────────
     // RMS OTP Resend
     // ─────────────────────────────────────────────────────────────
-    @PostMapping("/resend-otp")
     public ResponseEntity<?> resendOtp(HttpServletRequest request) {
+        return resendOtp(null, request);
+    }
+
+    @PostMapping({"/resend-otp", "/regenerate-otp"})
+    public ResponseEntity<?> resendOtp(
+            @RequestBody(required = false) RmsSelectDesignationRequest requestDto,
+            HttpServletRequest request) {
         LOGGER.info("RMS resend-otp request received");
         if (rmsAuthOrchestrator == null) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
@@ -287,6 +299,9 @@ public class AuthController {
         }
 
         RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
+        if (requestDto != null && requestDto.getDesignation() != null && !requestDto.getDesignation().trim().isEmpty()) {
+            ctx.setSelectedDesignation(requestDto.getDesignation().trim());
+        }
         try {
             String clientIp = extractClientIp(request);
             rmsAuthOrchestrator.resendOtp(ctx, clientIp);
@@ -330,6 +345,34 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(errorBody(ex.getMessage()));
         }
+    }
+
+    @GetMapping("/otp-status")
+    public ResponseEntity<?> getOtpStatus(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null || session.getAttribute(RMS_SESSION_CONTEXT_KEY) == null) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "No active authentication flow.");
+            return ResponseEntity.ok(body);
+        }
+
+        RmsAuthSessionContext ctx = (RmsAuthSessionContext) session.getAttribute(RMS_SESSION_CONTEXT_KEY);
+        Map<String, Object> data = new HashMap<>();
+        data.put("step", ctx.getStep() != null ? ctx.getStep().name() : null);
+        data.put("userId", ctx.getUserId());
+        data.put("userName", ctx.getUserName());
+        data.put("divisionCode", ctx.getDivisionCode());
+        data.put("selectedDesignation", ctx.getSelectedDesignation());
+        data.put("destinationMasked", rmsAuthOrchestrator != null ? rmsAuthOrchestrator.getMaskedContact(ctx) : null);
+        int remainingSeconds = (rmsAuthOrchestrator != null && ctx.getUserId() != null)
+                ? rmsAuthOrchestrator.getResendCooldownSeconds(ctx.getUserId()) : 0;
+        data.put("resendCooldownSeconds", remainingSeconds);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("data", data);
+        return ResponseEntity.ok(body);
     }
 
     // ─────────────────────────────────────────────────────────────

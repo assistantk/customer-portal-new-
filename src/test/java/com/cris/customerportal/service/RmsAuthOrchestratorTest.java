@@ -63,8 +63,17 @@ class RmsAuthOrchestratorTest {
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
         assertEquals("SR-DCM", ctx.getSelectedDesignation());
 
-        // Step 3: Verify with mock OTP 123456
-        AuthUserDto user = orchestrator.verifyOtp(ctx, "123456", "127.0.0.1");
+        // Step 3: Verify with genuine random OTP
+        String genuineOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertNotNull(genuineOtp);
+        assertNotEquals("123456", genuineOtp);
+
+        // Verification with fake '123456' must fail
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
+                orchestrator.verifyOtp(ctx, "123456", "127.0.0.1"));
+
+        // Verification with genuine OTP succeeds
+        AuthUserDto user = orchestrator.verifyOtp(ctx, genuineOtp, "127.0.0.1");
         assertNotNull(user);
         assertEquals("SREEJU", user.getUserId());
         assertEquals("SR-DCM", user.getUserRole());
@@ -483,4 +492,133 @@ class RmsAuthOrchestratorTest {
 
         assertTrue(response.isOtpGenerationAccepted("SREEJU"));
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Dedicated Scenario Tests for OTP Generation, Daily Rule, and Fake OTP Removal
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    void scenario1_firstLoginOfDayGeneratesGenuineOtp() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        String otp1 = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertNotNull(otp1);
+        assertEquals(5, otp1.length());
+        assertNotEquals("123456", otp1);
+    }
+
+    @Test
+    void scenario2_secondAndThirdLoginSameDayReusesExistingDailyOtp() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+
+        // 1st login of the day
+        RmsAuthSessionContext ctx1 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx1, "SR-DCM", "127.0.0.1");
+        String firstOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertNotNull(firstOtp);
+
+        // Clear cooldown so 2nd attempt is eligible
+        orchestrator.clearCooldownForTesting("SREEJU");
+
+        // 2nd login of the same day: uses Regenerate OTP logic, reuses same daily OTP
+        RmsAuthSessionContext ctx2 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx2, "SR-DCM", "127.0.0.1");
+        String secondOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertEquals(firstOtp, secondOtp, "Second login on same day must reuse existing daily OTP");
+
+        // Clear cooldown for 3rd attempt
+        orchestrator.clearCooldownForTesting("SREEJU");
+
+        // 3rd login attempt on same day follows same rule
+        RmsAuthSessionContext ctx3 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx3, "SR-DCM", "127.0.0.1");
+        String thirdOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertEquals(firstOtp, thirdOtp, "Third login on same day must reuse existing daily OTP");
+    }
+
+    @Test
+    void scenario4_resendOtpReusesExistingDailyOtp() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+        String originalOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+
+        // Cooldown is active immediately
+        assertThrows(RmsAuthOrchestrator.OtpResendCooldownException.class, () ->
+                orchestrator.resendOtp(ctx, "127.0.0.1"));
+
+        // Clear cooldown and resend
+        orchestrator.clearCooldownForTesting("SREEJU");
+        orchestrator.resendOtp(ctx, "127.0.0.1");
+        String resentOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+        assertEquals(originalOtp, resentOtp, "Resend OTP must reuse existing daily OTP");
+    }
+
+    @Test
+    void scenario6_fakeOtp123456FailsAuthentication() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
+                orchestrator.verifyOtp(ctx, "123456", "127.0.0.1"));
+    }
+
+    @Test
+    void scenario7_incorrectOtpFailsAuthentication() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
+                orchestrator.verifyOtp(ctx, "99999", "127.0.0.1"));
+    }
+
+    @Test
+    void scenario8_expiredOtpFailsAuthentication() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+        String genuineOtp = orchestrator.getActiveOtpForTesting("SREEJU");
+
+        // Expire the OTP
+        orchestrator.expireOtpForTesting("SREEJU");
+
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
+                orchestrator.verifyOtp(ctx, genuineOtp, "127.0.0.1"));
+    }
+
+    @Test
+    void scenario9_bothSeniorSrDcmAndSeniorDcmAreAuthorized() {
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+
+        // Test Senior DCM
+        RmsAuthSessionContext ctx1 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        assertDoesNotThrow(() ->
+                orchestrator.selectDesignationAndGenerateOtp(ctx1, "Senior DCM", "127.0.0.1"));
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx1.getStep());
+
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+
+        // Test Senior SR-DCM
+        RmsAuthSessionContext ctx2 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        assertDoesNotThrow(() ->
+                orchestrator.selectDesignationAndGenerateOtp(ctx2, "Senior SR-DCM", "127.0.0.1"));
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx2.getStep());
+
+        // Test Senior DFM is authorized
+        orchestrator.resetDailyOtpForTesting("SREEJU");
+        RmsAuthSessionContext ctx4 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        assertDoesNotThrow(() ->
+                orchestrator.selectDesignationAndGenerateOtp(ctx4, "Senior DFM", "127.0.0.1"));
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx4.getStep());
+
+        // Test non-Senior DCM / non-Senior DFM designation (e.g. DCM) is denied
+        RmsAuthSessionContext ctx3 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        assertThrows(RmsAuthOrchestrator.AccessDeniedException.class, () ->
+                orchestrator.selectDesignationAndGenerateOtp(ctx3, "DCM", "127.0.0.1"));
+    }
+
 }

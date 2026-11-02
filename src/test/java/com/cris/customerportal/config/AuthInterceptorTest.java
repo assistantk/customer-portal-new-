@@ -138,4 +138,15 @@ class AuthInterceptorTest {
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         assertTrue(responseWriter.toString().contains("Authentication required"));
     }
+    @Test
+    void whenAuthDisabled_allowsRequestWithoutAuthentication() throws Exception {
+        interceptor.setAuthEnabled(false);
+        when(request.getSession(true)).thenReturn(session);
+        when(request.getRequestURI()).thenReturn("/api/customers/lookup");
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertTrue(allowed);
+        verify(response, never()).setStatus(anyInt());
+    }
 }

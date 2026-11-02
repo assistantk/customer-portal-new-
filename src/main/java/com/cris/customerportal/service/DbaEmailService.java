@@ -28,6 +28,11 @@ import java.util.regex.Pattern;
 @Service
 public class DbaEmailService {
 
+    private static final Set<String> ADDRESS_COLUMNS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+            "MAVGLBLCUSTADDRTEXT",
+            "MAVHNDGAGNTADDRTEXT",
+            "MAVHNDAGNTADDRTEXT")));
+
     private static final Set<String> COMPANY_NAME_COLUMNS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
             "MAVGLBLCUSTNAME",
             "MAVHNDGAGNTNAME",
@@ -359,6 +364,7 @@ public class DbaEmailService {
         }
         if ("UPDATE".equalsIgnoreCase(request.operation())) {
             sql = normalizeCompanyNameUpdates(sql);
+            sql = normalizeAddressUpdates(sql);
             if ("MEMGLBLCUST".equalsIgnoreCase(request.table())
                     || "MEMGLBLHNDGAGNT".equalsIgnoreCase(request.table())) {
                 return formatUpdateForEmail(sql, request.table()).toUpperCase(Locale.ROOT);
@@ -509,6 +515,55 @@ public class DbaEmailService {
         return "'" + normalized.replace("'", "''") + "'";
     }
 
+    private String normalizeAddressUpdates(String sql) {
+        int setStart = findKeywordOutsideString(sql, "SET", 0);
+        if (setStart < 0) {
+            return sql;
+        }
+        int assignmentsStart = setStart + "SET".length();
+        int whereStart = findKeywordOutsideString(sql, "WHERE", assignmentsStart);
+        if (whereStart < 0) {
+            return sql;
+        }
+
+        List<String> assignments = splitSqlAssignments(sql.substring(assignmentsStart, whereStart));
+        boolean changed = false;
+        for (int i = 0; i < assignments.size(); i++) {
+            String assignment = assignments.get(i);
+            int equalsIndex = findEqualsOutsideString(assignment);
+            if (equalsIndex < 0) {
+                continue;
+            }
+            String column = assignment.substring(0, equalsIndex).trim().toUpperCase(Locale.ROOT);
+            if (!ADDRESS_COLUMNS.contains(column)) {
+                continue;
+            }
+            String expression = assignment.substring(equalsIndex + 1).trim();
+            String normalizedLiteral = normalizeAddressLiteral(expression);
+            if (normalizedLiteral != null && !normalizedLiteral.equals(expression)) {
+                assignments.set(i, assignment.substring(0, equalsIndex + 1) + " " + normalizedLiteral);
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            return sql;
+        }
+        return sql.substring(0, assignmentsStart)
+                + " " + String.join(", ", assignments)
+                + " " + sql.substring(whereStart).trim();
+    }
+
+    private String normalizeAddressLiteral(String expression) {
+        if (expression.length() < 2 || expression.charAt(0) != '\''
+                || expression.charAt(expression.length() - 1) != '\'') {
+            return null;
+        }
+        String value = expression.substring(1, expression.length() - 1).replace("''", "'");
+        String normalized = value.replaceAll(",\\s+", ",").trim();
+        return "'" + normalized.replace("'", "''") + "'";
+    }
+
     private int findEqualsOutsideString(String assignment) {
         boolean inString = false;
         for (int i = 0; i < assignment.length(); i++) {
@@ -589,7 +644,7 @@ public class DbaEmailService {
                 return i;
             }
         }
-        throw new IllegalArgumentException("Unclosed column list in the MEMGLBLCUST INSERT statement.");
+        throw new IllegalArgumentException("Unclosed column list in the customer registration statement.");
     }
 
     private String toEmailSql(DatabaseOperationAudit audit) {

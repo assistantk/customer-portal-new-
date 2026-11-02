@@ -17,7 +17,7 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60;
 })
 export class LoginComponent implements OnInit, OnDestroy {
   currentStep: AuthStep = 'LOGIN';
-  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'VERIFY' | null = null;
+  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'REGENERATE' | 'VERIFY' | null = null;
 
   // Step 1: Login Form
   loginForm!: FormGroup;
@@ -68,7 +68,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     // Step 3 Form: OTP
     this.otpForm = this.fb.group({
-      otp: ["", [Validators.required, Validators.pattern(/^[0-9]{4,8}$/)]]
+      otp: ["", [Validators.required, Validators.pattern(/^[0-9]{5}$/)]]
     });
 
     const qUrl = this.route.snapshot.queryParams['returnUrl'];
@@ -86,6 +86,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     this.authService.setRmsTempUser(null);
     this.loadCaptcha();
+    this.checkPendingOtpStatus();
   }
 
   ngOnDestroy(): void {
@@ -237,10 +238,48 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loadingOperation = 'DESIGNATION';
 
     if (isDevMode()) {
-      console.log('[RMS Auth] Request started: select-designation for designation:', selectedDesig);
+      console.log('[RMS Auth] Designation selected:', selectedDesig);
+      console.log('[RMS Auth] Automatically executing both Generate OTP and Regenerate OTP functions');
     }
 
-    this.authService.selectDesignation(selectedDesig).pipe(
+    let transitionedToOtp = false;
+
+    const handleOtpStepTransition = (res: any) => {
+      if (transitionedToOtp) return;
+      if (res && res.accessDenied) {
+        this.designationForm.reset({ designation: '' });
+        this.error = res.message || "The selected designation is not authorized for this portal.";
+        return;
+      }
+      if (res && res.success) {
+        transitionedToOtp = true;
+        this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
+        this.currentStep = 'OTP';
+        this.successMessage = res.message || "OTP sent to your registered contact.";
+        const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
+          ? res.data.resendCooldownSeconds
+          : OTP_RESEND_COOLDOWN_SECONDS;
+        this.startCooldown(cooldown);
+      }
+    };
+
+    // 1. Call the existing Regenerate OTP function automatically
+    this.authService.regenerateOtp(selectedDesig).subscribe({
+      next: (res) => {
+        if (isDevMode()) {
+          console.log('[RMS Auth] Regenerate OTP completed automatically:', res);
+        }
+        handleOtpStepTransition(res);
+      },
+      error: (err) => {
+        if (isDevMode()) {
+          console.warn('[RMS Auth] Regenerate OTP notice:', err);
+        }
+      }
+    });
+
+    // 2. Call the existing Generate OTP function automatically
+    this.authService.generateOtp(selectedDesig).pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
@@ -253,7 +292,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         const nextStep: AuthStep = passed ? 'OTP' : 'DESIGNATION';
 
         if (isDevMode()) {
-          console.log('[RMS Auth] Response received. HTTP status: 200');
+          console.log('[RMS Auth] Generate OTP response received. HTTP status: 200');
           console.log('[RMS Auth] Whether the response passed validation:', passed);
           console.log('[RMS Auth] The next authentication step:', nextStep);
         }
@@ -265,18 +304,19 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
 
         if (passed) {
-          this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
-          this.currentStep = 'OTP';
-          this.successMessage = res.message || "OTP sent to your registered contact.";
-          this.startCooldown(OTP_RESEND_COOLDOWN_SECONDS);
+          handleOtpStepTransition(res);
         } else {
-          this.error = res.message || "Failed to generate OTP. Please try again.";
+          this.error = res?.message || "Failed to generate OTP. Please try again.";
         }
       },
       error: (err) => {
         if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during select-designation:', err?.message || err);
+          console.error('[RMS Auth] Caught error during generate-otp:', err?.message || err);
           console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
+        }
+
+        if (transitionedToOtp) {
+          return;
         }
 
         if (err?.status === 403 || err?.error?.accessDenied) {
@@ -314,7 +354,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     const otp = (this.otpForm.get('otp')?.value || '').trim();
     if (!otp) {
-      this.error = "Please enter the OTP received on your mobile / email.";
+      this.error = "Please enter the 5-digit OTP received on your mobile / email.";
       return;
     }
 
@@ -364,9 +404,55 @@ export class LoginComponent implements OnInit, OnDestroy {
         } else if (err?.status === 0) {
           this.error = "Unable to connect to the server. Please try again.";
         } else if (err?.status === 401) {
-          this.error = err?.error?.message || "Invalid OTP. Please enter the valid OTP.";
+          this.error = err?.error?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
         } else {
-          this.error = err?.error?.message || err?.message || "Invalid OTP. Please enter the valid OTP.";
+          this.error = err?.error?.message || err?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
+        }
+      }
+    });
+  }
+
+  regenerateOtp(): void {
+    if (this.loading || this.loadingOperation === 'REGENERATE') {
+      return; // Prevent accidental duplicate clicks while request is processing
+    }
+
+    this.error = "";
+    this.successMessage = "";
+    this.loading = true;
+    this.loadingOperation = 'REGENERATE';
+
+    const selectedDesig = (this.designationForm.get('designation')?.value || '').trim();
+
+    this.authService.regenerateOtp(selectedDesig).pipe(
+      timeout(15000),
+      finalize(() => {
+        this.loading = false;
+        this.loadingOperation = null;
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
+      next: (res) => {
+        if (res && res.success) {
+          this.successMessage = res.message || "OTP regenerated successfully and sent to your registered contact.";
+          if (res.data?.destinationMasked) {
+            this.maskedDestination = res.data.destinationMasked;
+          }
+          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
+            ? res.data.resendCooldownSeconds
+            : OTP_RESEND_COOLDOWN_SECONDS;
+          this.startCooldown(cooldown);
+        } else {
+          this.error = res?.message || "Failed to regenerate OTP. Please try again.";
+        }
+      },
+      error: (err) => {
+        if (err?.status === 429) {
+          const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
+          this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
+          this.error = err?.error?.message || "Please wait before requesting another OTP.";
+        } else {
+          this.error = err?.error?.message || err?.message || "Unable to regenerate OTP. Please try again.";
         }
       }
     });
@@ -382,7 +468,9 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.loadingOperation = 'RESEND';
 
-    this.authService.resendOtp().pipe(
+    const selectedDesig = (this.designationForm.get('designation')?.value || '').trim();
+
+    this.authService.resendOtp(selectedDesig).pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
@@ -392,11 +480,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (res) => {
         if (res && res.success) {
-          this.successMessage = "A new OTP has been dispatched to your registered contact.";
+          this.successMessage = res.message || "A new OTP has been dispatched to your registered contact.";
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }
-          this.startCooldown(OTP_RESEND_COOLDOWN_SECONDS);
+          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
+            ? res.data.resendCooldownSeconds
+            : OTP_RESEND_COOLDOWN_SECONDS;
+          this.startCooldown(cooldown);
         } else {
           this.error = res.message || "Failed to resend OTP. Please try again.";
         }
@@ -468,21 +559,53 @@ export class LoginComponent implements OnInit, OnDestroy {
   }
 
   get resendCooldownDisplay(): string {
-    const minutes = Math.floor(this.resendCooldown / 60);
-    const seconds = this.resendCooldown % 60;
+    const clamped = Math.max(0, this.resendCooldown);
+    const minutes = Math.floor(clamped / 60);
+    const seconds = clamped % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private startCooldown(seconds: number): void {
     this.clearCooldownTimer();
-    this.resendCooldown = seconds;
+    this.resendCooldown = Math.max(0, seconds);
+    if (this.resendCooldown <= 0) {
+      return;
+    }
     this.cooldownInterval = setInterval(() => {
-      this.resendCooldown--;
+      if (this.resendCooldown > 0) {
+        this.resendCooldown--;
+      }
       this.cdr.markForCheck();
       if (this.resendCooldown <= 0) {
         this.clearCooldownTimer();
       }
     }, 1000);
+  }
+
+  private checkPendingOtpStatus(): void {
+    this.authService.getOtpStatus().subscribe({
+      next: (res) => {
+        if (res && res.success && res.data && res.data.step === 'OTP_PENDING') {
+          this.currentStep = 'OTP';
+          this.maskedDestination = res.data.destinationMasked || 'registered mobile / email';
+          if (res.data.userId && res.data.divisionCode && res.data.selectedDesignation) {
+            this.validatedUser = {
+              userId: res.data.userId,
+              userName: res.data.userName,
+              divisionCode: res.data.divisionCode,
+              designations: [res.data.selectedDesignation]
+            };
+            this.authService.setRmsTempUser(this.validatedUser);
+          }
+          const cooldown = res.data.resendCooldownSeconds != null ? res.data.resendCooldownSeconds : 0;
+          if (cooldown > 0) {
+            this.startCooldown(cooldown);
+          }
+          this.cdr.markForCheck();
+        }
+      },
+      error: () => {}
+    });
   }
 
   private loadCaptcha(): void {

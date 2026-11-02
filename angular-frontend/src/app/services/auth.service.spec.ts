@@ -139,7 +139,7 @@ describe('AuthService', () => {
   });
 
   it('calls verify-otp and updates currentUser on success', () => {
-    service.verifyOtp('123456').subscribe((res) => {
+    service.verifyOtp('78901').subscribe((res) => {
       expect(res.success).toBe(true);
       expect(service.currentUser?.userId).toBe('SREEJU');
       expect(service.currentUser?.userRole).toBe('SR-DCM');
@@ -147,7 +147,7 @@ describe('AuthService', () => {
 
     const req = httpTestingController.expectOne('/api/auth/verify-otp');
     expect(req.request.withCredentials).toBe(true);
-    expect(req.request.body).toEqual({ otp: '123456' });
+    expect(req.request.body).toEqual({ otp: '78901' });
     req.flush({
       success: true,
       data: { userId: 'SREEJU', userName: 'SREEJU KRISHNAN', userRole: 'SR-DCM' }

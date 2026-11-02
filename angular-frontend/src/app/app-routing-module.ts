@@ -8,11 +8,11 @@ import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
 import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
-import { AuthGuard } from './services/auth.guard';
+import { AuthGuard, NonAuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
-  { path: 'login', component: LoginComponent },
+  { path: 'login', component: LoginComponent, canActivate: [NonAuthGuard] },
   { path: 'access-denied', component: AccessDeniedComponent },
   { path: 'signup', redirectTo: 'register' },
   {
@@ -20,10 +20,6 @@ const routes: Routes = [
     component: LayoutComponent,
     canActivate: [AuthGuard],
     children: [
-      { path: '', redirectTo: 'register', pathMatch: 'full' },
-      { path: 'register', component: CustomerRegistrationComponent },
-      { path: 'verify', component: VerificationComponent },
-      { path: 'delete-request', component: CustomerRegistrationComponent },
       { path: '', redirectTo: 'registration', pathMatch: 'full' },
       { path: 'registration', component: CustomerRegistrationComponent },
       { path: 'register', redirectTo: 'registration', pathMatch: 'full' },
@@ -35,10 +31,11 @@ const routes: Routes = [
       { path: 'registration/ownership', component: OwnershipCodeComponent },
       { path: 'registration/ownership-code', redirectTo: 'registration/ownership', pathMatch: 'full' },
       { path: 'register/ownership', redirectTo: 'registration/ownership', pathMatch: 'full' },
+      { path: 'delete-request', component: CustomerRegistrationComponent },
       { path: 'verify', component: VerificationComponent }
     ]
   },
-  { path: '**', redirectTo: 'registration' }
+  { path: '**', redirectTo: 'login' }
 ];
 
 @NgModule({

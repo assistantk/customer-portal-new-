@@ -57,7 +57,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   notice = '';
   loading = false;
 
-  // Ownership Section 1 states (MEMWGONOWNRSHIP)
+  // Ownership Section 1 states (Ownership Code)
   ownSection1Loading = false;
   ownSection1Found: boolean | null = null;
   ownSection1Duplicate = false;
@@ -66,7 +66,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   private ownSection1Timer: any = null;
   private ownSection1ReqId = 0;
 
-  // Ownership Section 2 states (MEMWGONOWNRPRTY)
+  // Ownership Section 2 states (Ownership Party Code)
   ownSection2Loading = false;
   ownSection2Found: boolean | null = null;
   ownSection2Duplicate = false;
@@ -110,7 +110,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     return this.form.zone ? (divisionsByZone[this.form.zone] || []) : [];
   }
 
-  /* ===== Section 1: Ownership Code Lookup in MEMWGONOWNRSHIP ===== */
+  /* ===== Section 1: Ownership Code Lookup ===== */
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
@@ -176,7 +176,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     }
   }
 
-  /* ===== Section 2: Ownership Party Code Lookup in MEMWGONOWNRPRTY ===== */
+  /* ===== Section 2: Ownership Party Code Lookup ===== */
   handleOwnershipPartyCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipPartyCode = upperCode;
