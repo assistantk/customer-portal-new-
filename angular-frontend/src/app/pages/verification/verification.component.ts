@@ -107,7 +107,8 @@ export class VerificationComponent implements OnInit {
       city: c.city,
       state: c.state,
       pincode: c.pincode,
-      gstins: gstins.length > 0 ? gstins : undefined
+      gstins: gstins.length > 0 ? gstins : undefined,
+      recordDate: c.creationDate || c.date || c.createdDate
     });
   }
 

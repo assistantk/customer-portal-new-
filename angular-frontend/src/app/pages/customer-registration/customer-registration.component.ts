@@ -171,6 +171,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   lookupLoading = false;
   lookupDone = false;
   lookupError = '';
+  lastLookupRecord: any = null;
   codeConfirmed = false;
   codeChecking = false;
   addressStatus = '';
@@ -606,6 +607,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         ).subscribe({
           next: (customer: any) => {
             if (requestId !== this.lookupRequestId) return;
+            this.lastLookupRecord = customer;
             this.form.companyName = customer.companyName || '';
             this.form.customerCode = code;
             this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
@@ -910,7 +912,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       ownershipCode: this.form.ownershipCode,
       ownershipDesc: this.form.ownershipAddress,
       partyCode: this.form.ownershipPartyCode,
-      partyDesc: this.form.ownershipPartyAddress
+      partyDesc: this.form.ownershipPartyAddress,
+      recordDate: this.lastLookupRecord?.creationDate || this.lastLookupRecord?.date || this.lastLookupRecord?.createdDate
     });
   }
 
