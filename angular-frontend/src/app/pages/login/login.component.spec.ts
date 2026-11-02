@@ -21,11 +21,11 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     authServiceMock = {
       getCaptcha: vi.fn(() => of({ image: 'data:image/png;base64,captcha-image' })),
       validateUser: vi.fn(),
-      selectDesignation: vi.fn(() => of({ success: true, message: 'OTP request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 } })),
+      selectDesignation: vi.fn(() => of({ success: true, message: 'OTP request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
       generateOtp: vi.fn(),
       regenerateOtp: vi.fn(),
       verifyOtp: vi.fn(),
-      resendOtp: vi.fn(() => of({ success: true, message: 'OTP resend request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 } })),
+      resendOtp: vi.fn(() => of({ success: true, message: 'OTP resend request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
       getOtpStatus: vi.fn(() => of({ success: false })),
       setRmsTempUser: vi.fn((user) => {
         if (user) {
@@ -34,6 +34,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
           sessionStorage.removeItem('customer-portal.rms-temp-user');
         }
       }),
+      setCurrentUser: vi.fn(),
+      logout: vi.fn(() => of({ success: true })),
       getRmsTempUser: vi.fn(() => {
         const raw = sessionStorage.getItem('customer-portal.rms-temp-user');
         return raw ? JSON.parse(raw) : null;
@@ -63,8 +65,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.ngOnInit();
   });
 
-  // Scenario 1: Valid mock credentials -> UI advances to Designation
-  it('Scenario 1: advances to Designation step on valid mock credentials', () => {
+  // Scenario 1: Valid RMS credentials -> UI advances to Designation
+  it('Scenario 1: advances to Designation step on successful RMS validation', () => {
     const responseSubject = new Subject<RmsValidateUserResponse>();
     authServiceMock.validateUser.mockReturnValue(responseSubject.asObservable());
 
@@ -89,7 +91,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
         userId: 'SREEJU',
         userName: 'SREEJU KRISHNAN',
         divisionCode: 'TKD',
-        designations: ['SR-DCM', 'DCM', 'JDCM']
+        designations: [' RAS-ADMN  ', 'DEV-OPS', 'YARD-YM', 'DY-TRAINS', 'COM', 'SR-DCM', 'HELP-DESK', 'YARD-CYM', 'YARD-YS']
       }
     });
     responseSubject.complete();
@@ -98,7 +100,10 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.currentStep).toBe('DESIGNATION');
     expect(component.loginForm.get('password')?.value).toBe('');
     expect(component.validatedUser?.userId).toBe('SREEJU');
-    expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
+    expect(component.availableDesignations).toEqual([
+      'RAS-ADMN', 'DEV-OPS', 'YARD-YM', 'DY-TRAINS', 'COM',
+      'SR-DCM', 'HELP-DESK', 'YARD-CYM', 'YARD-YS'
+    ]);
     expect(component.designationForm.get('designation')?.value).toBe('');
     expect(component.error).toBe('');
     expect(authServiceMock.setRmsTempUser).toHaveBeenCalled();
@@ -155,7 +160,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(input.selectionStart).toBe(4);
   });
 
-  // Scenario 2: Invalid mock credentials -> error appears and UI remains on Credentials
+  // Scenario 2: Invalid credentials -> error appears and UI remains on Credentials
   it('Scenario 2: displays error and remains on Credentials step on invalid credentials', () => {
     authServiceMock.validateUser.mockReturnValue(
       throwError(() => ({
@@ -229,8 +234,8 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.error).toContain('No designations found for your account');
   });
 
-  // Scenario 5: Successful designation retrieval -> dropdown is populated from development data source
-  it('Scenario 5: populates designation list from configured development data source', () => {
+  // Scenario 5: Successful designation retrieval -> dropdown contains API-returned roles
+  it('Scenario 5: populates the designation list directly from the API response', () => {
     authServiceMock.validateUser.mockReturnValue(
       of({
         success: true,
@@ -238,7 +243,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
           userId: 'SREEJU',
           userName: 'SREEJU KRISHNAN',
           divisionCode: 'TKD',
-          designations: ['SR-DCM', 'DCM', 'JDCM']
+          designations: [' RAS-ADMN  ', 'DEV-OPS', 'YARD-YM', 'DY-TRAINS', 'COM', 'SR-DCM', 'HELP-DESK', 'YARD-CYM', 'YARD-YS']
         }
       })
     );
@@ -253,9 +258,59 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.onSubmitLogin();
 
     expect(component.currentStep).toBe('DESIGNATION');
-    expect(component.availableDesignations.length).toBe(3);
-    expect(component.availableDesignations).toEqual(['SR-DCM', 'DCM', 'JDCM']);
+    expect(component.availableDesignations).toEqual([
+      'RAS-ADMN', 'DEV-OPS', 'YARD-YM', 'DY-TRAINS', 'COM',
+      'SR-DCM', 'HELP-DESK', 'YARD-CYM', 'YARD-YS'
+    ]);
     expect(component.designationForm.get('designation')?.value).toBe('');
+  });
+
+  it('does not display roles when credential validation is unsuccessful', () => {
+    authServiceMock.validateUser.mockReturnValue(of({
+      success: false,
+      message: 'Invalid credentials.',
+      data: {
+        userId: 'SREEJU',
+        divisionCode: 'TKD',
+        designations: ['SR-DCM']
+      }
+    }));
+    component.loginForm.setValue({
+      userId: 'SREEJU',
+      password: 'wrong-password',
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
+    });
+
+    component.onSubmitLogin();
+
+    expect(component.currentStep).toBe('LOGIN');
+    expect(component.availableDesignations).toEqual([]);
+    expect(component.error).toBe('Invalid credentials.');
+  });
+
+  it('shows all role values returned by the API even if portal access is later denied', () => {
+    authServiceMock.validateUser.mockReturnValue(of({
+      success: true,
+      data: {
+        userId: 'SREEJU',
+        userName: 'SREEJU KRISHNAN',
+        divisionCode: 'TKD',
+        designations: ['DCM', 'JDCM']
+      }
+    }));
+    component.loginForm.setValue({
+      userId: 'SREEJU',
+      password: 'test@123',
+      divisionCode: 'TKD',
+      captchaInput: 'AbCd23'
+    });
+
+    component.onSubmitLogin();
+
+    expect(component.currentStep).toBe('DESIGNATION');
+    expect(component.availableDesignations).toEqual(['DCM', 'JDCM']);
+    expect(component.error).toBe('');
   });
 
   it('initiates OTP when an available designation is selected', () => {
@@ -265,7 +320,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
       message: 'OTP request accepted.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
     }));
 
     component.onSubmitDesignation();
@@ -275,28 +330,28 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(authServiceMock.generateOtp).not.toHaveBeenCalled();
     expect(authServiceMock.regenerateOtp).not.toHaveBeenCalled();
     expect(component.currentStep).toBe('OTP');
-    expect(component.resendCooldown).toBe(300);
+    expect(component.resendCooldown).toBe(60);
   });
 
-  it('uses the resend endpoint and runs a five-minute countdown', () => {
+  it('uses the resend endpoint and runs a one-minute countdown', () => {
     vi.useFakeTimers();
     component.currentStep = 'OTP';
     component.resendCooldown = 0;
     authServiceMock.resendOtp.mockReturnValue(of({
       success: true,
-      data: { resendCooldownSeconds: 300 }
+      data: { resendCooldownSeconds: 60 }
     }));
 
     component.resendOtp();
 
     expect(authServiceMock.resendOtp).toHaveBeenCalledTimes(1);
     expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
-    expect(component.resendCooldown).toBe(300);
-    expect(component.resendCooldownDisplay).toBe('05:00');
+    expect(component.resendCooldown).toBe(60);
+    expect(component.resendCooldownDisplay).toBe('01:00');
 
     vi.advanceTimersByTime(1000);
     expect(component.resendCooldown).toBe(299);
-    vi.advanceTimersByTime(299000);
+    vi.advanceTimersByTime(59000);
     expect(component.resendCooldown).toBe(0);
 
     component.ngOnDestroy();
@@ -349,44 +404,39 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
   });
 
 
-  it('initiates OTP when Senior SR-DCM or Senior DCM designation is selected', () => {
+  it('initiates OTP only after the SR-DCM role is selected', () => {
     component.currentStep = 'DESIGNATION';
-    component.availableDesignations = ['Senior SR-DCM', 'Senior DCM', 'DCM'];
-    component.designationForm.setValue({ designation: 'Senior DCM' });
+    component.availableDesignations = ['SR-DCM', 'Senior DCM', 'DCM'];
+    component.designationForm.setValue({ designation: 'SR-DCM' });
     authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
       message: 'OTP request accepted.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
     }));
 
     component.onSubmitDesignation();
 
     expect(authServiceMock.selectDesignation).toHaveBeenCalledTimes(1);
-    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('Senior DCM');
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('SR-DCM');
     expect(component.currentStep).toBe('OTP');
-    expect(component.resendCooldown).toBe(300);
+    expect(component.resendCooldown).toBe(60);
   });
 
-  it('initiates only one OTP request when Senior DFM is selected', () => {
+  it('blocks OTP generation when a role other than SR-DCM is selected', () => {
     component.currentStep = 'DESIGNATION';
     component.availableDesignations = ['Senior DFM', 'Senior DCM', 'DCM'];
     component.designationForm.setValue({ designation: 'Senior DFM' });
-    authServiceMock.selectDesignation.mockReturnValue(of({
-      success: true,
-      message: 'OTP request accepted.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
-    }));
-
     component.onSubmitDesignation();
 
-    expect(authServiceMock.selectDesignation).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
     expect(authServiceMock.generateOtp).not.toHaveBeenCalled();
     expect(authServiceMock.regenerateOtp).not.toHaveBeenCalled();
-    expect(component.currentStep).toBe('OTP');
+    expect(component.currentStep).toBe('DESIGNATION');
+    expect(component.error).toContain('not permitted');
   });
 
-  // Scenario 6: Unauthorized designation -> access is denied without leaving the login card
-  it('Scenario 6: reports an unauthorized designation without navigating away', () => {
+  // Scenario 6: An unauthorized designation cannot be submitted from the selection step
+  it('Scenario 6: blocks an unauthorized designation before requesting an OTP', () => {
     component.validatedUser = {
       userId: 'SREEJU',
       divisionCode: 'TKD',
@@ -396,22 +446,12 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.currentStep = 'DESIGNATION';
     component.designationForm.setValue({ designation: 'DCM' });
 
-    const forbiddenError = {
-      status: 403,
-      error: {
-        success: false,
-        accessDenied: true,
-        message: 'Access Restricted: This website is available only to authorized Senior DCM users.'
-      }
-    };
-    authServiceMock.selectDesignation.mockReturnValue(throwError(() => forbiddenError));
-
     component.onSubmitDesignation();
 
     expect(component.loading).toBe(false);
     expect(component.currentStep).toBe('DESIGNATION');
-    expect(component.error).toContain('Access Restricted');
-    expect(component.designationForm.get('designation')?.value).toBe('');
+    expect(component.error).toContain('not permitted');
+    expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
     expect(routerMock.navigate).not.toHaveBeenCalled();
   });
 

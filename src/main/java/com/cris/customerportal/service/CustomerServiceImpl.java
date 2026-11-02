@@ -165,7 +165,8 @@ public class CustomerServiceImpl implements CustomerService {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
         + glblGstCol + " AS MAVCUSTGSTNUMB, "
-        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE, MAVIMPLREMK, "
+        + "NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE "
         + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -180,6 +181,8 @@ public class CustomerServiceImpl implements CustomerService {
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setPincode(rs.getString("MAVPCOCODE"));
+     response.setDivision(rs.getString("MAVIMPLREMK"));
+     response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
      
      return response;
     } else {
@@ -196,7 +199,8 @@ public class CustomerServiceImpl implements CustomerService {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
         + glblGstCol + " AS MAVCUSTGSTNUMB, "
-        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE "
+        + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE, MAVIMPLREMK, "
+        + "NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE "
         + "FROM MEMGLBLCUST WHERE " + glblGstCol + " LIKE ?";
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -212,6 +216,8 @@ public class CustomerServiceImpl implements CustomerService {
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
      response.setPincode(rs.getString("MAVPCOCODE"));
+     response.setDivision(rs.getString("MAVIMPLREMK"));
+     response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
      
      responses.add(response);
     }
@@ -681,8 +687,10 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRSHIP (MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC, MACPRVTPRTYCODE) VALUES ("
-      + formatSqlValue(normalizedCode) + ", " + formatSqlValue(ownershipDesc) + ", 'Y');";
+  return "INSERT INTO MEMWGONOWNRSHIP VALUES ("
+      + formatSqlValue(normalizedCode) + ", "
+      + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
+      + ", NULL, 'Y', SYSDATE, NULL);";
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
@@ -781,8 +789,19 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnershipParty(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRPRTY (MAVWGONOWNRPRTYCODE, MAVWGONOWNRPRTYDESC) VALUES ("
-      + formatSqlValue(normalizedCode) + ", " + formatSqlValue(partyDesc) + ");";
+  return "INSERT INTO MEMWGONOWNRPRTY VALUES ("
+      + formatSqlValue(normalizedCode) + ", "
+      + formatSqlValue(withOwnershipDescriptionPrefix(partyDesc)) + ");";
+ }
+
+ private String withOwnershipDescriptionPrefix(String description) {
+  String normalized = description == null ? "" : description.trim();
+  if (normalized.length() >= 3
+      && normalized.regionMatches(true, 0, "M/S", 0, 3)
+      && (normalized.length() == 3 || Character.isWhitespace(normalized.charAt(3)))) {
+   return "M/S " + normalized.substring(3).trim();
+  }
+  return "M/S " + normalized;
  }
 
  private Map<String, String> lookupExistingOwnershipPartyRecord(String partyCode) {

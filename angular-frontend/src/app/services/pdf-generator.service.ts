@@ -21,6 +21,14 @@ export interface RegistrationPdfData {
   generatedAt?: Date;
 }
 
+export interface VerificationPdfData {
+  searchType: string;
+  searchValue: string;
+  columns: string[];
+  rows: string[][];
+  generatedAt?: Date;
+}
+
 export interface SignatureBlockDetails {
   verifiedStatus: string;
   eSignedByLabel: string;
@@ -315,5 +323,250 @@ export class PdfGeneratorService {
     const defaultFilename = `${(data.code || 'registration').toUpperCase()}_acknowledgement.pdf`;
     doc.save(filename || defaultFilename);
   }
-}
 
+  generateVerificationPdf(data: VerificationPdfData): jsPDF {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+    const includedColumnIndexes = data.columns
+      .map((column, index) => ({ column, index }))
+      .filter(({ column }) => !this.isExcludedVerificationColumn(column))
+      .map(({ index }) => index);
+    const reportData: VerificationPdfData = {
+      ...data,
+      columns: includedColumnIndexes.map((index) => data.columns[index]),
+      rows: data.rows.map((row) => includedColumnIndexes.map((index) => row[index] ?? ''))
+    };
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
+    const tableWidth = pageWidth - margin * 2;
+    const lineHeight = 3.2;
+    const fontSize = 7.2;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(fontSize);
+    const widths = reportData.columns.map((column) =>
+      Math.max(25, Math.min(58, doc.getTextWidth(this.verificationColumnLabel(column)) + 9))
+    );
+    const columnGroups = this.createVerificationColumnGroups(widths, tableWidth);
+    const generatedAt = formatIstTimestamp(data.generatedAt || new Date());
+
+    columnGroups.forEach((group, groupIndex) => {
+      if (groupIndex > 0) {
+        doc.addPage();
+      }
+
+      let y = this.drawVerificationPageHeader(
+        doc,
+        reportData,
+        generatedAt,
+        margin,
+        pageWidth
+      );
+      y = this.drawVerificationTableHeader(
+        doc,
+        reportData.columns,
+        group,
+        margin,
+        y,
+        fontSize
+      );
+
+      const tableBottom = pageHeight - 14;
+      reportData.rows.forEach((row, rowIndex) => {
+        const wrappedCells = group.indices.map((columnIndex, index) => {
+          const value = row[columnIndex] ?? '';
+          const width = group.widths[index];
+          return doc.splitTextToSize(value, Math.max(5, width - 4)) as string[];
+        });
+        const rowLineCount = Math.max(1, ...wrappedCells.map((lines) => lines.length));
+        let lineOffset = 0;
+
+        while (lineOffset < rowLineCount) {
+          let availableLines = Math.floor((tableBottom - y - 3) / lineHeight);
+          if (availableLines < 1) {
+            doc.addPage();
+            y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
+            y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
+            availableLines = Math.floor((tableBottom - y - 3) / lineHeight);
+          }
+
+          const segmentLines = Math.min(rowLineCount - lineOffset, availableLines);
+          const rowHeight = segmentLines * lineHeight + 3;
+          let x = margin;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(fontSize);
+          doc.setTextColor(30, 41, 59);
+
+          group.widths.forEach((width, columnIndex) => {
+            doc.setFillColor(rowIndex % 2 === 0 ? 248 : 255, rowIndex % 2 === 0 ? 250 : 255, rowIndex % 2 === 0 ? 252 : 255);
+            doc.setDrawColor(203, 213, 225);
+            doc.rect(x, y, width, rowHeight, 'FD');
+            const lines = wrappedCells[columnIndex].slice(lineOffset, lineOffset + segmentLines);
+            if (lines.length > 0) {
+              doc.text(lines, x + 2, y + 3, { lineHeightFactor: 1.1 });
+            }
+            x += width;
+          });
+
+          y += rowHeight;
+          lineOffset += segmentLines;
+          if (lineOffset < rowLineCount) {
+            doc.addPage();
+            y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
+            y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
+          }
+        }
+      });
+
+      if (reportData.rows.length === 0) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text('No records found.', margin, y + 7);
+      }
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Freight Code Generator | Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 4, {
+        align: 'center'
+      });
+    }
+
+    return doc;
+  }
+
+  previewVerificationPdf(data: VerificationPdfData): void {
+    const url = URL.createObjectURL(this.generateVerificationPdf(data).output('blob'));
+    const previewWindow = window.open(url, '_blank');
+    if (!previewWindow) {
+      URL.revokeObjectURL(url);
+      throw new Error('The PDF preview was blocked. Allow pop-ups and try again.');
+    }
+    previewWindow.opener = null;
+    previewWindow.addEventListener('pagehide', () => URL.revokeObjectURL(url), { once: true });
+  }
+
+  downloadVerificationPdf(data: VerificationPdfData, filename: string): void {
+    this.generateVerificationPdf(data).save(filename);
+  }
+
+  private createVerificationColumnGroups(widths: number[], availableWidth: number): Array<{ indices: number[]; widths: number[] }> {
+    if (widths.length === 0) {
+      return [{ indices: [0], widths: [availableWidth] }];
+    }
+
+    const groups: Array<{ indices: number[]; widths: number[] }> = [];
+    let indices: number[] = [];
+    let groupWidths: number[] = [];
+    let usedWidth = 0;
+
+    widths.forEach((width, index) => {
+      if (indices.length > 0 && usedWidth + width > availableWidth) {
+        groups.push({ indices, widths: groupWidths });
+        indices = index === 0 ? [] : [0];
+        groupWidths = index === 0 ? [] : [widths[0]];
+        usedWidth = index === 0 ? 0 : widths[0];
+      }
+      indices.push(index);
+      groupWidths.push(width);
+      usedWidth += width;
+    });
+
+    if (indices.length > 0) {
+      groups.push({ indices, widths: groupWidths });
+    }
+    return groups;
+  }
+
+  private drawVerificationPageHeader(
+    doc: jsPDF,
+    data: VerificationPdfData,
+    generatedAt: string,
+    margin: number,
+    pageWidth: number
+  ): number {
+    doc.setFillColor(30, 58, 138);
+    doc.rect(0, 0, pageWidth, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 58, 138);
+    doc.text('Freight Code Generator', margin, 13);
+    doc.setFontSize(13);
+    doc.text('Customer Verification Report', margin, 22);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    const searchText = `Search Type: ${data.searchType}    Search Value: ${data.searchValue}`;
+    const searchLines = doc.splitTextToSize(searchText, pageWidth - margin * 2) as string[];
+    doc.text(searchLines, margin, 30, { lineHeightFactor: 1.2 });
+    const generatedY = 30 + searchLines.length * 4 + 2;
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${generatedAt}`, margin, generatedY);
+    return generatedY + 6;
+  }
+
+  private drawVerificationTableHeader(
+    doc: jsPDF,
+    columns: string[],
+    group: { indices: number[]; widths: number[] },
+    margin: number,
+    y: number,
+    fontSize: number
+  ): number {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(fontSize);
+    const labels = group.indices.map((index, columnIndex) =>
+      doc.splitTextToSize(this.verificationColumnLabel(columns[index] || 'Record'), group.widths[columnIndex] - 4) as string[]
+    );
+    const headerHeight = Math.max(7, ...labels.map((lines) => lines.length * 3.2 + 3));
+    let x = margin;
+    group.widths.forEach((width, index) => {
+      doc.setFillColor(37, 99, 235);
+      doc.setDrawColor(203, 213, 225);
+      doc.rect(x, y, width, headerHeight, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.text(labels[index], x + 2, y + 3, { lineHeightFactor: 1.1 });
+      x += width;
+    });
+    return y + headerHeight;
+  }
+
+  private verificationColumnLabel(column: string): string {
+    const labels: Record<string, string> = {
+      customerCode: 'Global Customer Code',
+      gstinNumbers: 'GSTIN',
+      companyName: 'Company Name',
+      address: 'Address',
+      panNumber: 'PAN',
+      division: 'SR.DCM/',
+      city: 'City',
+      creationDate: 'Date'
+    };
+    return labels[column] || column
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Record';
+  }
+
+  private isExcludedVerificationColumn(column: string): boolean {
+    const normalized = column.toLowerCase().replace(/[^a-z]/g, '');
+    return normalized.includes('email')
+      || normalized.includes('phone')
+      || normalized.includes('mobile')
+      || normalized.includes('pincode');
+  }
+}

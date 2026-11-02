@@ -1,4 +1,3 @@
-import { PdfGeneratorService } from '../../services/pdf-generator.service';
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { finalize, timeout } from 'rxjs';
@@ -228,8 +227,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
-    private router?: Router,
-    private pdfGeneratorService?: PdfGeneratorService
+    private router?: Router
   ) { }
 
   openGlobalCodeForm(): void {
@@ -884,35 +882,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return 'Your request could not be submitted. Please try again.';
   }
 
-
-  downloadPdfSummary(): void {
-    if (!this.pdfGeneratorService) {
-      return;
-    }
-    const code = this.form.customerCode || this.form.ownershipCode || 'REGISTRATION';
-    const gstins = (this.gstins || [])
-      .filter((g) => g.gstin && g.gstin.trim() !== '')
-      .map((g) => ({ gstin: g.gstin.trim(), state: g.state }));
-
-    const state = gstins.length > 0 ? gstins[0].state : '';
-
-    this.pdfGeneratorService.downloadRegistrationPdf({
-      code: code,
-      codeType: this.codeType === 'HANDLING_AGENT' ? 'HANDLING_AGENT' : (this.mode === 'ownership' ? 'OWNERSHIP' : 'GLOBAL'),
-      companyName: this.form.companyName || this.form.ownershipAddress || 'N/A',
-      tradeName: this.form.companyName,
-      panNumber: this.form.panNumber,
-      address: this.form.address || this.form.ownershipPartyAddress,
-      city: this.form.city,
-      state: state,
-      pincode: this.form.pincode,
-      gstins: gstins.length > 0 ? gstins : undefined,
-      ownershipCode: this.form.ownershipCode,
-      ownershipDesc: this.form.ownershipAddress,
-      partyCode: this.form.ownershipPartyCode,
-      partyDesc: this.form.ownershipPartyAddress
-    });
-  }
 
   submit(e?: Event): void {
     if (e) {

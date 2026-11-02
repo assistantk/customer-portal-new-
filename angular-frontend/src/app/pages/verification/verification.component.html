@@ -68,7 +68,21 @@
         </form>
 
         <div *ngIf="customers && customers.length > 0" class="customer-details">
-            <h3 style="margin-bottom: 10px; color: #1e293b;">Search Results</h3>
+            <div class="verification-results-heading">
+                <h3>Search Results</h3>
+                <div *ngIf="hasVerificationResults" class="verification-report-actions">
+                    <button type="button" class="verification-report-button" (click)="printVerificationPreview()">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                            <path d="M6 14h12v8H6zM18 12h.01"/>
+                        </svg>
+                        Print Preview
+                    </button>
+                    <button type="button" class="verification-report-button verification-report-download" (click)="downloadVerificationPdf()">
+                        Download PDF
+                    </button>
+                </div>
+            </div>
             <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
                     <thead>
@@ -80,22 +94,18 @@
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff; text-align: center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <ng-container *ngFor="let c of customers; let i = index">
                             <tr *ngFor="let g of getGstinList(c); let gIdx = index" style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 12px 16px; font-family: monospace;">{{ c.customerCode || code }}</td>
+                                <td style="padding: 12px 16px; font-family: monospace;">{{ c.customerCode || verifiedSearchValue || code }}</td>
                                 <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
                                 <td style="padding: 12px 16px;">{{ c.companyName || '-' }}</td>
                                 <td style="padding: 12px 16px;">{{ c.address || '-' }}</td>
                                 <td style="padding: 12px 16px;">{{ c.panNumber || '-' }}</td>
-                                <td style="padding: 12px 16px;">{{ c.city || '-' }}</td>
+                                <td style="padding: 12px 16px;">{{ c.division || '-' }}</td>
                                 <td style="padding: 12px 16px;">{{ c.creationDate || '-' }}</td>
-                                <td style="padding: 6px 12px; text-align: center;">
-                                    <button type="button" (click)="downloadCustomerPdf(c)" style="padding: 4px 10px; border-radius: 4px; border: 1px solid #0284c7; background: #f0f9ff; color: #0369a1; font-size: 11px; font-weight: 600; cursor: pointer;">PDF</button>
-                                </td>
                             </tr>
                         </ng-container>
                     </tbody>

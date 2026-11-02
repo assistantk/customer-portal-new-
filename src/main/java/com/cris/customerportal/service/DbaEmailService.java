@@ -77,11 +77,14 @@ public class DbaEmailService {
             message.setSubject(buildEmailSubject(operation, tableName, customerCode));
 
             String auditSql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
-            boolean formatCustomerInsert = "INSERT".equalsIgnoreCase(audit.getOperationType())
-                    && "MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
-                    && auditSql.regionMatches(true, 0, "INSERT INTO MEMGLBLCUST", 0, "INSERT INTO MEMGLBLCUST".length());
+            boolean formatRegistrationInsert = "INSERT".equalsIgnoreCase(audit.getOperationType())
+                    && ("MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
+                        || "MEMGLBLHNDGAGNT".equalsIgnoreCase(audit.getTableName()))
+                    && auditSql.regionMatches(
+                            true, 0, "INSERT INTO " + audit.getTableName(),
+                            0, ("INSERT INTO " + audit.getTableName()).length());
             boolean formatUpdate = "UPDATE".equalsIgnoreCase(audit.getOperationType());
-            String sql = formatCustomerInsert || formatUpdate
+            String sql = formatRegistrationInsert || formatUpdate
                     ? formatSqlForEmail(new SqlRequest(
                             audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
                     : formatStringLiterals(toEmailSql(audit));
@@ -406,7 +409,56 @@ public class DbaEmailService {
         if ("MEMGLBLCUST".equalsIgnoreCase(table)) {
             return (insertPrefix + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
         }
-        return (insertPrefix + " " + valuesPart).toUpperCase(Locale.ROOT);
+        return (insertPrefix + " " + normalizeHandlingAgentInsertName(valuesPart)).toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeHandlingAgentInsertName(String valuesPart) {
+        int valuesOpen = valuesPart.indexOf('(', "VALUES".length());
+        if (valuesOpen < 0) {
+            return valuesPart;
+        }
+
+        int valuesClose = findClosingParenthesis(valuesPart, valuesOpen);
+        int firstComma = findCommaOutsideString(valuesPart, valuesOpen + 1, valuesClose);
+        if (firstComma < 0) {
+            return valuesPart;
+        }
+
+        int nameStart = firstComma + 1;
+        while (nameStart < valuesClose && Character.isWhitespace(valuesPart.charAt(nameStart))) {
+            nameStart++;
+        }
+        int nameEnd = findCommaOutsideString(valuesPart, nameStart, valuesClose);
+        if (nameEnd < 0) {
+            nameEnd = valuesClose;
+        }
+        while (nameEnd > nameStart && Character.isWhitespace(valuesPart.charAt(nameEnd - 1))) {
+            nameEnd--;
+        }
+
+        String expression = valuesPart.substring(nameStart, nameEnd);
+        String normalizedName = normalizeCompanyNameLiteral(expression);
+        if (normalizedName == null || normalizedName.equals(expression)) {
+            return valuesPart;
+        }
+        return valuesPart.substring(0, nameStart) + normalizedName + valuesPart.substring(nameEnd);
+    }
+
+    private int findCommaOutsideString(String sql, int start, int end) {
+        boolean inString = false;
+        for (int i = start; i < end; i++) {
+            char current = sql.charAt(i);
+            if (current == '\'') {
+                if (inString && i + 1 < end && sql.charAt(i + 1) == '\'') {
+                    i++;
+                } else {
+                    inString = !inString;
+                }
+            } else if (current == ',' && !inString) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private String compactSqlValues(String sql) {

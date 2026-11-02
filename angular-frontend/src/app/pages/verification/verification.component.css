@@ -9,6 +9,55 @@ body {
     background: #f8fafc
 }
 
+.verification-results-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.verification-results-heading h3 {
+    margin: 0;
+    color: #1e293b;
+}
+
+.verification-report-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.verification-report-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font: 600 12px 'Inter', Roboto, Arial, sans-serif;
+    cursor: pointer;
+}
+
+.verification-report-button:hover {
+    background: #dbeafe;
+}
+
+.verification-report-download {
+    background: #2563eb;
+    color: #fff;
+}
+
+.verification-report-download:hover {
+    background: #1d4ed8;
+}
+
 .app {
     min-height: 100vh;
     display: flex;
