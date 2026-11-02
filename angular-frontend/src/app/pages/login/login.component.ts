@@ -7,7 +7,7 @@ import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../.
 import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
-const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_RESEND_COOLDOWN_SECONDS = 300;
 
 @Component({
   selector: "app-login",
@@ -17,7 +17,7 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60;
 })
 export class LoginComponent implements OnInit, OnDestroy {
   currentStep: AuthStep = 'LOGIN';
-  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'REGENERATE' | 'VERIFY' | null = null;
+  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'VERIFY' | null = null;
 
   // Step 1: Login Form
   loginForm!: FormGroup;
@@ -237,49 +237,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.loadingOperation = 'DESIGNATION';
 
-    if (isDevMode()) {
-      console.log('[RMS Auth] Designation selected:', selectedDesig);
-      console.log('[RMS Auth] Automatically executing both Generate OTP and Regenerate OTP functions');
-    }
-
-    let transitionedToOtp = false;
-
-    const handleOtpStepTransition = (res: any) => {
-      if (transitionedToOtp) return;
-      if (res && res.accessDenied) {
-        this.designationForm.reset({ designation: '' });
-        this.error = res.message || "The selected designation is not authorized for this portal.";
-        return;
-      }
-      if (res && res.success) {
-        transitionedToOtp = true;
-        this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
-        this.currentStep = 'OTP';
-        this.successMessage = res.message || "OTP sent to your registered contact.";
-        const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
-          ? res.data.resendCooldownSeconds
-          : OTP_RESEND_COOLDOWN_SECONDS;
-        this.startCooldown(cooldown);
-      }
-    };
-
-    // 1. Call the existing Regenerate OTP function automatically
-    this.authService.regenerateOtp(selectedDesig).subscribe({
-      next: (res) => {
-        if (isDevMode()) {
-          console.log('[RMS Auth] Regenerate OTP completed automatically:', res);
-        }
-        handleOtpStepTransition(res);
-      },
-      error: (err) => {
-        if (isDevMode()) {
-          console.warn('[RMS Auth] Regenerate OTP notice:', err);
-        }
-      }
-    });
-
-    // 2. Call the existing Generate OTP function automatically
-    this.authService.generateOtp(selectedDesig).pipe(
+    this.authService.selectDesignation(selectedDesig).pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
@@ -288,37 +246,25 @@ export class LoginComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (res) => {
-        const passed = Boolean(res && res.success);
-        const nextStep: AuthStep = passed ? 'OTP' : 'DESIGNATION';
-
-        if (isDevMode()) {
-          console.log('[RMS Auth] Generate OTP response received. HTTP status: 200');
-          console.log('[RMS Auth] Whether the response passed validation:', passed);
-          console.log('[RMS Auth] The next authentication step:', nextStep);
-        }
-
         if (res && res.accessDenied) {
           this.designationForm.reset({ designation: '' });
           this.error = res.message || "The selected designation is not authorized for this portal.";
           return;
         }
 
-        if (passed) {
-          handleOtpStepTransition(res);
+        if (res && res.success) {
+          this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
+          this.currentStep = 'OTP';
+          this.successMessage = res.message || "OTP request sent to RMS. Check your registered contact.";
+          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
+            ? res.data.resendCooldownSeconds
+            : OTP_RESEND_COOLDOWN_SECONDS;
+          this.startCooldown(cooldown);
         } else {
           this.error = res?.message || "Failed to generate OTP. Please try again.";
         }
       },
       error: (err) => {
-        if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during generate-otp:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-        }
-
-        if (transitionedToOtp) {
-          return;
-        }
-
         if (err?.status === 403 || err?.error?.accessDenied) {
           this.designationForm.reset({ designation: '' });
           this.error = err?.error?.message || "The selected designation is not authorized for this portal.";
@@ -328,7 +274,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         if (err?.status === 429) {
           const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
           this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
-          this.error = err?.error?.message || "An OTP was recently sent. Please wait before trying again.";
+          this.error = err?.error?.message || "An OTP request was recently made. Please wait before trying again.";
         } else if (err?.name === 'TimeoutError') {
           this.error = "Request timed out while generating OTP. Please try again.";
         } else if (err?.status === 0) {
@@ -394,11 +340,6 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       },
       error: (err) => {
-        if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during verify-otp:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-        }
-
         if (err?.name === 'TimeoutError') {
           this.error = "Request timed out while verifying OTP. Please try again.";
         } else if (err?.status === 0) {
@@ -407,52 +348,6 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.error = err?.error?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
         } else {
           this.error = err?.error?.message || err?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
-        }
-      }
-    });
-  }
-
-  regenerateOtp(): void {
-    if (this.loading || this.loadingOperation === 'REGENERATE') {
-      return; // Prevent accidental duplicate clicks while request is processing
-    }
-
-    this.error = "";
-    this.successMessage = "";
-    this.loading = true;
-    this.loadingOperation = 'REGENERATE';
-
-    const selectedDesig = (this.designationForm.get('designation')?.value || '').trim();
-
-    this.authService.regenerateOtp(selectedDesig).pipe(
-      timeout(15000),
-      finalize(() => {
-        this.loading = false;
-        this.loadingOperation = null;
-        this.cdr.markForCheck();
-      })
-    ).subscribe({
-      next: (res) => {
-        if (res && res.success) {
-          this.successMessage = res.message || "OTP regenerated successfully and sent to your registered contact.";
-          if (res.data?.destinationMasked) {
-            this.maskedDestination = res.data.destinationMasked;
-          }
-          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
-            ? res.data.resendCooldownSeconds
-            : OTP_RESEND_COOLDOWN_SECONDS;
-          this.startCooldown(cooldown);
-        } else {
-          this.error = res?.message || "Failed to regenerate OTP. Please try again.";
-        }
-      },
-      error: (err) => {
-        if (err?.status === 429) {
-          const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
-          this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
-          this.error = err?.error?.message || "Please wait before requesting another OTP.";
-        } else {
-          this.error = err?.error?.message || err?.message || "Unable to regenerate OTP. Please try again.";
         }
       }
     });
@@ -480,7 +375,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (res) => {
         if (res && res.success) {
-          this.successMessage = res.message || "A new OTP has been dispatched to your registered contact.";
+          this.successMessage = res.message || "A new OTP request was sent to RMS. Check your registered contact.";
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }

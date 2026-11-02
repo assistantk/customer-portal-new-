@@ -204,7 +204,12 @@ export class AuthService {
    * Resend OTP with cooldown
    */
   resendOtp(designation?: string): Observable<RmsOtpResendResponse> {
-    return this.regenerateOtp(designation);
+    const payload = designation ? { designation: designation.trim() } : {};
+    return this.http.post<RmsOtpResendResponse>(
+      `${this.API}/resend-otp`,
+      payload,
+      { withCredentials: true }
+    );
   }
 
   getOtpStatus(): Observable<RmsOtpStatusResponse> {
@@ -333,4 +338,3 @@ export class AuthService {
     return null;
   }
 }
-

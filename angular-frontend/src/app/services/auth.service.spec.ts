@@ -138,6 +138,17 @@ describe('AuthService', () => {
     });
   });
 
+  it('calls the dedicated resend-otp endpoint', () => {
+    service.resendOtp('SR-DCM').subscribe((res) => {
+      expect(res.success).toBe(true);
+    });
+
+    const req = httpTestingController.expectOne('/api/auth/resend-otp');
+    expect(req.request.withCredentials).toBe(true);
+    expect(req.request.body).toEqual({ designation: 'SR-DCM' });
+    req.flush({ success: true });
+  });
+
   it('calls verify-otp and updates currentUser on success', () => {
     service.verifyOtp('78901').subscribe((res) => {
       expect(res.success).toBe(true);

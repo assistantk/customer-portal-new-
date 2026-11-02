@@ -21,11 +21,11 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     authServiceMock = {
       getCaptcha: vi.fn(() => of({ image: 'data:image/png;base64,captcha-image' })),
       validateUser: vi.fn(),
-      selectDesignation: vi.fn(),
-      generateOtp: vi.fn(() => of({ success: true, message: 'OTP sent.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
-      regenerateOtp: vi.fn(() => of({ success: true, message: 'OTP regenerated.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
+      selectDesignation: vi.fn(() => of({ success: true, message: 'OTP request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 } })),
+      generateOtp: vi.fn(),
+      regenerateOtp: vi.fn(),
       verifyOtp: vi.fn(),
-      resendOtp: vi.fn(() => of({ success: true, message: 'OTP regenerated.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 } })),
+      resendOtp: vi.fn(() => of({ success: true, message: 'OTP resend request accepted.', data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 } })),
       getOtpStatus: vi.fn(() => of({ success: false })),
       setRmsTempUser: vi.fn((user) => {
         if (user) {
@@ -264,57 +264,52 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.designationForm.setValue({ designation: 'SR-DCM' });
     authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
-      message: 'OTP sent.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+      message: 'OTP request accepted.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
     }));
 
     component.onSubmitDesignation();
 
-    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('SR-DCM');
-    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('SR-DCM');
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('SR-DCM');
+    expect(authServiceMock.generateOtp).not.toHaveBeenCalled();
+    expect(authServiceMock.regenerateOtp).not.toHaveBeenCalled();
     expect(component.currentStep).toBe('OTP');
-    expect(component.resendCooldown).toBe(60);
+    expect(component.resendCooldown).toBe(300);
   });
 
-  it('uses the resend endpoint and runs a one-minute countdown', () => {
+  it('uses the resend endpoint and runs a five-minute countdown', () => {
     vi.useFakeTimers();
     component.currentStep = 'OTP';
     component.resendCooldown = 0;
     authServiceMock.resendOtp.mockReturnValue(of({
       success: true,
-      data: { resendCooldownSeconds: 60 }
+      data: { resendCooldownSeconds: 300 }
     }));
 
     component.resendOtp();
 
     expect(authServiceMock.resendOtp).toHaveBeenCalledTimes(1);
     expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
-    expect(component.resendCooldown).toBe(60);
-    expect(component.resendCooldownDisplay).toBe('01:00');
+    expect(component.resendCooldown).toBe(300);
+    expect(component.resendCooldownDisplay).toBe('05:00');
 
     vi.advanceTimersByTime(1000);
-    expect(component.resendCooldown).toBe(59);
-    vi.advanceTimersByTime(59000);
+    expect(component.resendCooldown).toBe(299);
+    vi.advanceTimersByTime(299000);
     expect(component.resendCooldown).toBe(0);
 
     component.ngOnDestroy();
     vi.useRealTimers();
   });
 
-  it('calls regenerateOtp independently when Regenerate OTP button is clicked', () => {
+  it('does not send a resend request while the cooldown is active', () => {
     component.currentStep = 'OTP';
-    component.availableDesignations = ['Senior DFM'];
-    component.designationForm.setValue({ designation: 'Senior DFM' });
-    authServiceMock.regenerateOtp.mockReturnValue(of({
-      success: true,
-      message: 'OTP regenerated successfully and sent to your registered contact.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
-    }));
+    component.resendCooldown = 30;
 
-    component.regenerateOtp();
+    component.resendOtp();
 
-    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DFM');
-    expect(component.successMessage).toContain('OTP regenerated successfully');
+    expect(authServiceMock.resendOtp).not.toHaveBeenCalled();
   });
 
   it('recovers pending OTP step and remaining cooldown on page reload', () => {
@@ -358,34 +353,35 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.currentStep = 'DESIGNATION';
     component.availableDesignations = ['Senior SR-DCM', 'Senior DCM', 'DCM'];
     component.designationForm.setValue({ designation: 'Senior DCM' });
-    authServiceMock.generateOtp.mockReturnValue(of({
+    authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
-      message: 'OTP sent.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+      message: 'OTP request accepted.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
     }));
 
     component.onSubmitDesignation();
 
-    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('Senior DCM');
-    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DCM');
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('Senior DCM');
     expect(component.currentStep).toBe('OTP');
-    expect(component.resendCooldown).toBe(60);
+    expect(component.resendCooldown).toBe(300);
   });
 
-  it('initiates both Generate OTP and Regenerate OTP automatically when Senior DFM is selected', () => {
+  it('initiates only one OTP request when Senior DFM is selected', () => {
     component.currentStep = 'DESIGNATION';
     component.availableDesignations = ['Senior DFM', 'Senior DCM', 'DCM'];
     component.designationForm.setValue({ designation: 'Senior DFM' });
-    authServiceMock.generateOtp.mockReturnValue(of({
+    authServiceMock.selectDesignation.mockReturnValue(of({
       success: true,
-      message: 'OTP sent.',
-      data: { destinationMasked: '*****3868', resendCooldownSeconds: 60 }
+      message: 'OTP request accepted.',
+      data: { destinationMasked: '*****3868', resendCooldownSeconds: 300 }
     }));
 
     component.onSubmitDesignation();
 
-    expect(authServiceMock.generateOtp).toHaveBeenCalledWith('Senior DFM');
-    expect(authServiceMock.regenerateOtp).toHaveBeenCalledWith('Senior DFM');
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.generateOtp).not.toHaveBeenCalled();
+    expect(authServiceMock.regenerateOtp).not.toHaveBeenCalled();
     expect(component.currentStep).toBe('OTP');
   });
 
@@ -408,8 +404,6 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
         message: 'Access Restricted: This website is available only to authorized Senior DCM users.'
       }
     };
-    authServiceMock.generateOtp.mockReturnValue(throwError(() => forbiddenError));
-    authServiceMock.regenerateOtp.mockReturnValue(throwError(() => forbiddenError));
     authServiceMock.selectDesignation.mockReturnValue(throwError(() => forbiddenError));
 
     component.onSubmitDesignation();

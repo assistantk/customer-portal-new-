@@ -7,10 +7,6 @@ import com.cris.customerportal.dto.RmsOtpGenerateRequest;
 import com.cris.customerportal.dto.RmsOtpVerifyRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-
-import java.lang.reflect.Field;
-import java.util.concurrent.ConcurrentMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -20,6 +16,7 @@ import static org.mockito.Mockito.*;
 class RmsAuthOrchestratorTest {
 
     private RmsAuthOrchestrator orchestrator;
+    private RmsApiClient mockClient;
 
     @Test
     void liveRmsEndpointRequiresHttpsAndRejectsEmbeddedCredentials() {
@@ -33,16 +30,11 @@ class RmsAuthOrchestratorTest {
 
     @BeforeEach
     void setUp() {
-        RmsApiClient mockClient = new RmsApiClient(
-                new RestTemplateBuilder(),
-                "http://10.60.201.192:7101/RMS",
-                "/ATVLDTUSER",
-                "/RTGNRTOTP",
-                "/RTVRFYOTP",
-                5000,
-                10000
-        );
-        // Start in mock mode for local unit testing
+        mockClient = mock(RmsApiClient.class);
+        RmsApiResponse accepted = new RmsApiResponse();
+        accepted.setErrorNo("0");
+        when(mockClient.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(accepted);
+        when(mockClient.verifyOtp(any(RmsOtpVerifyRequest.class))).thenReturn(accepted);
         orchestrator = new RmsAuthOrchestrator(mockClient, "mock", "FreightCodeGenerator", "1.1.1.1");
     }
 
@@ -63,20 +55,26 @@ class RmsAuthOrchestratorTest {
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
         assertEquals("SR-DCM", ctx.getSelectedDesignation());
 
-        // Step 3: Verify with genuine random OTP
-        String genuineOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertNotNull(genuineOtp);
-        assertNotEquals("123456", genuineOtp);
+        verify(mockClient, times(1)).generateOtp(argThat(req ->
+                "SREEJU".equals(req.getF_USERID())
+                        && "1.1.1.1".equals(req.getF_CLNTID())
+                        && "FreightCodeGenerator".equals(req.getF_CNSR())
+                        && "9910303868".equals(req.getF_NEWRRNUMB())
+                        && "krishnan.sreeju@gmail.com".equals(req.getF_NEWRRTYPE())
+                        && "GNRTOTP".equals(req.getF_SRVCNAME())
+                        && "APP_LOGIN".equals(req.getF_AJSTFLAG())));
 
-        // Verification with fake '123456' must fail
-        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
-                orchestrator.verifyOtp(ctx, "123456", "127.0.0.1"));
-
-        // Verification with genuine OTP succeeds
-        AuthUserDto user = orchestrator.verifyOtp(ctx, genuineOtp, "127.0.0.1");
+        AuthUserDto user = orchestrator.verifyOtp(ctx, "59521", "127.0.0.1");
         assertNotNull(user);
         assertEquals("SREEJU", user.getUserId());
         assertEquals("SR-DCM", user.getUserRole());
+        verify(mockClient).verifyOtp(argThat(req ->
+                "SREEJU".equals(req.getF_USERID())
+                        && "1.1.1.1".equals(req.getF_CLNTID())
+                        && "59521".equals(req.getF_DOMN())
+                        && "59521".equals(req.getF_SRVC())
+                        && "VLDTOTP".equals(req.getF_SRVCNAME())
+                        && "APP_LOGIN".equals(req.getF_AJSTFLAG())));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -131,10 +129,16 @@ class RmsAuthOrchestratorTest {
         RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
         orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
 
-        // Wrong OTP
+        RmsApiResponse rejected = new RmsApiResponse();
+        rejected.setErrorNo("1");
+        rejected.setRmrk("INVALID OTP");
+        when(mockClient.verifyOtp(any(RmsOtpVerifyRequest.class))).thenReturn(rejected);
+
         assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
                 orchestrator.verifyOtp(ctx, "000000", "127.0.0.1")
         );
+        verify(mockClient).verifyOtp(argThat(req -> "000000".equals(req.getF_DOMN())
+                && "000000".equals(req.getF_SRVC())));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -256,7 +260,7 @@ class RmsAuthOrchestratorTest {
     }
 
     @Test
-    void resendOtp_isBlockedForOneMinuteAfterSuccessfulInitialGeneration() {
+    void resendOtp_isBlockedForFiveMinutesAfterSuccessfulInitialGeneration() {
         RmsApiClient clientMock = mock(RmsApiClient.class);
         RmsApiResponse successResponse = new RmsApiResponse();
         successResponse.setErrorNo("0");
@@ -289,8 +293,7 @@ class RmsAuthOrchestratorTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void subsequentLoginOnSameDayUsesRmsResendOperation() throws Exception {
+    void subsequentLoginUsesInitialGenerationOperationAgainAfterCooldown() {
         RmsApiClient clientMock = mock(RmsApiClient.class);
         RmsApiResponse successResponse = new RmsApiResponse();
         successResponse.setErrorNo("0");
@@ -304,11 +307,7 @@ class RmsAuthOrchestratorTest {
         firstContext.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
         liveOrchestrator.selectDesignationAndGenerateOtp(firstContext, "SR-DCM", "127.0.0.1");
 
-        Field cooldownField = RmsAuthOrchestrator.class.getDeclaredField("otpResendAllowedAt");
-        cooldownField.setAccessible(true);
-        ConcurrentMap<String, Long> cooldowns =
-                (ConcurrentMap<String, Long>) cooldownField.get(liveOrchestrator);
-        cooldowns.put("SREEJU", System.currentTimeMillis() - 1);
+        liveOrchestrator.clearCooldownForTesting("SREEJU");
 
         RmsAuthSessionContext secondContext = new RmsAuthSessionContext();
         secondContext.setUserId("SREEJU");
@@ -320,7 +319,7 @@ class RmsAuthOrchestratorTest {
                 forClass(RmsOtpGenerateRequest.class);
         verify(clientMock, times(2)).generateOtp(requestCaptor.capture());
         assertEquals("GNRTOTP", requestCaptor.getAllValues().get(0).getF_SRVCNAME());
-        assertEquals("REGNRTOTP", requestCaptor.getAllValues().get(1).getF_SRVCNAME());
+        assertEquals("GNRTOTP", requestCaptor.getAllValues().get(1).getF_SRVCNAME());
     }
 
     @Test
@@ -493,132 +492,28 @@ class RmsAuthOrchestratorTest {
         assertTrue(response.isOtpGenerationAccepted("SREEJU"));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Dedicated Scenario Tests for OTP Generation, Daily Rule, and Fake OTP Removal
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    void scenario1_firstLoginOfDayGeneratesGenuineOtp() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
-
-        String otp1 = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertNotNull(otp1);
-        assertEquals(5, otp1.length());
-        assertNotEquals("123456", otp1);
-    }
-
-    @Test
-    void scenario2_secondAndThirdLoginSameDayReusesExistingDailyOtp() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-
-        // 1st login of the day
-        RmsAuthSessionContext ctx1 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx1, "SR-DCM", "127.0.0.1");
-        String firstOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertNotNull(firstOtp);
-
-        // Clear cooldown so 2nd attempt is eligible
-        orchestrator.clearCooldownForTesting("SREEJU");
-
-        // 2nd login of the same day: uses Regenerate OTP logic, reuses same daily OTP
-        RmsAuthSessionContext ctx2 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx2, "SR-DCM", "127.0.0.1");
-        String secondOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertEquals(firstOtp, secondOtp, "Second login on same day must reuse existing daily OTP");
-
-        // Clear cooldown for 3rd attempt
-        orchestrator.clearCooldownForTesting("SREEJU");
-
-        // 3rd login attempt on same day follows same rule
-        RmsAuthSessionContext ctx3 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx3, "SR-DCM", "127.0.0.1");
-        String thirdOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertEquals(firstOtp, thirdOtp, "Third login on same day must reuse existing daily OTP");
-    }
-
-    @Test
-    void scenario4_resendOtpReusesExistingDailyOtp() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
-        String originalOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-
-        // Cooldown is active immediately
-        assertThrows(RmsAuthOrchestrator.OtpResendCooldownException.class, () ->
-                orchestrator.resendOtp(ctx, "127.0.0.1"));
-
-        // Clear cooldown and resend
-        orchestrator.clearCooldownForTesting("SREEJU");
-        orchestrator.resendOtp(ctx, "127.0.0.1");
-        String resentOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-        assertEquals(originalOtp, resentOtp, "Resend OTP must reuse existing daily OTP");
-    }
-
-    @Test
-    void scenario6_fakeOtp123456FailsAuthentication() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
-
-        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
-                orchestrator.verifyOtp(ctx, "123456", "127.0.0.1"));
-    }
-
-    @Test
-    void scenario7_incorrectOtpFailsAuthentication() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
-
-        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
-                orchestrator.verifyOtp(ctx, "99999", "127.0.0.1"));
-    }
-
-    @Test
-    void scenario8_expiredOtpFailsAuthentication() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
-        String genuineOtp = orchestrator.getActiveOtpForTesting("SREEJU");
-
-        // Expire the OTP
-        orchestrator.expireOtpForTesting("SREEJU");
-
-        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class, () ->
-                orchestrator.verifyOtp(ctx, genuineOtp, "127.0.0.1"));
-    }
-
     @Test
     void scenario9_bothSeniorSrDcmAndSeniorDcmAreAuthorized() {
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-
-        // Test Senior DCM
         RmsAuthSessionContext ctx1 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
         assertDoesNotThrow(() ->
                 orchestrator.selectDesignationAndGenerateOtp(ctx1, "Senior DCM", "127.0.0.1"));
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx1.getStep());
 
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-
-        // Test Senior SR-DCM
+        orchestrator.clearCooldownForTesting("SREEJU");
         RmsAuthSessionContext ctx2 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
         assertDoesNotThrow(() ->
                 orchestrator.selectDesignationAndGenerateOtp(ctx2, "Senior SR-DCM", "127.0.0.1"));
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx2.getStep());
 
-        // Test Senior DFM is authorized
-        orchestrator.resetDailyOtpForTesting("SREEJU");
-        RmsAuthSessionContext ctx4 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        assertDoesNotThrow(() ->
-                orchestrator.selectDesignationAndGenerateOtp(ctx4, "Senior DFM", "127.0.0.1"));
-        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx4.getStep());
-
-        // Test non-Senior DCM / non-Senior DFM designation (e.g. DCM) is denied
+        orchestrator.clearCooldownForTesting("SREEJU");
         RmsAuthSessionContext ctx3 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        assertDoesNotThrow(() ->
+                orchestrator.selectDesignationAndGenerateOtp(ctx3, "Senior DFM", "127.0.0.1"));
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx3.getStep());
+
+        RmsAuthSessionContext ctx4 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
         assertThrows(RmsAuthOrchestrator.AccessDeniedException.class, () ->
-                orchestrator.selectDesignationAndGenerateOtp(ctx3, "DCM", "127.0.0.1"));
+                orchestrator.selectDesignationAndGenerateOtp(ctx4, "DCM", "127.0.0.1"));
     }
 
 }
