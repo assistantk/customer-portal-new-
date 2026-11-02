@@ -17,7 +17,7 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60;
 })
 export class LoginComponent implements OnInit, OnDestroy {
   currentStep: AuthStep = 'LOGIN';
-  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'REGENERATE' | 'VERIFY' | null = null;
+  loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'VERIFY' | null = null;
 
   // Step 1: Login Form
   loginForm!: FormGroup;
@@ -139,9 +139,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.loadingOperation = 'LOGIN';
 
-    if (isDevMode()) {
-      console.log('[RMS Auth] Request started: validate-user for userId:', userId, 'divisionCode:', divisionCode);
-    }
+    this.authService.setCurrentUser(null);
+    this.authService.setRmsTempUser(null);
+    this.validatedUser = null;
+    this.availableDesignations = [];
+    this.designationForm.reset({ designation: '' });
+    this.otpForm.reset({ otp: '' });
+    this.clearCooldownTimer();
+    this.resendCooldown = 0;
 
     this.authService.validateUser(userId, password, divisionCode, captchaInput).pipe(
       timeout(15000),
@@ -156,18 +161,14 @@ export class LoginComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (res: RmsValidateUserResponse) => {
-        const passed = Boolean(res && res.success && res.data && Array.isArray(res.data.designations) && res.data.designations.length > 0);
-        const nextStep: AuthStep = passed ? 'DESIGNATION' : 'LOGIN';
-
-        if (isDevMode()) {
-          console.log('[RMS Auth] Response received. HTTP status: 200');
-          console.log('[RMS Auth] Whether the response passed validation:', passed);
-          console.log('[RMS Auth] The next authentication step:', nextStep);
-        }
+        const apiDesignations = res?.success && Array.isArray(res.data?.designations)
+          ? res.data.designations.filter((role): role is string => typeof role === 'string').map((role) => role.trim()).filter(Boolean)
+          : [];
+        const passed = Boolean(res?.success && res.data && apiDesignations.length > 0);
 
         if (passed && res.data) {
           this.validatedUser = res.data;
-          this.availableDesignations = [...res.data.designations];
+          this.availableDesignations = apiDesignations;
 
           // Store temporary authentication-flow state securely
           this.authService.setRmsTempUser(res.data);
@@ -179,6 +180,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.successMessage = res.message || "Credentials verified. Please select your designation to proceed.";
         } else {
           this.currentStep = 'LOGIN';
+          this.availableDesignations = [];
           if (res && res.data && (!res.data.designations || res.data.designations.length === 0)) {
             this.error = "No designations found for your account. Please contact your administrator.";
           } else {
@@ -188,10 +190,7 @@ export class LoginComponent implements OnInit, OnDestroy {
       },
       error: (err: any) => {
         if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during validate-user:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-          console.log('[RMS Auth] Whether the response passed validation: false');
-          console.log('[RMS Auth] The next authentication step: LOGIN');
+          console.warn('[RMS Auth] Credential validation failed. HTTP status:', err?.status ?? 'UNKNOWN');
         }
 
         this.currentStep = 'LOGIN';
@@ -229,7 +228,8 @@ export class LoginComponent implements OnInit, OnDestroy {
       this.error = "Please select a designation.";
       return;
     }
-    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())) {
+    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())
+        || !this.isPortalDesignation(selectedDesig)) {
       this.error = "The selected designation is not permitted for this account.";
       return;
     }
@@ -237,49 +237,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.loadingOperation = 'DESIGNATION';
 
-    if (isDevMode()) {
-      console.log('[RMS Auth] Designation selected:', selectedDesig);
-      console.log('[RMS Auth] Automatically executing both Generate OTP and Regenerate OTP functions');
-    }
-
-    let transitionedToOtp = false;
-
-    const handleOtpStepTransition = (res: any) => {
-      if (transitionedToOtp) return;
-      if (res && res.accessDenied) {
-        this.designationForm.reset({ designation: '' });
-        this.error = res.message || "The selected designation is not authorized for this portal.";
-        return;
-      }
-      if (res && res.success) {
-        transitionedToOtp = true;
-        this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
-        this.currentStep = 'OTP';
-        this.successMessage = res.message || "OTP sent to your registered contact.";
-        const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
-          ? res.data.resendCooldownSeconds
-          : OTP_RESEND_COOLDOWN_SECONDS;
-        this.startCooldown(cooldown);
-      }
-    };
-
-    // 1. Call the existing Regenerate OTP function automatically
-    this.authService.regenerateOtp(selectedDesig).subscribe({
-      next: (res) => {
-        if (isDevMode()) {
-          console.log('[RMS Auth] Regenerate OTP completed automatically:', res);
-        }
-        handleOtpStepTransition(res);
-      },
-      error: (err) => {
-        if (isDevMode()) {
-          console.warn('[RMS Auth] Regenerate OTP notice:', err);
-        }
-      }
-    });
-
-    // 2. Call the existing Generate OTP function automatically
-    this.authService.generateOtp(selectedDesig).pipe(
+    this.authService.selectDesignation(selectedDesig).pipe(
       timeout(15000),
       finalize(() => {
         this.loading = false;
@@ -288,37 +246,25 @@ export class LoginComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (res) => {
-        const passed = Boolean(res && res.success);
-        const nextStep: AuthStep = passed ? 'OTP' : 'DESIGNATION';
-
-        if (isDevMode()) {
-          console.log('[RMS Auth] Generate OTP response received. HTTP status: 200');
-          console.log('[RMS Auth] Whether the response passed validation:', passed);
-          console.log('[RMS Auth] The next authentication step:', nextStep);
-        }
-
         if (res && res.accessDenied) {
           this.designationForm.reset({ designation: '' });
           this.error = res.message || "The selected designation is not authorized for this portal.";
           return;
         }
 
-        if (passed) {
-          handleOtpStepTransition(res);
+        if (res && res.success) {
+          this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
+          this.currentStep = 'OTP';
+          this.successMessage = res.message || "OTP request sent to RMS. Check your registered contact.";
+          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
+            ? res.data.resendCooldownSeconds
+            : OTP_RESEND_COOLDOWN_SECONDS;
+          this.startCooldown(cooldown);
         } else {
           this.error = res?.message || "Failed to generate OTP. Please try again.";
         }
       },
       error: (err) => {
-        if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during generate-otp:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-        }
-
-        if (transitionedToOtp) {
-          return;
-        }
-
         if (err?.status === 403 || err?.error?.accessDenied) {
           this.designationForm.reset({ designation: '' });
           this.error = err?.error?.message || "The selected designation is not authorized for this portal.";
@@ -328,7 +274,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         if (err?.status === 429) {
           const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
           this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
-          this.error = err?.error?.message || "An OTP was recently sent. Please wait before trying again.";
+          this.error = err?.error?.message || "An OTP request was recently made. Please wait before trying again.";
         } else if (err?.name === 'TimeoutError') {
           this.error = "Request timed out while generating OTP. Please try again.";
         } else if (err?.status === 0) {
@@ -338,6 +284,12 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       }
     });
+  }
+
+  private isPortalDesignation(designation: string): boolean {
+    if (typeof designation !== 'string') return false;
+    const normalized = designation.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalized === 'SRDCM';
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -394,11 +346,6 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       },
       error: (err) => {
-        if (isDevMode()) {
-          console.error('[RMS Auth] Caught error during verify-otp:', err?.message || err);
-          console.log('[RMS Auth] HTTP status:', err?.status ?? 'UNKNOWN');
-        }
-
         if (err?.name === 'TimeoutError') {
           this.error = "Request timed out while verifying OTP. Please try again.";
         } else if (err?.status === 0) {
@@ -407,52 +354,6 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.error = err?.error?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
         } else {
           this.error = err?.error?.message || err?.message || "Invalid OTP. Please enter the valid 5-digit OTP.";
-        }
-      }
-    });
-  }
-
-  regenerateOtp(): void {
-    if (this.loading || this.loadingOperation === 'REGENERATE') {
-      return; // Prevent accidental duplicate clicks while request is processing
-    }
-
-    this.error = "";
-    this.successMessage = "";
-    this.loading = true;
-    this.loadingOperation = 'REGENERATE';
-
-    const selectedDesig = (this.designationForm.get('designation')?.value || '').trim();
-
-    this.authService.regenerateOtp(selectedDesig).pipe(
-      timeout(15000),
-      finalize(() => {
-        this.loading = false;
-        this.loadingOperation = null;
-        this.cdr.markForCheck();
-      })
-    ).subscribe({
-      next: (res) => {
-        if (res && res.success) {
-          this.successMessage = res.message || "OTP regenerated successfully and sent to your registered contact.";
-          if (res.data?.destinationMasked) {
-            this.maskedDestination = res.data.destinationMasked;
-          }
-          const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
-            ? res.data.resendCooldownSeconds
-            : OTP_RESEND_COOLDOWN_SECONDS;
-          this.startCooldown(cooldown);
-        } else {
-          this.error = res?.message || "Failed to regenerate OTP. Please try again.";
-        }
-      },
-      error: (err) => {
-        if (err?.status === 429) {
-          const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
-          this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
-          this.error = err?.error?.message || "Please wait before requesting another OTP.";
-        } else {
-          this.error = err?.error?.message || err?.message || "Unable to regenerate OTP. Please try again.";
         }
       }
     });
@@ -480,7 +381,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (res) => {
         if (res && res.success) {
-          this.successMessage = res.message || "A new OTP has been dispatched to your registered contact.";
+          this.successMessage = res.message || "A new OTP request was sent to RMS. Check your registered contact.";
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }
@@ -529,6 +430,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   restartLogin(): void {
     this.authService.setRmsTempUser(null);
+    this.authService.setCurrentUser(null);
     this.loading = false;
     this.loadingOperation = null;
     this.currentStep = 'LOGIN';
@@ -542,7 +444,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loginForm.reset({ userId: '', password: '', divisionCode: '', captchaInput: '' });
     this.designationForm.reset({ designation: '' });
     this.otpForm.reset({ otp: '' });
-    this.loadCaptcha();
+    this.authService.logout().subscribe(() => this.loadCaptcha());
   }
 
   refreshCaptcha(): void {
@@ -632,6 +534,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   private resetFlowAfterCredentialChange(): void {
     this.authService.setRmsTempUser(null);
+    this.authService.setCurrentUser(null);
     this.currentStep = 'LOGIN';
     this.error = '';
     this.successMessage = '';
@@ -642,7 +545,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.otpForm.reset({ otp: '' });
     this.clearCooldownTimer();
     this.resendCooldown = 0;
-    this.loadCaptcha();
+    this.authService.logout().subscribe(() => this.loadCaptcha());
     this.cdr.markForCheck();
   }
 }

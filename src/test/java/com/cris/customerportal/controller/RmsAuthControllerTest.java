@@ -1,17 +1,16 @@
 package com.cris.customerportal.controller;
 
 import com.cris.customerportal.dto.AuthUserDto;
+import com.cris.customerportal.dto.RmsApiResponse;
 import com.cris.customerportal.dto.RmsSelectDesignationRequest;
 import com.cris.customerportal.dto.RmsValidateUserRequest;
 import com.cris.customerportal.dto.RmsVerifyOtpRequest;
-import com.cris.customerportal.service.AuthService;
 import com.cris.customerportal.service.CaptchaService;
 import com.cris.customerportal.service.RmsApiClient;
 import com.cris.customerportal.service.RmsAuthOrchestrator;
 import com.cris.customerportal.service.RmsAuthSessionContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -33,20 +32,23 @@ class RmsAuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        AuthService authService = mock(AuthService.class);
         captchaService = mock(CaptchaService.class);
 
-        RmsApiClient mockClient = new RmsApiClient(
-                new RestTemplateBuilder(),
-                "http://10.60.201.192:7101/RMS",
-                "/ATVLDTUSER",
-                "/RTGNRTOTP",
-                "/RTVRFYOTP",
-                5000,
-                10000
-        );
-        orchestrator = spy(new RmsAuthOrchestrator(mockClient, "mock", "FREIGHTCOD"));
-        controller = new AuthController(authService, captchaService, orchestrator);
+        RmsApiClient mockClient = mock(RmsApiClient.class);
+        RmsApiResponse credentialsAccepted = new RmsApiResponse();
+        credentialsAccepted.setErrorNo("0");
+        credentialsAccepted.setUserId("SREEJU");
+        credentialsAccepted.setSrvcName("ATVLDTUSER");
+        credentialsAccepted.setRmrk("SUCCESS");
+        credentialsAccepted.setRoleId("SR-DCM|DCM");
+        when(mockClient.validateUser(any(com.cris.customerportal.dto.RmsLoginRequest.class)))
+                .thenReturn(credentialsAccepted);
+        when(mockClient.generateOtp(any(com.cris.customerportal.dto.RmsOtpGenerateRequest.class)))
+                .thenReturn(credentialsAccepted);
+        when(mockClient.verifyOtp(any(com.cris.customerportal.dto.RmsOtpVerifyRequest.class)))
+                .thenReturn(credentialsAccepted);
+        orchestrator = spy(new RmsAuthOrchestrator(mockClient, "FREIGHTCOD"));
+        controller = new AuthController(captchaService, orchestrator);
 
         request = mock(HttpServletRequest.class);
         session = mock(HttpSession.class);
@@ -90,7 +92,7 @@ class RmsAuthControllerTest {
 
     @Test
     void validateUser_requiresHttpsBeforeCaptchaOrCredentialValidationWhenEnabled() {
-        controller = new AuthController(mock(AuthService.class), captchaService, orchestrator, true);
+        controller = new AuthController(captchaService, orchestrator, true);
         RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
         req.setCaptchaInput("AbCd23");
 
@@ -122,10 +124,30 @@ class RmsAuthControllerTest {
     }
 
     @Test
+    void validateUser_invalidCredentialsClearsPreviousAuthenticationState() {
+        RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "wrong", "TKD");
+        req.setCaptchaInput("AbCd23");
+        when(captchaService.consumeChallenge(session, "AbCd23")).thenReturn(true);
+        String rmsRejection = "YOUR USER ID OR PASSWORD IS INCORRECT.";
+        doThrow(new RmsAuthOrchestrator.InvalidRmsCredentialsException(rmsRejection))
+                .when(orchestrator).validateCredentials("SREEJU", "wrong", "TKD");
+
+        ResponseEntity<?> response = controller.validateUser(req, request);
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertEquals(rmsRejection, ((Map<?, ?>) response.getBody()).get("message"));
+        verify(session).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
+        verify(session).removeAttribute(AuthController.AUTH_SESSION_KEY);
+        verify(session, never()).setAttribute(eq(AuthController.RMS_SESSION_CONTEXT_KEY), any());
+    }
+
+    @Test
     void validateUser_invalidDivision_returnsUnauthorizedOrBadRequest() {
         RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "NONEXISTENT_DIV");
         req.setCaptchaInput("AbCd23");
         when(captchaService.consumeChallenge(session, "AbCd23")).thenReturn(true);
+        doThrow(new RmsAuthOrchestrator.InvalidRmsCredentialsException("Invalid Division Code."))
+                .when(orchestrator).validateCredentials("SREEJU", "test@123", "NONEXISTENT_DIV");
 
         ResponseEntity<?> response = controller.validateUser(req, request);
 

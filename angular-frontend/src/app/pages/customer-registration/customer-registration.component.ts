@@ -1,4 +1,3 @@
-import { PdfGeneratorService } from '../../services/pdf-generator.service';
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { finalize, timeout } from 'rxjs';
@@ -229,8 +228,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
-    private router?: Router,
-    private pdfGeneratorService?: PdfGeneratorService
+    private router?: Router
   ) { }
 
   openGlobalCodeForm(): void {

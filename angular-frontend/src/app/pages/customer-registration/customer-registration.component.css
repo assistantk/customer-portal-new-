@@ -1109,31 +1109,6 @@ label b {
         justify-self: stretch;
     }
 }
-.pdf-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: 6px;
-    border: 1px solid #0284c7;
-    background: #f0f9ff;
-    color: #0369a1;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.pdf-btn:hover:not(:disabled) {
-    background: #0284c7;
-    color: #ffffff;
-}
-
-.pdf-btn svg {
-    width: 14px;
-    vertical-align: middle;
-}
-
 .notice-pdf-btn {
     margin-left: 12px;
     padding: 4px 10px;

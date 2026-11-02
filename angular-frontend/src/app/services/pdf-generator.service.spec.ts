@@ -287,5 +287,85 @@ describe('PdfGeneratorService', () => {
       const previewUrl = service.previewRegistrationPdf(data);
       expect(previewUrl).toBe('blob:http://localhost/mock-preview-url');
     });
+
+    it('generates a landscape verification report with retained fields and omits contact details and pincode', () => {
+      const doc = service.generateVerificationPdf({
+        searchType: 'GST Number',
+        searchValue: '27ABCDE1234F1Z5',
+        columns: [
+          'customerCode',
+          'companyName',
+          'address',
+          'panNumber',
+          'division',
+          'additionalField',
+          'emailId',
+          'phoneNumber',
+          'pincode'
+        ],
+        rows: [[
+          'MSBC',
+          'A VERY LONG COMPANY NAME THAT MUST WRAP WITHOUT BEING CUT OFF',
+          'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501',
+          'AMKPB8046M',
+          'SR.DCM/RNY',
+          'API EXTRA FIELD VALUE',
+          'hidden-email@example.test',
+          'hidden-phone-9910303868',
+          'hidden-pincode-784501'
+        ]],
+        generatedAt: new Date('2026-10-30T09:57:55.000Z')
+      });
+
+      expect(doc.internal.pageSize.getWidth()).toBeGreaterThan(doc.internal.pageSize.getHeight());
+      const output = doc.output('arraybuffer');
+      const text = new TextDecoder().decode(new Uint8Array(output));
+      expect(text).toContain('Customer Verification Report');
+      expect(text).toContain('Search Type: GST Number');
+      expect(text).toContain('27ABCDE1234F1Z5');
+      expect(text).toContain('(SR.DCM/) Tj');
+      expect(text).toContain('(SR.DCM/RNY) Tj');
+      expect(text).toContain('(API EXTRA FIELD) Tj');
+      expect(text).toContain('(VALUE) Tj');
+      expect(text).not.toContain('Email Id');
+      expect(text).not.toContain('Phone Number');
+      expect(text).not.toContain('Pincode');
+      expect(text).not.toContain('hidden-email@example.test');
+      expect(text).not.toContain('hidden-phone-9910303868');
+      expect(text).not.toContain('hidden-pincode-784501');
+      expect(text).toContain('Page 1 of 1');
+      expect(doc.getNumberOfPages()).toBe(1);
+    });
+
+    it('splits wide, long verification results across landscape pages without dropping the final row', () => {
+      const columns = [
+        'customerCode',
+        'companyName',
+        'address',
+        ...Array.from({ length: 10 }, (_, index) => `additionalField${index}`)
+      ];
+      const rows = Array.from({ length: 24 }, (_, rowIndex) => [
+        `CODE${rowIndex}`,
+        `Company ${rowIndex}`,
+        `Long address ${'TEZPUR ASSAM '.repeat(30)}`,
+        ...Array.from({ length: 10 }, (_, index) => `Value ${rowIndex}-${index}`)
+      ]);
+      rows[rows.length - 1][2] = 'FINAL LONG ADDRESS VALUE';
+
+      const doc = service.generateVerificationPdf({
+        searchType: 'Global Customer Code',
+        searchValue: 'MSBC',
+        columns,
+        rows,
+        generatedAt: new Date('2026-10-30T09:57:55.000Z')
+      });
+
+      expect(doc.getNumberOfPages()).toBeGreaterThan(2);
+      const output = doc.output('arraybuffer');
+      const text = new TextDecoder().decode(new Uint8Array(output));
+      expect(text).toContain('(FINAL LONG) Tj');
+      expect(text).toContain('(ADDRESS VALUE) Tj');
+      expect(text).toContain(`Page ${doc.getNumberOfPages()} of ${doc.getNumberOfPages()}`);
+    });
   });
 });
