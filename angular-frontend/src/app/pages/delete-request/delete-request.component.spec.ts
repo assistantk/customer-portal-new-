@@ -21,7 +21,8 @@ describe('DeleteRequestComponent', () => {
   it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
     expect(component.codeType).toBe('');
     expect(component.pageTitle).toBe('Delete Request');
-    expect(component.currentLogo).toBeNull();
+    expect(component.currentLogo).toBe('assets/portal-logo.png');
+    expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
     component.code = 'AEIP';
     component.verifyCode();

@@ -28,6 +28,8 @@ export interface AuthUserData {
   isActive?: string;
   email?: string;
   phoneNumber?: string;
+  divisionCode?: string;
+  designation?: string;
 }
 
 export interface AuthResponse {
@@ -225,8 +227,14 @@ export class AuthService {
     ).pipe(
       tap((res) => {
         if (res && res.success && res.data) {
+          const tempUser = this.getRmsTempUser();
+          const mergedUser: AuthUserData = {
+            ...res.data,
+            divisionCode: res.data.divisionCode || tempUser?.divisionCode,
+            designation: res.data.designation || res.data.userRole || 'SR.DCM'
+          };
           this.setRmsTempUser(null);
-          this.updateCurrentUser(res.data);
+          this.updateCurrentUser(mergedUser);
         }
       })
     );

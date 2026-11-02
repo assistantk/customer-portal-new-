@@ -49,7 +49,7 @@ export class DeleteRequestComponent {
     if (this.codeType === 'HANDLING_AGENT') {
       return 'assets/handling_agent_code_transparent.png';
     }
-    return null;
+    return 'assets/portal-logo.png';
   }
 
   get currentLogoAlt(): string {
@@ -59,7 +59,7 @@ export class DeleteRequestComponent {
     if (this.codeType === 'HANDLING_AGENT') {
       return 'Handling Agent Code Logo';
     }
-    return '';
+    return 'Freight Code Generator';
   }
 
   onLogoError(): void {
