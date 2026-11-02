@@ -352,6 +352,9 @@ public class RmsAuthOrchestrator {
                 "Y",
                 ctx.getEmail(),
                 ctx.getMobileNo());
+        authUser.setDivisionCode(ctx.getDivisionCode());
+        authUser.setDesignation(ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION);
+        return authUser;
     }
 
     // ─────────────────────────────────────────────────
