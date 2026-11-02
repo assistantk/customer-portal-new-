@@ -198,3 +198,50 @@ Install `fontconfig` and an available font package, such as `dejavu-sans-fonts` 
 After deploying the backend WAR, open `https://host/FreightCodeApi/api/auth/captcha` directly or request it with `curl -i`. A successful response is JSON containing an `image` data URI and sets the session cookie. A rendering failure returns HTTP `503` with JSON `success: false` and a `message`; an HTML maintenance page or redirect means the request is not reaching the CAPTCHA controller.
 
 The CAPTCHA endpoint creates the HTTP session with `request.getSession(true)`. The repository's backend and frontend WebLogic descriptors do not override session-cookie settings. Keep the cookie scoped to `/FreightCodeApi` (the normal context path for the backend), and ensure the browser accepts it for the deployed HTTPS origin. `Secure` should be enabled for HTTPS, and `SameSite=Lax` is suitable when the frontend and backend are served from the same origin; do not configure `SameSite=None` without `Secure`.
+
+
+## Production-Grade Logging (SLF4J + Logback)
+
+The backend uses a production-ready SLF4J + Logback configuration with contextual MDC tracing, automated cross-layer AOP monitoring, and sensitive data masking.
+
+### Log File Locations
+
+| Environment | Default Log Directory | Configuration Override | Description |
+| :--- | :--- | :--- | :--- |
+| **Local Development** | `./logs/` | `LOG_PATH=./logs` | Files written relative to current working directory (`logs/app.log`, `logs/error.log`). |
+| **Linux Server / WebLogic** | `/var/log/customer-portal/` | Set environment variable `LOG_PATH=/var/log/customer-portal` or JVM arg `-Dlogging.file.path=/var/log/customer-portal` | Ensure the user running WebLogic has write permissions to `/var/log/customer-portal`. |
+| **Docker Container** | `/var/log/customer-portal/` | `ENV LOG_PATH=/var/log/customer-portal` | Mount a host volume: `-v /host/logs:/var/log/customer-portal`. Standard console output remains accessible via `docker logs <container_id>`. |
+
+### Appenders and Rolling Policy
+
+1. **Console Appender (`CONSOLE`):**
+   - Output pattern: `%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{requestId:-no-rid}] [%thread] %logger{36} - %msg%n`
+   - Automatically outputs color-coded logs in development, and standard text in production.
+2. **All-levels Rolling File (`logs/app.log`):**
+   - Captures all application and framework logs.
+   - Rolled daily and on reaching 50 MB: `app.%d{yyyy-MM-dd}.%i.log.gz`.
+   - Retention: **30 days** with a **1 GB total size cap**.
+3. **Error-only Rolling File (`logs/error.log`):**
+   - Filtered with `ThresholdFilter` set strictly to `ERROR`.
+   - Captures exceptions and critical system failures.
+   - Rolled daily and on reaching 50 MB: `error.%d{yyyy-MM-dd}.%i.log.gz` (30 days history, 200 MB cap).
+
+### Profiles and SQL Logging
+
+- **`dev` Profile:**
+  - Application logger: `DEBUG`
+  - Hibernate 5 SQL query shapes: `DEBUG` (`org.hibernate.SQL=DEBUG`)
+  - Hibernate 5 prepared statement bind values: `TRACE` (`org.hibernate.type.descriptor.sql.BasicBinder=TRACE`)
+  - Spring MVC and Web: `DEBUG`
+- **`prod` Profile:**
+  - Application logger: `INFO`
+  - Hibernate 5 SQL query shapes: `DEBUG` (enables seeing query execution without exposing parameter values)
+  - Prepared statement bind values: **Suppressed** (no `BasicBinder` TRACE)
+  - Web & Security noise: `WARN`
+
+### Security and Masking
+
+- **Sensitive credentials:** Passwords, OTPs, session tokens, and Authorization headers are masked with `***` across all logs.
+- **Personally Identifiable Information (PII):** PAN numbers, GSTINs, Aadhaar numbers, and Indian mobile numbers are masked, exposing only the last 4 characters (e.g. `******1234`).
+- **Multipart files:** File contents and binary streams are skipped entirely; only the original filename, file size in bytes, and content type are logged.
+- **Request Tracing:** Every HTTP request is assigned a unique `UUID` in MDC (`requestId`) and echoed back in the `X-Request-Id` response header.

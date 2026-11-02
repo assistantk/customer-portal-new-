@@ -1,5 +1,8 @@
 package com.cris.customerportal.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -7,6 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class DivisionDesignationResolver {
+    private static final Logger log = LoggerFactory.getLogger(DivisionDesignationResolver.class);
     private static final Map<String, String> DIVISION_CODES;
     static {
         DIVISION_CODES = new HashMap<>();
@@ -30,6 +34,8 @@ public final class DivisionDesignationResolver {
                 divisionCode = matcher.group(1).trim();
             }
         }
-        return divisionCode == null ? null : "SR.DCM/" + divisionCode;
+        String result = divisionCode == null ? null : "SR.DCM/" + divisionCode;
+        log.trace("DivisionDesignationResolver.resolve: location={} -> {}", location, result);
+        return result;
     }
 }

@@ -22,9 +22,12 @@ import java.sql.SQLException;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
 import com.cris.customerportal.service.DbaEmailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class CustomerServiceImpl implements CustomerService {
+ private static final Logger log = LoggerFactory.getLogger(CustomerServiceImpl.class);
  private static final int MAX_COMPANY_NAME_LENGTH = 40;
  @Autowired private DbaEmailService dbaEmailService;
  private final CustomerRepository repo;
@@ -105,7 +108,7 @@ public class CustomerServiceImpl implements CustomerService {
     else if (hndgCols.contains("MADEDMNDDATE")) hndgDateCol = "MADEDMNDDATE";
    }
   } catch (Throwable t) {
-   // Fall back gracefully to defaults
+   log.debug("initDbColumns: column metadata discovery fell back to defaults: {}", t.getMessage());
   } finally {
    columnsResolved = true;
   }
@@ -190,7 +193,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-     System.err.printf("[DB ERROR] lookupOldCustomerByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+     log.error("CustomerServiceImpl.lookupOldCustomerByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error occurred while fetching old customer data: " + e.getMessage(), e);
   }
  }
@@ -228,6 +231,7 @@ public class CustomerServiceImpl implements CustomerService {
     return responses;
    }
   } catch (SQLException e) {
+    log.error("CustomerServiceImpl.lookupOldCustomerByGstin: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error occurred while fetching customer by GSTIN", e);
   }
  }
@@ -259,6 +263,7 @@ public class CustomerServiceImpl implements CustomerService {
     throw new IllegalArgumentException("Invalid file format. File must be a valid PDF document.");
    }
   } catch (IOException e) {
+    log.error("CustomerServiceImpl.validateFile: failed reading PDF header", e);
    throw new IllegalArgumentException("Unable to read file content for validation: " + e.getMessage(), e);
   }
  }
@@ -300,6 +305,7 @@ public class CustomerServiceImpl implements CustomerService {
      if (!rs.next()) return candidate;
     }
    } catch (SQLException e) {
+    log.error("CustomerServiceImpl.generateUniqueCodeJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
     throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
    }
    
@@ -418,6 +424,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
+    log.error("CustomerServiceImpl.registerNewEntryJDBC: duplicate check error SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while checking customer code availability: " + e.getMessage(), e);
   }
 
@@ -575,7 +582,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupHandlingAgentByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.lookupHandlingAgentByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
  }
@@ -607,7 +614,7 @@ public class CustomerServiceImpl implements CustomerService {
     return null;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnership SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnership: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
   }
  }
@@ -641,7 +648,7 @@ public class CustomerServiceImpl implements CustomerService {
     return rs.next() && rs.getInt(1) > 0;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] checkOwnershipDuplicate SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.checkOwnershipDuplicate: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while checking ownership code: " + e.getMessage(), e);
   }
  }
@@ -707,8 +714,7 @@ public class CustomerServiceImpl implements CustomerService {
     return result;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupOwnershipJDBC SQLState=%s ErrorCode=%d Message=%s%n",
-       e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.lookupOwnershipJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while looking up ownership code: " + e.getMessage(), e);
   }
  }
@@ -739,7 +745,7 @@ public class CustomerServiceImpl implements CustomerService {
     return null;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupGlobalCustomerForOwnershipParty SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnershipParty: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
   }
  }
@@ -773,7 +779,7 @@ public class CustomerServiceImpl implements CustomerService {
     return rs.next() && rs.getInt(1) > 0;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] checkOwnershipPartyDuplicate SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.checkOwnershipPartyDuplicate: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while checking ownership party code: " + e.getMessage(), e);
   }
  }
@@ -818,8 +824,7 @@ public class CustomerServiceImpl implements CustomerService {
     return result;
    }
   } catch (SQLException e) {
-   System.err.printf("[DB ERROR] lookupOwnershipPartyJDBC SQLState=%s ErrorCode=%d Message=%s%n",
-       e.getSQLState(), e.getErrorCode(), e.getMessage());
+   log.error("CustomerServiceImpl.lookupOwnershipPartyJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database error while looking up ownership party code: " + e.getMessage(), e);
   }
  }
@@ -897,7 +902,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-     System.err.printf("[DB ERROR] lookupOwnershipCustomerByCode SQLState=%s ErrorCode=%d Message=%s%n", e.getSQLState(), e.getErrorCode(), e.getMessage());
+     log.error("CustomerServiceImpl.lookupOwnershipCustomerByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
    throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this function can execute.", e);
   }
  }
@@ -906,3 +911,5 @@ public class CustomerServiceImpl implements CustomerService {
   throw new IllegalStateException("The legacy ownership update has no valid Oracle column mapping. Use the ownership request workflow.");
  }
 }
+
+
