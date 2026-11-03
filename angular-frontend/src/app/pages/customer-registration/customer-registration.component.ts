@@ -229,7 +229,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
-    private router?: Router
+    private router?: Router,
+    private pdfGeneratorService?: PdfGeneratorService
   ) { }
 
   openGlobalCodeForm(): void {
