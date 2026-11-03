@@ -54,8 +54,14 @@ Configure the variables listed in `.env.example` for local backend use. Use appr
 Start the Spring Boot backend from the repository root:
 
 ```powershell
-.\mvnw.cmd spring-boot:run
+# Configure this terminal for UTF-8 output.
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+chcp 65001
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
+
+Maven compiles Java sources as UTF-8, Logback writes console and file logs as UTF-8, and the local Spring Boot JVM runs with `-Dfile.encoding=UTF-8`. Local development uses `./logs`; deployed WARs default to `/switch/Application_Logs/FreightCodeLog`. Override the deployment directory with `LOG_PATH` or `-Dlogging.file.path`. For Windows CMD, run `chcp 65001` before starting the application. Use a terminal font with Unicode coverage for characters such as `µ`; code-page and font settings affect display, not the UTF-8 log files.
 
 By default, Spring Boot listens at `http://localhost:8080`. For local HTTP development, `REQUIRE_HTTPS=false` may be used only for browser-to-backend traffic; do not use it in deployed environments. Credential validation always calls the live RMS API at `http://10.60.201.192:7101/RMS/ATVLDTUSER` by default. Local mock credential authentication is disabled.
 
@@ -183,6 +189,24 @@ The expected successful statuses are login `200`, session `200`, and logout `200
 
 Spring Boot 2.7.12 uses Spring Framework 5.3, Java 8-compatible bytecode, and the `javax.servlet` API. The Maven WAR excludes embedded Tomcat and its Servlet/EL APIs; WebLogic must supply the servlet container and EL implementation. The source repository does not specify the production WebLogic version, so confirm the actual WebLogic release and supported JDK/Servlet specifications with the server administrator. This Spring Boot line requires a Servlet 3.1-compatible container; Jakarta-only servlet containers are not compatible without upgrading/migrating the application.
 
+For readable Unicode logs on WebLogic, configure the WebLogic server JVM startup options with `-Dfile.encoding=UTF-8` and configure the Windows server console code page with `chcp 65001` when applicable. On PowerShell, set `[Console]::InputEncoding` and `[Console]::OutputEncoding` to `[System.Text.UTF8Encoding]::new()` before starting WebLogic. These are server/terminal settings and should not be added to the WAR or `weblogic.xml`; the application Logback console and file encoders already use UTF-8.
+
+The backend WAR writes `FreightCodeLog.log` and `FreightCodeError.log` under `/switch/Application_Logs/FreightCodeLog` by default. Logback creates the final directory when the server user can write to `/switch/Application_Logs`. Rolling archives are compressed by date and index at 20 MB, retained for 30 days, and capped at 1 GB (main log) / 200 MB (error log). Startup fails with a clear diagnostic if the directory or active log files cannot be created or written. Timestamps use the server JVM's configured timezone; set `-Duser.timezone=Asia/Kolkata` in the server startup options only if the host should use IST.
+
+Before deploying, have the server administrator identify the actual Tomcat/WebLogic service account and grant it access to the parent directory. For example, replace `APP_USER` and `APP_GROUP` with the service account and group:
+
+```sh
+sudo install -d -o APP_USER -g APP_GROUP -m 0750 /switch/Application_Logs
+sudo -u APP_USER test -w /switch/Application_Logs
+```
+
+The application creates `FreightCodeLog` under that parent on startup. If the log directory already exists, grant that exact directory to the service account without changing permissions recursively:
+
+```sh
+sudo chown APP_USER:APP_GROUP /switch/Application_Logs/FreightCodeLog
+sudo chmod 0750 /switch/Application_Logs/FreightCodeLog
+```
+
 Session management remains container-backed. Deploying frontend and backend under distinct contexts on the same origin allows the browser to send the backend session cookie to `/FreightCodeApi` when API requests include credentials. For production, use HTTPS and confirm WebLogic's session-cookie `HttpOnly`, `Secure`, and `SameSite` settings match the organization's policy; do not force `Secure` cookies while serving over plain HTTP.
 
 ### CAPTCHA deployment notes
@@ -198,3 +222,50 @@ Install `fontconfig` and an available font package, such as `dejavu-sans-fonts` 
 After deploying the backend WAR, open `https://host/FreightCodeApi/api/auth/captcha` directly or request it with `curl -i`. A successful response is JSON containing an `image` data URI and sets the session cookie. A rendering failure returns HTTP `503` with JSON `success: false` and a `message`; an HTML maintenance page or redirect means the request is not reaching the CAPTCHA controller.
 
 The CAPTCHA endpoint creates the HTTP session with `request.getSession(true)`. The repository's backend and frontend WebLogic descriptors do not override session-cookie settings. Keep the cookie scoped to `/FreightCodeApi` (the normal context path for the backend), and ensure the browser accepts it for the deployed HTTPS origin. `Secure` should be enabled for HTTPS, and `SameSite=Lax` is suitable when the frontend and backend are served from the same origin; do not configure `SameSite=None` without `Secure`.
+
+
+## Production-Grade Logging (SLF4J + Logback)
+
+The backend uses a production-ready SLF4J + Logback configuration with contextual MDC tracing, automated cross-layer AOP monitoring, and sensitive data masking.
+
+### Log File Locations
+
+| Environment | Default Log Directory | Configuration Override | Description |
+| :--- | :--- | :--- | :--- |
+| **Local Development** | `./logs/` | `dev` profile or `LOG_PATH=./logs` | Files written relative to current working directory. |
+| **Linux Server / WebLogic** | `/switch/Application_Logs/FreightCodeLog/` | `LOG_PATH` or `-Dlogging.file.path` | Ensure the server user can create the directory and write its files. |
+| **Docker Container** | `/switch/Application_Logs/FreightCodeLog/` | `LOG_PATH` or `-Dlogging.file.path` | Mount a host volume at the configured path. Standard console output remains accessible via `docker logs <container_id>`. |
+
+### Appenders and Rolling Policy
+
+1. **Console Appender (`CONSOLE`):**
+   - Output includes timestamp, level, thread, request ID, logger/class, message, and full exception stack traces.
+   - Automatically outputs color-coded logs in development, and standard text in production.
+2. **All-levels Rolling File (`FreightCodeLog.log`):**
+   - Captures all application and framework logs.
+   - Rolled daily and on reaching 20 MB: `FreightCodeLog.%d{yyyy-MM-dd}.%i.log.gz`.
+   - Retention: **30 days** with a **1 GB total size cap**.
+3. **Error-only Rolling File (`FreightCodeError.log`):**
+   - Filtered with `ThresholdFilter` set strictly to `ERROR`.
+   - Captures exceptions and critical system failures.
+   - Rolled daily and on reaching 20 MB: `FreightCodeError.%d{yyyy-MM-dd}.%i.log.gz` (30 days history, 200 MB cap).
+
+### Profiles and SQL Logging
+
+- **`dev` Profile:**
+  - Application logger: `DEBUG`
+  - Hibernate 5 SQL query shapes: `DEBUG` (`org.hibernate.SQL=DEBUG`)
+  - Hibernate prepared statement bind values are never logged.
+  - Spring MVC and Web: `DEBUG`
+- **`prod` Profile:**
+  - Application logger: `INFO`
+  - Hibernate 5 SQL query shapes: `DEBUG` (enables seeing query execution without exposing parameter values)
+  - Prepared statement bind values are never logged.
+  - Web & Security noise: `WARN`
+
+### Security and Masking
+
+- **Sensitive credentials:** Passwords, OTPs, session IDs, and Authorization headers are not logged.
+- **Personally Identifiable Information (PII):** Email addresses are redacted; PAN numbers, GSTINs, Aadhaar numbers, and Indian mobile numbers are masked, exposing only the last 4 characters (e.g. `******1234`).
+- **Multipart files:** File contents and binary streams are skipped entirely; only the original filename, file size in bytes, and content type are logged.
+- **Request Tracing:** Every HTTP request is assigned a unique `UUID` in MDC (`requestId`) and echoed back in the `X-Request-Id` response header.

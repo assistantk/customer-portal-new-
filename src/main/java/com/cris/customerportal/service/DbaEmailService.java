@@ -11,6 +11,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpSession;
@@ -27,6 +29,8 @@ import java.util.regex.Pattern;
 
 @Service
 public class DbaEmailService {
+
+    private static final Logger log = LoggerFactory.getLogger(DbaEmailService.class);
 
     private static final Set<String> ADDRESS_COLUMNS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
             "MAVGLBLCUSTADDRTEXT",
@@ -92,20 +96,21 @@ public class DbaEmailService {
 
             message.setText(text);
             mailSender.send(message);
-            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to DBA and CC recipient for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+            log.info("DbaEmailService.sendDbaAuditEmail: SMTP accepted notification for {} on {}",
+                    audit.getOperationType(), audit.getTableName());
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
-                System.err.println("[DBA EMAIL AUDIT ERROR] SendFailedException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: SendFailedException - failed to send DBA notification email: {}", e.getMessage(), e);
             } else if (cause != null && cause.getClass().getName().contains("MessagingException")) {
-                System.err.println("[DBA EMAIL AUDIT ERROR] MessagingException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: MessagingException - failed to send DBA notification email: {}", e.getMessage(), e);
             } else {
-                System.err.println("[DBA EMAIL AUDIT ERROR] MailException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: MailException - failed to send DBA notification email: {}", e.getMessage(), e);
             }
             // Log without stopping the calling process (core Oracle transaction will continue)
             e.printStackTrace();
         } catch (Exception e) {
-            System.err.println("[DBA EMAIL AUDIT ERROR] Unexpected error while sending DBA notification email: " + e.getMessage());
+            log.error("DbaEmailService.sendDbaAuditEmail: unexpected error while sending DBA notification email: {}", e.getMessage(), e);
             e.printStackTrace();
         }
     }
@@ -174,12 +179,13 @@ public class DbaEmailService {
         body.append(buildUserFooter(resolvedEmailId));
         message.setText(body.toString());
 
-        System.out.println("[DBA EMAIL] Initiating DBA notification email to " + dbaEmail + " (From: " + fromEmail + ", Requests: " + requests.size() + ")...");
+        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
+                requests.size());
         try {
             mailSender.send(message);
-            System.out.println("[DBA EMAIL] Email successfully dispatched to DBA (" + dbaEmail + ")");
+            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
         } catch (Exception e) {
-            System.err.println("[DBA EMAIL ERROR] Failed to send DBA SQL notification email: " + e.getMessage());
+            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {}", e.getMessage(), e);
             e.printStackTrace();
             throw e;
         }
