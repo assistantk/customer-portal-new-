@@ -171,8 +171,7 @@ describe('PdfGeneratorService', () => {
 
       const sig = service.resolveSignatureDetails();
       expect(sig.signerIdentity).toBe('9999, 9999');
-      expect(sig.designationDivisionOrg).toBe('SR.DCM/CSTM/CRIS');
-      expect(sig.verifiedStatus).toBe('Signature Not Verified');
+      expect(sig.designationDivisionOrg).toBe('SR.DCM/PUNE/CRIS');
     });
 
     it('allows explicit user override for testing synthetic users across designations and divisions', () => {
@@ -224,13 +223,15 @@ describe('PdfGeneratorService', () => {
       const binaryString = doc.output();
       expect(binaryString).toContain('/Subtype /Image');
 
-      // Verify dynamic text content
-      expect(binaryString).toContain('Signature Not Verified');
-      expect(binaryString).toContain('eSigned by');
-      expect(binaryString).toContain('SREEJU KRISHNAN, 5219');
+      // Verify preserved designation and dynamic record date
       expect(binaryString).toContain('SR.DCM/CSTM/CRIS');
-      // Uses the record date
       expect(binaryString).toContain('Fri Oct 30 15:27:55 IST 2026');
+
+      // Verify unwanted elements are removed
+      expect(binaryString).not.toContain('Signature Not Verified');
+      expect(binaryString).not.toContain('eSigned by');
+      expect(binaryString).not.toContain('CDAC | CRIS');
+      expect(binaryString).not.toContain('(SREEJU)');
     });
 
     it('falls back to current system date when recordDate is missing in PDF generation', () => {
@@ -395,14 +396,13 @@ describe('PdfGeneratorService', () => {
 
       const binary = doc.output();
       expect(binary).toContain('/Subtype /Image');
-      expect(binary).toContain('Signature Not Verified');
-      expect(binary).toContain('eSigned by');
-      expect(binary).toContain('RAMESH CHANDRA, 3562');
       expect(binary).toContain('SR.DCM/CSTM/CRIS');
       // Preferred the date column from table row
       expect(binary).toContain('Fri Oct 30 15:27:55 IST 2026');
-      expect(binary).toContain('CDAC | CRIS');
-      expect(binary).toContain('\\(RAMESH CHANDRA\\)');
+      expect(binary).not.toContain('Signature Not Verified');
+      expect(binary).not.toContain('eSigned by');
+      expect(binary).not.toContain('CDAC | CRIS');
+      expect(binary).not.toContain('(SREEJU)');
     });
 
     it('creates verification preview and download functions embedding the official signature', () => {
@@ -532,14 +532,14 @@ describe('PdfGeneratorService', () => {
         });
       });
 
-      it('falls back cleanly to CSTM when divisionCode is undefined', () => {
+      it('falls back cleanly to PUNE when divisionCode is undefined', () => {
         const user: AuthUserData = {
           userId: '1111',
           userName: 'NO DIV USER'
         };
         const sig = service.resolveSignatureDetails(user);
-        expect(sig.divisionCode).toBe('CSTM');
-        expect(sig.designationDivisionOrg).toBe('SR.DCM/CSTM/CRIS');
+        expect(sig.divisionCode).toBe('PUNE');
+        expect(sig.designationDivisionOrg).toBe('SR.DCM/PUNE/CRIS');
       });
     });
 
@@ -746,12 +746,12 @@ describe('PdfGeneratorService', () => {
         expect(imgWidth / imgHeight).toBeCloseTo(573 / 468, 5);
       });
 
-      it('contains all required layout elements matching the reference image layout', () => {
+      it('preserves the designation text SR.DCM/PUNE/CRIS and dynamic date while removing unwanted verification elements', () => {
         const user: AuthUserData = {
           userId: '3562',
           userName: 'RAMESH CHANDRA',
           designation: 'SR.DCM/',
-          divisionCode: 'CSTM'
+          divisionCode: 'PUNE'
         };
 
         const doc = service.generateRegistrationPdf({
@@ -763,20 +763,15 @@ describe('PdfGeneratorService', () => {
         const binary = doc.output();
         // 1. Signature image embedded
         expect(binary).toContain('/Subtype /Image');
-        // 2. Heading
-        expect(binary).toContain('Signature Not Verified');
-        // 3. eSigned by
-        expect(binary).toContain('eSigned by');
-        // 4. Full Name and ID
-        expect(binary).toContain('RAMESH CHANDRA, 3562');
-        // 5. Designation and Division
-        expect(binary).toContain('SR.DCM/CSTM/CRIS');
-        // 6. Dynamic date and time in IST
+        // 2. Preserved Designation and Division text
+        expect(binary).toContain('SR.DCM/PUNE/CRIS');
+        // 3. Dynamic date and time in IST
         expect(binary).toContain('Fri Oct 30 15:27:55 IST 2026');
-        // 7. Authority branding
-        expect(binary).toContain('CDAC | CRIS');
-        // 8. Signer Name parenthetical
-        expect(binary).toContain('\\(RAMESH CHANDRA\\)');
+        // 4. Removed unwanted old verification block and elements
+        expect(binary).not.toContain('Signature Not Verified');
+        expect(binary).not.toContain('eSigned by');
+        expect(binary).not.toContain('CDAC | CRIS');
+        expect(binary).not.toContain('(SREEJU)');
       });
     });
   });

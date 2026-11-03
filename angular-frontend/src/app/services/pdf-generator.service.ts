@@ -33,16 +33,16 @@ export interface VerificationPdfData {
 }
 
 export interface SignatureBlockDetails {
-  verifiedStatus: string;
-  eSignedByLabel: string;
-  signerName: string;
-  signerIdentity: string;
   designation: string;
   divisionCode: string;
   designationDivision: string;
   designationDivisionOrg: string;
   formattedTimestamp: string;
   signatureImageBase64: string;
+  verifiedStatus?: string;
+  eSignedByLabel?: string;
+  signerName?: string;
+  signerIdentity?: string;
 }
 
 /**
@@ -166,11 +166,11 @@ export class PdfGeneratorService {
     // Remove any trailing slashes (e.g. 'SR.DCM/' -> 'SR.DCM')
     const designation = rawDesignation.replace(/\/+$/, '') || 'SR.DCM';
 
-    // Fetch division code from authenticated profile or existing application data
-    const division = (authUser?.divisionCode || 'CSTM').trim().toUpperCase() || 'CSTM';
+    // Fetch division code from authenticated profile or existing application data (defaults to PUNE)
+    const division = (authUser?.divisionCode || 'PUNE').trim().toUpperCase() || 'PUNE';
     const organization = 'CRIS';
 
-    // Format: [DESIGNATION]/[DIVISION]/CRIS
+    // Format: [DESIGNATION]/[DIVISION]/CRIS (e.g. SR.DCM/PUNE/CRIS)
     const designationDivisionOrg = `${designation}/${division}/${organization}`;
     const designationDivision = `${designation}/${division}`;
 
@@ -178,24 +178,25 @@ export class PdfGeneratorService {
     const formattedTimestamp = parseAndFormatRecordDate(recordDate, date);
 
     return {
-      verifiedStatus: 'Signature Not Verified',
-      eSignedByLabel: 'eSigned by',
-      signerName: fullName,
-      signerIdentity: `${fullName}, ${employeeId}`,
       designation,
       divisionCode: division,
       designationDivision,
       designationDivisionOrg,
       formattedTimestamp,
-      signatureImageBase64: OFFICIAL_SIGNATURE_BASE64
+      signatureImageBase64: OFFICIAL_SIGNATURE_BASE64,
+      verifiedStatus: 'Signature Not Verified',
+      eSignedByLabel: 'eSigned by',
+      signerName: fullName,
+      signerIdentity: `${fullName}, ${employeeId}`
     };
   }
 
   /**
    * Renders the official e-signature block at the bottom-right corner of the current page.
    * If the current content overflows the signature space, a new page is automatically added.
-   * Ensures the reference image is embedded preserving its exact aspect ratio (573:468)
-   * and all authenticated text elements are neatly aligned beside it.
+   * Embeds the uploaded reference signature image (3562.jpg) preserving its exact aspect ratio (573:468)
+   * and preserves the authentic designation text (e.g. SR.DCM/PUNE/CRIS) along with the dynamic record date,
+   * while omitting the unwanted "Signature Not Verified" information block and CDAC | CRIS / (SREEJU) elements.
    */
   drawOfficialSignatureBlock(
     doc: jsPDF,
@@ -212,8 +213,8 @@ export class PdfGeneratorService {
     const margin = options.margin;
     const isPortrait = options.orientation === 'portrait';
 
-    const sigWidth = 92;
-    const sigHeight = 52;
+    const sigWidth = 88;
+    const sigHeight = 44;
     const sigX = pageWidth - margin - sigWidth;
 
     const footerLineY = isPortrait ? 280 : pageHeight - 9;
@@ -238,8 +239,8 @@ export class PdfGeneratorService {
     doc.setLineWidth(0.4);
     doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
 
-    // 2. Embed official reference signature image preserving original aspect ratio (573/468)
-    const imgWidth = 35;
+    // 2. Embed uploaded official reference signature image (3562.jpg) preserving exact aspect ratio (573:468)
+    const imgWidth = 34;
     const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
     const imgX = sigX + 3.5;
     const imgY = sigY + (sigHeight - imgHeight) / 2;
@@ -250,51 +251,20 @@ export class PdfGeneratorService {
       console.warn('Could not embed signature image in PDF:', e);
     }
 
-    // 3. Render dynamic authenticated text lines beside the image
-    const textX = sigX + 40.5;
+    // 3. Render preserved designation text and dynamic record date beside the signature image
+    const textX = sigX + 40;
 
-    // Line 1: Signature Heading ("Signature Not Verified")
+    // Preserved Designation Text: e.g. "SR.DCM/PUNE/CRIS"
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
-    doc.setTextColor(185, 28, 28);
-    doc.text(signature.verifiedStatus, textX, sigY + 7.5);
-
-    // Line 2: "eSigned by"
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(7.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text(signature.eSignedByLabel, textX, sigY + 13.5);
-
-    // Line 3: [FULL NAME], [EMPLOYEE ID]
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.8);
-    doc.setTextColor(15, 23, 42);
-    const identityLines = doc.splitTextToSize(signature.signerIdentity, sigWidth - 42) as string[];
-    doc.text(identityLines[0] || signature.signerIdentity, textX, sigY + 19.5);
-
-    // Line 4: [DESIGNATION]/[DIVISION]/CRIS
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.8);
     doc.setTextColor(30, 41, 59);
-    doc.text(signature.designationDivisionOrg, textX, sigY + 25.5);
+    doc.text(signature.designationDivisionOrg, textX, sigY + 19);
 
-    // Line 5: [DYNAMIC RECORD DATE / TIME IN IST]
+    // Dynamic Record Date & Time in IST
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text(signature.formattedTimestamp, textX, sigY + 31.5);
-
-    // Line 6: Authority branding ("CDAC | CRIS")
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(37, 99, 235);
-    doc.text('CDAC | CRIS', textX, sigY + 38);
-
-    // Line 7: Signer Name parenthetical
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.8);
-    doc.setTextColor(51, 65, 85);
-    doc.text(`(${signature.signerName})`, textX, sigY + 44.5);
+    doc.text(signature.formattedTimestamp, textX, sigY + 28);
 
     return sigY + sigHeight;
   }
