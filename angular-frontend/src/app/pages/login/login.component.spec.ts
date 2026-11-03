@@ -465,7 +465,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     authServiceMock.verifyOtp.mockReturnValue(
       of({
         success: true,
-        message: 'Authentication successful.',
+        message: 'Verification Successful.',
         data: {
           userId: 'SREEJU',
           userName: 'SREEJU KRISHNAN',
@@ -478,7 +478,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.onSubmitOtp();
 
     expect(component.loading).toBe(false);
-    expect(component.successMessage).toContain('Authentication successful');
+    expect(component.successMessage).toContain('Verification Successful');
 
     vi.advanceTimersByTime(350);
     expect(routerMock.navigateByUrl).toHaveBeenCalledWith('/registration');
