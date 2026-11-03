@@ -5,6 +5,7 @@ import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } f
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
+import { PdfGeneratorService } from '../../services/pdf-generator.service';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -228,7 +229,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
-    private router?: Router
+    private router?: Router,
+    private pdfGeneratorService?: PdfGeneratorService
   ) { }
 
   openGlobalCodeForm(): void {
@@ -471,6 +473,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           next: (resp) => {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
+              this.lastLookupRecord = resp.data;
               if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
                 this.ownSection1Found = true;
@@ -1057,6 +1060,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               refresh$.subscribe({
                 next: (refreshed: any) => {
                   if (refreshed) {
+                    this.lastLookupRecord = refreshed;
                     this.form.companyName = refreshed.companyName || this.form.companyName;
                     this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
                     this.form.city = refreshed.city || this.form.city;
