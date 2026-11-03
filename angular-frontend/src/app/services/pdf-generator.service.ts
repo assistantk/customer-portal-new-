@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
 import { AuthService, AuthUserData } from './auth.service';
-import { OFFICIAL_SIGNATURE_BASE64, OFFICIAL_SIGNATURE_ASPECT_RATIO } from './signature-asset';
 
 export interface RegistrationPdfData {
   title?: string;
@@ -34,6 +33,7 @@ export interface VerificationPdfData {
 export interface SignatureBlockDetails {
   verifiedStatus: string;
   eSignedByLabel: string;
+  signerName: string;
   signerIdentity: string;
   designationDivisionOrg: string;
   designationDivision: string;
@@ -142,15 +142,19 @@ export class PdfGeneratorService {
 
     // Prefer record date from source table/API, fallback to system IST date/time
     const formattedTimestamp = parseAndFormatRecordDate(recordDate, date);
+    const signerIdentity = fullName.toLocaleLowerCase() === employeeId.toLocaleLowerCase()
+      ? fullName
+      : `${fullName}, ${employeeId}`;
 
     return {
       verifiedStatus: 'Signature Not Verified',
       eSignedByLabel: 'eSigned by',
-      signerIdentity: `${fullName}, ${employeeId}`,
+      signerName: fullName,
+      signerIdentity,
       designationDivisionOrg,
       designationDivision,
       formattedTimestamp,
-      signatureImageBase64: OFFICIAL_SIGNATURE_BASE64
+      signatureImageBase64: ''
     };
   }
 
@@ -335,56 +339,45 @@ export class PdfGeneratorService {
     doc.setLineWidth(0.4);
     doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
 
-    // 1. Embed official reference e-signature image preserving original aspect ratio
-    const imgWidth = 36;
-    const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
-    const imgX = sigX + 3.5;
-    const imgY = sigY + (sigHeight - imgHeight) / 2;
-
-    try {
-      doc.addImage(OFFICIAL_SIGNATURE_BASE64, 'PNG', imgX, imgY, imgWidth, imgHeight);
-    } catch (e) {
-      console.warn('Could not embed signature image in PDF:', e);
-    }
-
-    // 2. Render dynamic authenticated text beside the image
-    const textX = sigX + 41.5;
+    // Render dynamic authenticated text inside the signature box without embedding the official image.
+    const textX = sigX + 5;
+    const lineStartY = sigY + 8;
 
     // Line 1: Signature Heading
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(185, 28, 28);
-    doc.text(signature.verifiedStatus, textX, sigY + 8);
+    doc.text(signature.verifiedStatus, textX, lineStartY);
 
     // Line 2: eSigned by
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(signature.eSignedByLabel, textX, sigY + 15);
+    doc.text(signature.eSignedByLabel, textX, lineStartY + 7);
 
-    // Line 3: [LOGGED-IN USER FULL NAME], [EMPLOYEE ID]
+    // Line 3: Logged-in user's full name
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
-    doc.text(signature.signerIdentity, textX, sigY + 22);
+    doc.text(signature.signerName, textX, lineStartY + 14);
 
     // Line 4: [DESIGNATION]/[DIVISION]/CRIS
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text(signature.designationDivisionOrg, textX, sigY + 29);
+    doc.text(signature.designationDivisionOrg, textX, lineStartY + 21);
 
     // Line 5: [DYNAMIC DATE AND TIME]
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.8);
     doc.setTextColor(100, 116, 139);
-    doc.text(signature.formattedTimestamp, textX, sigY + 36);
+    doc.text(signature.formattedTimestamp, textX, lineStartY + 28);
 
     // Line 6: Authority branding
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(59, 130, 246);
-    doc.text('CDAC | CRIS', textX, sigY + 44);
+    doc.text('CDAC | CRIS', textX, lineStartY + 36);
 
     // Page Footers for all pages
     const finalPageCount = doc.getNumberOfPages();
@@ -445,6 +438,15 @@ export class PdfGeneratorService {
     const tableWidth = pageWidth - margin * 2;
     const lineHeight = 3.2;
     const fontSize = 7.2;
+    const signature = this.resolveSignatureDetails();
+    const divisionColumnIndex = reportData.columns.findIndex((column) => column.toLowerCase() === 'division');
+    const reportDivision = divisionColumnIndex >= 0
+      ? reportData.rows
+        .map((row) => String(row[divisionColumnIndex] ?? '').trim())
+        .find((value) => value && value !== '-')
+      : undefined;
+    const signatureDivision = reportDivision || signature.designationDivision;
+    let lastTableBottomY = margin + 28;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(fontSize);
@@ -474,8 +476,9 @@ export class PdfGeneratorService {
         y,
         fontSize
       );
+      let groupLastTableBottomY = y;
 
-      const tableBottom = pageHeight - 14;
+      const tableBottom = pageHeight - 60;
       reportData.rows.forEach((row, rowIndex) => {
         const wrappedCells = group.indices.map((columnIndex, index) => {
           const value = row[columnIndex] ?? '';
@@ -491,6 +494,7 @@ export class PdfGeneratorService {
             doc.addPage();
             y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
             y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
+            groupLastTableBottomY = y;
             availableLines = Math.floor((tableBottom - y - 3) / lineHeight);
           }
 
@@ -513,11 +517,13 @@ export class PdfGeneratorService {
           });
 
           y += rowHeight;
+          groupLastTableBottomY = y + 4;
           lineOffset += segmentLines;
           if (lineOffset < rowLineCount) {
             doc.addPage();
             y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
             y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
+            groupLastTableBottomY = y;
           }
         }
       });
@@ -527,8 +533,32 @@ export class PdfGeneratorService {
         doc.setFontSize(9);
         doc.setTextColor(100, 116, 139);
         doc.text('No records found.', margin, y + 7);
+        groupLastTableBottomY = y + 12;
       }
+      lastTableBottomY = groupLastTableBottomY;
     });
+
+    const finalPageNumber = doc.getNumberOfPages();
+    doc.setPage(finalPageNumber);
+    const signatureY = lastTableBottomY + 6;
+    const signatureX = pageWidth - 92;
+    const signatureWidth = 75;
+    const signatureHeight = 18;
+
+    doc.setFillColor(249, 250, 251);
+    doc.roundedRect(signatureX, signatureY, signatureWidth, signatureHeight, 2, 2, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(signatureX, signatureY, signatureWidth, signatureHeight, 2, 2, 'S');
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.2);
+    doc.setTextColor(71, 85, 105);
+    doc.text(signature.eSignedByLabel, signatureX + 4, signatureY + 7);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.6);
+    doc.setTextColor(15, 23, 42);
+    doc.text(signatureDivision, signatureX + 4, signatureY + 14);
 
     const pageCount = doc.getNumberOfPages();
     for (let page = 1; page <= pageCount; page++) {
