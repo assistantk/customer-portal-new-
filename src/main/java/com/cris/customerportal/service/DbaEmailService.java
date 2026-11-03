@@ -96,7 +96,8 @@ public class DbaEmailService {
 
             message.setText(text);
             mailSender.send(message);
-            log.info("DbaEmailService.sendDbaAuditEmail: SMTP accepted notification for {} on {} (Code: {})", audit.getOperationType(), audit.getTableName(), audit.getCustomerCode());
+            log.info("DbaEmailService.sendDbaAuditEmail: SMTP accepted notification for {} on {}",
+                    audit.getOperationType(), audit.getTableName());
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
@@ -178,10 +179,11 @@ public class DbaEmailService {
         body.append(buildUserFooter(resolvedEmailId));
         message.setText(body.toString());
 
-        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email to {} (From: {}, Requests: {})...", dbaEmail, fromEmail, requests.size());
+        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
+                requests.size());
         try {
             mailSender.send(message);
-            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA ({})", dbaEmail);
+            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
         } catch (Exception e) {
             log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {}", e.getMessage(), e);
             e.printStackTrace();

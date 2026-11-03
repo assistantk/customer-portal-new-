@@ -40,6 +40,8 @@ public final class DataMaskingUtil {
     // Indian mobile number: 10 digits starting with 6, 7, 8, 9
     private static final Pattern MOBILE_PATTERN = Pattern.compile(
             "\\b([6-9]\\d{5})(\\d{4})\\b");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", Pattern.CASE_INSENSITIVE);
 
     /**
      * Formats an argument safely for logging, masking sensitive fields and
@@ -94,8 +96,7 @@ public final class DataMaskingUtil {
             return String.format("HttpServletResponse[status=%d]", res.getStatus());
         }
         if (arg instanceof HttpSession) {
-            HttpSession session = (HttpSession) arg;
-            return String.format("HttpSession[id=%s]", session.getId());
+            return "HttpSession[redacted]";
         }
         if (arg instanceof ServletRequest || arg instanceof ServletResponse) {
             return arg.getClass().getSimpleName();
@@ -169,7 +170,6 @@ public final class DataMaskingUtil {
         }
         mobileMatcher.appendTail(sb5);
 
-        return sb5.toString();
+        return EMAIL_PATTERN.matcher(sb5.toString()).replaceAll("***@***");
     }
 }
-
