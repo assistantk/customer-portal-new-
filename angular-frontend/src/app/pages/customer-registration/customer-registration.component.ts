@@ -473,6 +473,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           next: (resp) => {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
+              this.lastLookupRecord = resp.data;
               if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
                 this.ownSection1Found = true;
@@ -1059,6 +1060,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               refresh$.subscribe({
                 next: (refreshed: any) => {
                   if (refreshed) {
+                    this.lastLookupRecord = refreshed;
                     this.form.companyName = refreshed.companyName || this.form.companyName;
                     this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
                     this.form.city = refreshed.city || this.form.city;
