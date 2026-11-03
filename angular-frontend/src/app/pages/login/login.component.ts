@@ -255,7 +255,7 @@ export class LoginComponent implements OnInit, OnDestroy {
         if (res && res.success) {
           this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
           this.currentStep = 'OTP';
-          this.successMessage = res.message || "OTP request sent to RMS. Check your registered contact.";
+          this.successMessage = res.message || "OTP request accepted. Check your registered contact.";
           const cooldown = res.data?.resendCooldownSeconds != null && res.data.resendCooldownSeconds > 0
             ? res.data.resendCooldownSeconds
             : OTP_RESEND_COOLDOWN_SECONDS;
@@ -336,7 +336,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
         if (passed) {
           this.authService.setRmsTempUser(null);
-          this.successMessage = "Authentication successful! Redirecting to portal...";
+          this.successMessage = "Verification Successful! Redirecting to portal...";
           this.clearCooldownTimer();
           setTimeout(() => {
             this.router.navigateByUrl(this.returnUrl);
@@ -381,7 +381,7 @@ export class LoginComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (res) => {
         if (res && res.success) {
-          this.successMessage = res.message || "A new OTP request was sent to RMS. Check your registered contact.";
+          this.successMessage = res.message || "A new OTP request was accepted. Check your registered contact.";
           if (res.data?.destinationMasked) {
             this.maskedDestination = res.data.destinationMasked;
           }

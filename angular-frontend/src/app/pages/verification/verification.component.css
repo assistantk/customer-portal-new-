@@ -119,13 +119,20 @@ header {
     height: auto
 }
 
+:host {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
 main {
-  display: flex;
-  justify-content: center;   /* horizontal centering */
-  align-items: center;       /* vertical centering */
-  min-height: 100vh;
-  padding: 24px;
-  box-sizing: border-box;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
 }
 
 .card {

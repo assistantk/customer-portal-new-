@@ -96,7 +96,7 @@ public class AuthController {
                     HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "RMS authentication service is not configured.");
+            body.put("message", "Authentication service is not configured.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
 
@@ -190,7 +190,7 @@ public class AuthController {
             LOGGER.warn("RMS select-designation result: FAILED (service not configured). Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "RMS authentication service is not configured.");
+            body.put("message", "Authentication service is not configured.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
 
@@ -229,7 +229,7 @@ public class AuthController {
 
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
-            body.put("message", "RMS accepted the OTP request. Check your registered contact.");
+            body.put("message", "OTP request accepted. Check your registered contact.");
             body.put("data", data);
             return ResponseEntity.ok(body);
 
@@ -262,7 +262,7 @@ public class AuthController {
             LOGGER.error("OTP generation service error. Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "RMS could not process the OTP request. Please try again later.");
+            body.put("message", "Unable to process the OTP request. Please try again later.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
     }
@@ -281,7 +281,7 @@ public class AuthController {
         LOGGER.info("RMS resend-otp request received");
         if (rmsAuthOrchestrator == null) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(errorBody("RMS authentication service is not configured."));
+                    .body(errorBody("Authentication service is not configured."));
         }
 
         HttpSession session = request.getSession(false);
@@ -307,7 +307,7 @@ public class AuthController {
 
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
-            body.put("message", "RMS accepted the OTP resend request. Check your registered contact.");
+            body.put("message", "A new OTP request was accepted. Check your registered contact.");
             body.put("data", data);
             return ResponseEntity.ok(body);
 
@@ -336,7 +336,7 @@ public class AuthController {
             LOGGER.error("OTP resend failed for user {}. Status: {}",
                     ctx.getUserId(), HttpStatus.SERVICE_UNAVAILABLE.value());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(errorBody("RMS could not process the OTP resend request. Please try again later."));
+                    .body(errorBody("Unable to process the OTP resend request. Please try again later."));
         }
     }
 
@@ -386,7 +386,7 @@ public class AuthController {
             LOGGER.warn("RMS verify-otp result: FAILED (service not configured). Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "RMS authentication service is not configured.");
+            body.put("message", "Authentication service is not configured.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
 
@@ -426,7 +426,7 @@ public class AuthController {
 
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
-            body.put("message", "Authentication successful.");
+            body.put("message", "Verification Successful.");
             body.put("data", authenticatedUser);
             return ResponseEntity.ok(body);
 
@@ -441,7 +441,7 @@ public class AuthController {
             LOGGER.error("RMS verify-otp error. Status: {}", HttpStatus.SERVICE_UNAVAILABLE.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
-            body.put("message", "RMS OTP verification is unavailable. Please try again later.");
+            body.put("message", "OTP verification is unavailable. Please try again later.");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
         }
     }
@@ -457,7 +457,7 @@ public class AuthController {
         }
         Map<String, Object> body = new HashMap<>();
         body.put("success", false);
-        body.put("message", "Use the RMS credential validation flow to log in.");
+        body.put("message", "Use the credential validation flow to log in.");
         return ResponseEntity.status(HttpStatus.GONE).body(body);
     }
 
