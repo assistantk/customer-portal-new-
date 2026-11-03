@@ -28,65 +28,99 @@ export interface VerificationPdfData {
   searchValue: string;
   columns: string[];
   rows: string[][];
+  recordDate?: string | Date | null;
   generatedAt?: Date;
 }
 
 export interface SignatureBlockDetails {
   verifiedStatus: string;
   eSignedByLabel: string;
+  signerName: string;
   signerIdentity: string;
-  designationDivisionOrg: string;
+  designation: string;
+  divisionCode: string;
   designationDivision: string;
+  designationDivisionOrg: string;
   formattedTimestamp: string;
   signatureImageBase64: string;
 }
 
 /**
- * Formats a Date object into IST timezone string matching the format:
+ * Formats a Date object into IST timezone string matching the exact pattern:
  * "Fri Oct 30 15:27:55 IST 2026"
  */
 export function formatIstTimestamp(date: Date = new Date()): string {
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const validDate = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    year: 'numeric'
+  });
+  const parts = dtf.formatToParts(validDate);
+  const partMap: Record<string, string> = {};
+  for (const p of parts) {
+    partMap[p.type] = p.value;
+  }
+  let hour = partMap['hour'] || '00';
+  if (hour === '24') hour = '00';
+  const weekday = partMap['weekday'] || 'Sun';
+  const month = partMap['month'] || 'Jan';
+  const day = (partMap['day'] || '01').padStart(2, '0');
+  const minute = (partMap['minute'] || '00').padStart(2, '0');
+  const second = (partMap['second'] || '00').padStart(2, '0');
+  const year = partMap['year'] || '2026';
 
-  const kolkataDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const dayName = days[kolkataDate.getDay()];
-  const monthName = months[kolkataDate.getMonth()];
-  const dateNum = String(kolkataDate.getDate()).padStart(2, '0');
-  const hours = String(kolkataDate.getHours()).padStart(2, '0');
-  const minutes = String(kolkataDate.getMinutes()).padStart(2, '0');
-  const seconds = String(kolkataDate.getSeconds()).padStart(2, '0');
-  const year = kolkataDate.getFullYear();
-
-  return `${dayName} ${monthName} ${dateNum} ${hours}:${minutes}:${seconds} IST ${year}`;
+  return `${weekday} ${month} ${day} ${hour}:${minute}:${second} IST ${year}`;
 }
 
 /**
  * Parses and formats the date column associated with the source record.
  * Falls back dynamically to the system date/time in IST if the record date is unavailable or invalid.
  */
-export function parseAndFormatRecordDate(recordDate?: string | Date | null, fallbackDate: Date = new Date()): string {
-  if (!recordDate) {
+export function parseAndFormatRecordDate(recordDate?: string | number | Date | null, fallbackDate: Date = new Date()): string {
+  if (recordDate == null) {
     return formatIstTimestamp(fallbackDate);
   }
   if (recordDate instanceof Date) {
     return !isNaN(recordDate.getTime()) ? formatIstTimestamp(recordDate) : formatIstTimestamp(fallbackDate);
   }
+  if (typeof recordDate === 'number') {
+    const d = new Date(recordDate);
+    return !isNaN(d.getTime()) ? formatIstTimestamp(d) : formatIstTimestamp(fallbackDate);
+  }
   const s = String(recordDate).trim();
-  if (!s || s === '-' || s.toUpperCase() === 'N/A') {
+  if (!s || s === '-' || s.toUpperCase() === 'N/A' || s.toUpperCase() === 'NULL' || s.toUpperCase() === 'UNDEFINED') {
     return formatIstTimestamp(fallbackDate);
+  }
+  // If numeric string timestamp (e.g. '1793354875000')
+  if (/^\d{11,14}$/.test(s)) {
+    const d = new Date(Number(s));
+    if (!isNaN(d.getTime())) {
+      return formatIstTimestamp(d);
+    }
   }
   // If already in IST formatted pattern, retain as-is
   if (s.includes('IST') && s.length >= 20) {
     return s;
   }
-  // Try DD-MM-YYYY or DD/MM/YYYY
-  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(.*)$/);
-  if (dmy) {
-    const day = parseInt(dmy[1], 10);
-    const month = parseInt(dmy[2], 10) - 1;
-    const year = parseInt(dmy[3], 10);
-    const d = new Date(year, month, day);
+  // Try DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY with optional time
+  const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const hours = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+    const minutes = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+    const seconds = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const utcTime = Date.UTC(year, month, day, hours, minutes, seconds) - istOffsetMs;
+    const d = new Date(utcTime);
     if (!isNaN(d.getTime())) {
       return formatIstTimestamp(d);
     }
@@ -117,7 +151,7 @@ export class PdfGeneratorService {
   resolveSignatureDetails(
     user?: AuthUserData | null,
     date: Date = new Date(),
-    recordDate?: string | Date | null
+    recordDate?: string | number | Date | null
   ): SignatureBlockDetails {
     const authUser = user !== undefined ? user : this.authService.currentUser;
 
@@ -130,9 +164,9 @@ export class PdfGeneratorService {
       rawDesignation = 'SR.DCM';
     }
     // Remove any trailing slashes (e.g. 'SR.DCM/' -> 'SR.DCM')
-    const designation = rawDesignation.replace(/\/+$/, '');
+    const designation = rawDesignation.replace(/\/+$/, '') || 'SR.DCM';
 
-    // Fetch division code from authenticated profile
+    // Fetch division code from authenticated profile or existing application data
     const division = (authUser?.divisionCode || 'CSTM').trim().toUpperCase() || 'CSTM';
     const organization = 'CRIS';
 
@@ -146,12 +180,123 @@ export class PdfGeneratorService {
     return {
       verifiedStatus: 'Signature Not Verified',
       eSignedByLabel: 'eSigned by',
+      signerName: fullName,
       signerIdentity: `${fullName}, ${employeeId}`,
-      designationDivisionOrg,
+      designation,
+      divisionCode: division,
       designationDivision,
+      designationDivisionOrg,
       formattedTimestamp,
       signatureImageBase64: OFFICIAL_SIGNATURE_BASE64
     };
+  }
+
+  /**
+   * Renders the official e-signature block at the bottom-right corner of the current page.
+   * If the current content overflows the signature space, a new page is automatically added.
+   * Ensures the reference image is embedded preserving its exact aspect ratio (573:468)
+   * and all authenticated text elements are neatly aligned beside it.
+   */
+  drawOfficialSignatureBlock(
+    doc: jsPDF,
+    signature: SignatureBlockDetails,
+    options: {
+      orientation: 'portrait' | 'landscape';
+      currentY: number;
+      margin: number;
+      onNewPage?: (doc: jsPDF) => number;
+    }
+  ): number {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = options.margin;
+    const isPortrait = options.orientation === 'portrait';
+
+    const sigWidth = 92;
+    const sigHeight = 52;
+    const sigX = pageWidth - margin - sigWidth;
+
+    const footerLineY = isPortrait ? 280 : pageHeight - 9;
+    const maxSigY = footerLineY - (isPortrait ? 2 : 3) - sigHeight;
+
+    let sigY = options.currentY + (isPortrait ? 6 : 4);
+
+    if (sigY > maxSigY) {
+      doc.addPage();
+      if (options.onNewPage) {
+        options.onNewPage(doc);
+      }
+      sigY = maxSigY;
+    } else {
+      sigY = Math.max(sigY, maxSigY);
+    }
+
+    // 1. Signature container box
+    doc.setFillColor(250, 250, 252);
+    doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
+
+    // 2. Embed official reference signature image preserving original aspect ratio (573/468)
+    const imgWidth = 35;
+    const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
+    const imgX = sigX + 3.5;
+    const imgY = sigY + (sigHeight - imgHeight) / 2;
+
+    try {
+      doc.addImage(signature.signatureImageBase64, 'PNG', imgX, imgY, imgWidth, imgHeight);
+    } catch (e) {
+      console.warn('Could not embed signature image in PDF:', e);
+    }
+
+    // 3. Render dynamic authenticated text lines beside the image
+    const textX = sigX + 40.5;
+
+    // Line 1: Signature Heading ("Signature Not Verified")
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(185, 28, 28);
+    doc.text(signature.verifiedStatus, textX, sigY + 7.5);
+
+    // Line 2: "eSigned by"
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(signature.eSignedByLabel, textX, sigY + 13.5);
+
+    // Line 3: [FULL NAME], [EMPLOYEE ID]
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.8);
+    doc.setTextColor(15, 23, 42);
+    const identityLines = doc.splitTextToSize(signature.signerIdentity, sigWidth - 42) as string[];
+    doc.text(identityLines[0] || signature.signerIdentity, textX, sigY + 19.5);
+
+    // Line 4: [DESIGNATION]/[DIVISION]/CRIS
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.8);
+    doc.setTextColor(30, 41, 59);
+    doc.text(signature.designationDivisionOrg, textX, sigY + 25.5);
+
+    // Line 5: [DYNAMIC RECORD DATE / TIME IN IST]
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(signature.formattedTimestamp, textX, sigY + 31.5);
+
+    // Line 6: Authority branding ("CDAC | CRIS")
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(37, 99, 235);
+    doc.text('CDAC | CRIS', textX, sigY + 38);
+
+    // Line 7: Signer Name parenthetical
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`(${signature.signerName})`, textX, sigY + 44.5);
+
+    return sigY + sigHeight;
   }
 
   /**
@@ -221,7 +366,7 @@ export class PdfGeneratorService {
     doc.text('DATE GENERATED:', 105, 44);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(15, 23, 42);
-    doc.text(signature.formattedTimestamp, 137, 44);
+    doc.text(formatIstTimestamp(data.generatedAt || new Date()), 137, 44);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(71, 85, 105);
@@ -323,68 +468,11 @@ export class PdfGeneratorService {
     const totalPages = doc.getNumberOfPages();
     doc.setPage(totalPages);
 
-    const sigX = 105;
-    const sigY = Math.max(y + 8, 220);
-    const sigWidth = 90;
-    const sigHeight = 54;
-
-    // Signature box container
-    doc.setFillColor(250, 250, 252);
-    doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'F');
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
-
-    // 1. Embed official reference e-signature image preserving original aspect ratio
-    const imgWidth = 36;
-    const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
-    const imgX = sigX + 3.5;
-    const imgY = sigY + (sigHeight - imgHeight) / 2;
-
-    try {
-      doc.addImage(OFFICIAL_SIGNATURE_BASE64, 'PNG', imgX, imgY, imgWidth, imgHeight);
-    } catch (e) {
-      console.warn('Could not embed signature image in PDF:', e);
-    }
-
-    // 2. Render dynamic authenticated text beside the image
-    const textX = sigX + 41.5;
-
-    // Line 1: Signature Heading
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(185, 28, 28);
-    doc.text(signature.verifiedStatus, textX, sigY + 8);
-
-    // Line 2: eSigned by
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(7.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text(signature.eSignedByLabel, textX, sigY + 15);
-
-    // Line 3: [LOGGED-IN USER FULL NAME], [EMPLOYEE ID]
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(15, 23, 42);
-    doc.text(signature.signerIdentity, textX, sigY + 22);
-
-    // Line 4: [DESIGNATION]/[DIVISION]/CRIS
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(30, 41, 59);
-    doc.text(signature.designationDivisionOrg, textX, sigY + 29);
-
-    // Line 5: [DYNAMIC DATE AND TIME]
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(signature.formattedTimestamp, textX, sigY + 36);
-
-    // Line 6: Authority branding
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(59, 130, 246);
-    doc.text('CDAC | CRIS', textX, sigY + 44);
+    this.drawOfficialSignatureBlock(doc, signature, {
+      orientation: 'portrait',
+      currentY: y,
+      margin: 15
+    });
 
     // Page Footers for all pages
     const finalPageCount = doc.getNumberOfPages();
@@ -424,7 +512,7 @@ export class PdfGeneratorService {
     doc.save(filename || defaultFilename);
   }
 
-  generateVerificationPdf(data: VerificationPdfData): jsPDF {
+  generateVerificationPdf(data: VerificationPdfData, userOverride?: AuthUserData | null): jsPDF {
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -453,6 +541,16 @@ export class PdfGeneratorService {
     );
     const columnGroups = this.createVerificationColumnGroups(widths, tableWidth);
     const generatedAt = formatIstTimestamp(data.generatedAt || new Date());
+
+    // Prefer record date from source record column, fallback to generatedAt or system date
+    const recordDate = data.recordDate ?? this.extractDateFromVerificationData(reportData);
+    const signature = this.resolveSignatureDetails(
+      userOverride,
+      data.generatedAt || new Date(),
+      recordDate
+    );
+
+    let lastTableY = margin;
 
     columnGroups.forEach((group, groupIndex) => {
       if (groupIndex > 0) {
@@ -527,6 +625,25 @@ export class PdfGeneratorService {
         doc.setFontSize(9);
         doc.setTextColor(100, 116, 139);
         doc.text('No records found.', margin, y + 7);
+        y += 12;
+      }
+
+      lastTableY = y;
+    });
+
+    // ========================================================
+    // DYNAMIC eSIGNATURE SECTION (Bottom Right on Final Page)
+    // ========================================================
+    // Requirement: For multi-page PDFs, display signature on final page only
+    const lastPage = doc.getNumberOfPages();
+    doc.setPage(lastPage);
+
+    this.drawOfficialSignatureBlock(doc, signature, {
+      orientation: 'landscape',
+      currentY: lastTableY,
+      margin,
+      onNewPage: (newDoc) => {
+        return this.drawVerificationPageHeader(newDoc, reportData, generatedAt, margin, pageWidth);
       }
     });
 
@@ -546,8 +663,11 @@ export class PdfGeneratorService {
     return doc;
   }
 
-  previewVerificationPdf(data: VerificationPdfData): void {
-    const url = URL.createObjectURL(this.generateVerificationPdf(data).output('blob'));
+  previewVerificationPdf(data: VerificationPdfData, userOverride?: AuthUserData | null): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const url = URL.createObjectURL(this.generateVerificationPdf(data, userOverride).output('blob'));
     const previewWindow = window.open(url, '_blank');
     if (!previewWindow) {
       URL.revokeObjectURL(url);
@@ -557,8 +677,30 @@ export class PdfGeneratorService {
     previewWindow.addEventListener('pagehide', () => URL.revokeObjectURL(url), { once: true });
   }
 
-  downloadVerificationPdf(data: VerificationPdfData, filename: string): void {
-    this.generateVerificationPdf(data).save(filename);
+  downloadVerificationPdf(data: VerificationPdfData, filename: string, userOverride?: AuthUserData | null): void {
+    this.generateVerificationPdf(data, userOverride).save(filename);
+  }
+
+  /**
+   * Identifies and extracts the date column value from verification records when present.
+   */
+  private extractDateFromVerificationData(data: VerificationPdfData): string | Date | null {
+    if (data.recordDate) {
+      return data.recordDate;
+    }
+    const dateColIndex = data.columns.findIndex((col) => {
+      const c = col.toLowerCase().replace(/[^a-z]/g, '');
+      return c === 'creationdate' || c === 'date' || c === 'createddate' || c === 'recorddate';
+    });
+    if (dateColIndex !== -1 && data.rows && data.rows.length > 0) {
+      for (const row of data.rows) {
+        const val = row[dateColIndex];
+        if (val && val !== '-' && val.toUpperCase() !== 'N/A') {
+          return val;
+        }
+      }
+    }
+    return null;
   }
 
   private createVerificationColumnGroups(widths: number[], availableWidth: number): Array<{ indices: number[]; widths: number[] }> {
