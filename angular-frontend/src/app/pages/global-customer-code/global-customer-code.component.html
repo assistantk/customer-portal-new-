@@ -139,8 +139,8 @@
             <div class="form-row row-two-cols">
                 <!-- City -->
                 <div class="field-group">
-                    <label for="city">City <span class="req">*</span></label>
-                    <div class="input-control" [class.has-error]="errors['city']">
+                    <label for="city">City (Optional)</label>
+                    <div class="input-control">
                         <span class="icon-slot">
                             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                         </span>
@@ -149,11 +149,9 @@
                             name="city"
                             type="text"
                             [(ngModel)]="form.city"
-                            (input)="errors['city'] = ''"
                             placeholder="Enter city"
                         />
                     </div>
-                    <small *ngIf="errors['city']" class="error-msg">{{ errors['city'] }}</small>
                 </div>
 
                 <!-- Pincode -->

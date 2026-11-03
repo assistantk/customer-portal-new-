@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalCustomerCodeComponent } from './global-customer-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 
 describe('GlobalCustomerCodeComponent', () => {
   let component: GlobalCustomerCodeComponent;
@@ -11,6 +11,8 @@ describe('GlobalCustomerCodeComponent', () => {
   let notificationService: NotificationService;
   let routerMock: any;
   let cdrMock: ChangeDetectorRef;
+  let authUserSubject: BehaviorSubject<any>;
+  let authServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -28,12 +30,15 @@ describe('GlobalCustomerCodeComponent', () => {
       detach: vi.fn(),
       reattach: vi.fn()
     } as unknown as ChangeDetectorRef;
+    authUserSubject = new BehaviorSubject<any>(null);
+    authServiceMock = { currentUser$: authUserSubject.asObservable(), currentUser: null };
 
     component = new GlobalCustomerCodeComponent(
       customerServiceMock as CustomerService,
       notificationService,
       routerMock,
-      cdrMock
+      cdrMock,
+      authServiceMock
     );
   });
 
@@ -42,6 +47,25 @@ describe('GlobalCustomerCodeComponent', () => {
     expect(component.form.customerCode).toBe('');
     expect(component.errors).toEqual({});
     expect(component.loading).toBe(false);
+  });
+
+  it('defaults the division from login and keeps manual changes local', () => {
+    const loginUser = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = loginUser;
+    authUserSubject.next(loginUser);
+
+    component.ngOnInit();
+
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.divisions).toContain('Tughlakabad / Delhi Area (TKD)');
+
+    component.chooseZone('Central Railway (CR)');
+    authUserSubject.next({ divisionCode: 'DLI' });
+    expect(component.form.zone).toBe('Central Railway (CR)');
+    expect(component.form.operatingDivision).toBe('');
+    expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
   });
 
   it('should generate customer code from company name', () => {
@@ -63,7 +87,7 @@ describe('GlobalCustomerCodeComponent', () => {
     expect(component.errors['panNumber']).toBeDefined();
     expect(component.errors['state']).toBeDefined();
     expect(component.errors['address']).toBeDefined();
-    expect(component.errors['city']).toBeDefined();
+    expect(component.errors['city']).toBeUndefined();
     expect(component.errors['pincode']).toBeDefined();
     expect(component.errors['zone']).toBeDefined();
     expect(component.errors['operatingDivision']).toBeDefined();
@@ -96,6 +120,25 @@ describe('GlobalCustomerCodeComponent', () => {
     expect(Object.keys(component.errors).length).toBe(0);
   });
 
+  it('should allow submission validation when city is blank or whitespace', () => {
+    component.form = {
+      customerCode: 'ABCD',
+      companyName: 'Alpha Beta Gamma Delta',
+      panNumber: 'ABCDE1234F',
+      state: 'Maharashtra',
+      address: '123 Main Street',
+      city: '   ',
+      pincode: '400001',
+      zone: 'Central Railway (CR)',
+      operatingDivision: 'Mumbai (CSTM)',
+      email: '',
+      mobile: ''
+    };
+
+    expect(component.validate()).toBe(true);
+    expect(component.errors['city']).toBeUndefined();
+  });
+
   it('should validate PAN format', () => {
     component.form.panNumber = 'INVALID_PAN';
     component.validate();
@@ -113,7 +156,7 @@ describe('GlobalCustomerCodeComponent', () => {
       panNumber: 'ABCDE1234F',
       state: 'Maharashtra',
       address: '123 Main Street',
-      city: 'Mumbai',
+      city: '',
       pincode: '400001',
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
@@ -122,7 +165,10 @@ describe('GlobalCustomerCodeComponent', () => {
     };
 
     component.submit();
-    expect(customerServiceMock.registerCustomer).toHaveBeenCalled();
+    expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ city: '' }),
+      expect.any(Array)
+    );
     expect(component.notice).toContain('Request email sent to DBA');
   });
 

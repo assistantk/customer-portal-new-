@@ -349,7 +349,7 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  List<String> requiredFields = Arrays.asList("companyName", "address", "city", "operatingDivision", "zone", "panNumber", "gstinNumbers");
+  List<String> requiredFields = Arrays.asList("companyName", "address", "operatingDivision", "zone", "panNumber", "gstinNumbers");
   for (String field : requiredFields) {
    if (firstValue(formData, field) == null) {
     throw new IllegalArgumentException(field + " is required");
@@ -358,6 +358,7 @@ public class CustomerServiceImpl implements CustomerService {
   validateCompanyNameLength(firstValue(formData, "companyName", "customerName"));
   String rawAddress = firstValue(formData, "address");
   String address = normalizeAddress(rawAddress);
+  String city = normalizeNullableValue(formData.get("city"));
   if (address == null || address.isEmpty()) {
    throw new IllegalArgumentException("address is required");
   }
@@ -439,7 +440,7 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(finalCode);
     insertParameters.add(companyName);
     insertParameters.add(address);
-    insertParameters.add(formData.get("city"));
+    insertParameters.add(city);
     if ("global".equals(type)) {
         insertParameters.add(null);
         insertParameters.add(null);
@@ -528,7 +529,7 @@ public class CustomerServiceImpl implements CustomerService {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
   requested.put(addressColumn, updateAddress);
-  requested.put(cityColumn, formData.get("city"));
+  requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
   requested.put(panColumn, formData.get("panNumber"));
   requested.put(gstColumn, formData.get("gstinNumbers"));
 
@@ -553,7 +554,9 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String normalizeNullableValue(String value) {
-   return value == null || value.trim().isEmpty() ? null : value;
+   if (value == null) return null;
+   String trimmed = value.trim();
+   return trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed) ? null : trimmed;
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {

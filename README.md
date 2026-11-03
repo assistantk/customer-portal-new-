@@ -103,6 +103,7 @@ Credential validation uses `RMS_API_BASE_URL` (default `http://10.60.201.192:710
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
 DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.AEM_USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
+City is optional in Global Customer, Handling Agent, Ownership Code, and customer registration/update forms. For Global Customer and Handling Agent DBA INSERT/UPDATE requests, an absent, blank, whitespace-only, or case-insensitive `null` city is rendered as the SQL `NULL` literal; populated city values are trimmed before the DBA email is generated.
 
 The admin Delete Request page offers only **Global Code** and **Handling Agent Code**. Global Code verification uses `MEMGLBLCUST.MAVGLBLCUSTCODE`; Handling Agent Code verification uses `MEMGLBLHNDGAGNT.MAVHNDGAGNTCODE`. The page requires the verified company name to be confirmed before emailing the matching DELETE SQL to the DBA. The application does not execute these DELETE statements; the DBA reviews and executes them manually.
 
