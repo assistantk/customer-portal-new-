@@ -1,5 +1,6 @@
 package com.cris.customerportal.controller;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.exception.ResourceAlreadyExistsException;
@@ -45,7 +46,10 @@ public class CustomerController {
     @PostMapping(value = "/register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> register(@Valid @RequestPart("customer") CustomerRegistrationRequest customer,
             @RequestPart("gstinFiles") java.util.List<MultipartFile> files) {
+        LOGGER.info("Customer register request: codeType={} code={} filesCount={}",
+                customer.codeType(), customer.customerCode(), (files != null ? files.size() : 0));
         String code = service.register(customer, files);
+        LOGGER.info("Customer register succeeded: customerCode={}", code);
         Map<String, Object> body = new HashMap<>();
         body.put("success", true);
         body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
@@ -55,6 +59,7 @@ public class CustomerController {
 
     @GetMapping("/master-data")
     public Map<String, Object> master() {
+        LOGGER.debug("Master data requested");
         Map<String, Object> cities = new HashMap<>();
         cities.put("Delhi", new String[] { "110001", "110002" });
         cities.put("Mumbai", new String[] { "400001", "400002" });
@@ -78,39 +83,58 @@ public class CustomerController {
 
     @GetMapping("/lookup")
     public CustomerLookupResponse lookup(@RequestParam String code) {
-        return service.lookupByCode(code);
+        LOGGER.info("Customer lookup request: code={}", code);
+        CustomerLookupResponse resp = service.lookupByCode(code);
+        LOGGER.info("Customer lookup succeeded for code={}", code);
+        return resp;
     }
 
     @GetMapping("/old-lookup")
     public com.cris.customerportal.dto.OldCustomerResponse lookupOld(@RequestParam String code) {
-        return service.lookupOldCustomerByCode(code);
+        LOGGER.info("Old customer lookup request: code={}", code);
+        com.cris.customerportal.dto.OldCustomerResponse resp = service.lookupOldCustomerByCode(code);
+        LOGGER.info("Old customer lookup succeeded for code={}", code);
+        return resp;
     }
 
     @GetMapping("/gstin-lookup")
     public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupGstin(@RequestParam String gstin) {
-        return service.lookupOldCustomerByGstin(gstin);
+        LOGGER.info("GSTIN lookup request: gstin={}", DataMaskingUtil.maskSensitive(gstin));
+        java.util.List<com.cris.customerportal.dto.OldCustomerResponse> list = service.lookupOldCustomerByGstin(gstin);
+        LOGGER.info("GSTIN lookup returned {} matches", (list != null ? list.size() : 0));
+        return list;
     }
 
     @GetMapping("/agent-lookup")
     public com.cris.customerportal.dto.GlobalAgentResponse lookupAgent(@RequestParam String code) {
-        return service.lookupHandlingAgentByCode(code);
+        LOGGER.info("Handling agent lookup request: code={}", code);
+        com.cris.customerportal.dto.GlobalAgentResponse resp = service.lookupHandlingAgentByCode(code);
+        LOGGER.info("Handling agent lookup succeeded for code={}", code);
+        return resp;
     }
 
     @GetMapping("/generate-code")
     public Map<String, String> generateCode(@RequestParam String base) {
+        LOGGER.info("Generate code request: base={}", base);
         Map<String, String> r = new HashMap<>();
-        r.put("code", service.generateUniqueCode(base));
+        String generated = service.generateUniqueCode(base);
+        r.put("code", generated);
+        LOGGER.info("Generated code: {}", generated);
         return r;
     }
 
     @PostMapping("/new-generate-code")
     public ResponseEntity<?> newGenerateCode(@RequestParam String type, @RequestBody Map<String, String> payload) {
+        LOGGER.info("New generate code request: type={}", type);
         try {
             Map<String, Object> r = new HashMap<>();
-            r.put("code", service.generateUniqueCodeJDBC(payload.get("companyName"), type));
+            String code = service.generateUniqueCodeJDBC(payload.get("companyName"), type);
+            r.put("code", code);
             r.put("available", true);
+            LOGGER.info("New generate code succeeded: code={}", code);
             return ResponseEntity.ok(r);
         } catch (IllegalArgumentException e) {
+            LOGGER.warn("New generate code rejected: {}", e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -122,19 +146,24 @@ public class CustomerController {
     public ResponseEntity<?> newRegister(@RequestParam Map<String, String> formData,
             @RequestPart(value = "gstinFiles", required = false) java.util.List<MultipartFile> gstinFiles,
             @RequestPart(value = "panFile", required = false) MultipartFile panFile) {
+        String codeType = formData.get("codeType");
+        LOGGER.info("New register request received: codeType={}", codeType);
         try {
             String code = service.registerNewEntryJDBC(formData);
+            LOGGER.info("New register succeeded: customerCode={}", code);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             body.put("customerCode", code);
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
+            LOGGER.warn("New register validation failed: {}", e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         } catch (ResourceAlreadyExistsException e) {
+            LOGGER.warn("New register conflict: {}", e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -151,18 +180,23 @@ public class CustomerController {
 
     @PostMapping("/old-update")
     public ResponseEntity<?> oldUpdate(@RequestBody Map<String, String> payload) {
+        String customerCode = payload.get("customerCode");
+        LOGGER.info("Old customer update request: code={}", customerCode);
         try {
             service.updateOldCustomerJDBC(payload);
+            LOGGER.info("Old customer update succeeded: code={}", customerCode);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
+            LOGGER.warn("Old customer update validation failed for code={}: {}", customerCode, e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(body);
         } catch (ResourceNotFoundException e) {
+            LOGGER.warn("Old customer update not found for code={}: {}", customerCode, e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -179,6 +213,7 @@ public class CustomerController {
 
     @DeleteMapping("/global-delete")
     public ResponseEntity<?> disableDirectGlobalDelete() {
+        LOGGER.info("Direct global-delete endpoint accessed (disabled)");
         Map<String, Object> body = new HashMap<>();
         body.put("success", false);
         body.put("message", "Direct deletion is disabled. Submit a Delete Request for DBA execution.");
@@ -189,20 +224,21 @@ public class CustomerController {
 
     @GetMapping("/ownership-lookup")
     public ResponseEntity<?> ownershipLookup(@RequestParam String code) {
+        LOGGER.info("Ownership lookup request: code={}", code);
         try {
             java.util.Map<String, String> result = service.lookupOwnershipJDBC(code);
+            Map<String, Object> body = new HashMap<>();
             if (result != null) {
-                Map<String, Object> body = new HashMap<>();
+                LOGGER.info("Ownership lookup succeeded for code={}", code);
                 body.put("success", true);
                 body.put("found", true);
                 body.put("data", result);
-                return ResponseEntity.ok(body);
             } else {
-                Map<String, Object> body = new HashMap<>();
+                LOGGER.info("Ownership lookup returned not found for code={}", code);
                 body.put("success", true);
                 body.put("found", false);
-                return ResponseEntity.ok(body);
             }
+            return ResponseEntity.ok(body);
         } catch (Exception e) {
             String safeMsg = sanitizeErrorMessage("", e, "Unable to verify ownership code. Please try again later.");
             Map<String, Object> body = new HashMap<>();
@@ -214,21 +250,25 @@ public class CustomerController {
 
     @PostMapping("/ownership-save")
     public ResponseEntity<?> ownershipSave(@RequestBody Map<String, String> payload) {
+        String code = payload.get("ownershipCode");
+        String desc = payload.get("ownershipDesc");
+        LOGGER.info("Ownership save request: code={}", code);
         try {
-            String code = payload.get("ownershipCode");
-            String desc = payload.get("ownershipDesc");
             if (code == null || code.trim().isEmpty()) {
+                LOGGER.warn("Ownership save rejected: code is required");
                 Map<String, Object> body = new HashMap<>();
                 body.put("success", false);
                 body.put("message", "Ownership Code is required");
                 return ResponseEntity.badRequest().body(body);
             }
             service.saveOwnershipJDBC(code.trim(), desc);
+            LOGGER.info("Ownership save succeeded: code={}", code);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
+            LOGGER.warn("Ownership save validation failed for code={}: {}", code, e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -245,17 +285,22 @@ public class CustomerController {
 
     @PostMapping("/ownership-submit")
     public ResponseEntity<?> ownershipSubmit(@RequestBody Map<String, String> payload) {
+        String ownershipCode = payload.get("ownershipCode");
+        String partyCode = payload.get("partyCode");
+        LOGGER.info("Ownership submit request: ownershipCode={} partyCode={}", ownershipCode, partyCode);
         try {
             service.submitOwnershipJDBC(
-                    payload.get("ownershipCode"),
+                    ownershipCode,
                     payload.get("ownershipDesc"),
-                    payload.get("partyCode"),
+                    partyCode,
                     payload.get("partyDesc"));
+            LOGGER.info("Ownership submit succeeded: ownershipCode={} partyCode={}", ownershipCode, partyCode);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
+            LOGGER.warn("Ownership submit validation failed: {}", e.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -274,20 +319,21 @@ public class CustomerController {
 
     @GetMapping("/ownership-party-lookup")
     public ResponseEntity<?> ownershipPartyLookup(@RequestParam String code) {
+        LOGGER.info("Ownership party lookup request: code={}", code);
         try {
             java.util.Map<String, String> result = service.lookupOwnershipPartyJDBC(code);
+            Map<String, Object> body = new HashMap<>();
             if (result != null) {
-                Map<String, Object> body = new HashMap<>();
+                LOGGER.info("Ownership party lookup succeeded for code={}", code);
                 body.put("success", true);
                 body.put("found", true);
                 body.put("data", result);
-                return ResponseEntity.ok(body);
             } else {
-                Map<String, Object> body = new HashMap<>();
+                LOGGER.info("Ownership party lookup returned not found for code={}", code);
                 body.put("success", true);
                 body.put("found", false);
-                return ResponseEntity.ok(body);
             }
+            return ResponseEntity.ok(body);
         } catch (Exception e) {
             String safeMsg = sanitizeErrorMessage("", e, "Unable to verify ownership party code. Please try again later.");
             Map<String, Object> body = new HashMap<>();
@@ -299,20 +345,29 @@ public class CustomerController {
 
     @PostMapping("/ownership-party-save")
     public ResponseEntity<?> ownershipPartySave(@RequestBody Map<String, String> payload) {
+        String code = payload.get("partyCode");
+        String desc = payload.get("partyDesc");
+        LOGGER.info("Ownership party save request: code={}", code);
         try {
-            String code = payload.get("partyCode");
-            String desc = payload.get("partyDesc");
             if (code == null || code.trim().isEmpty()) {
+                LOGGER.warn("Ownership party save rejected: code is required");
                 Map<String, Object> body = new HashMap<>();
                 body.put("success", false);
                 body.put("message", "Ownership Party Code is required");
                 return ResponseEntity.badRequest().body(body);
             }
             service.saveOwnershipPartyJDBC(code.trim(), desc);
+            LOGGER.info("Ownership party save succeeded: code={}", code);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Ownership party save validation failed for code={}: {}", code, e.getMessage());
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(body);
         } catch (Exception e) {
             String safeMsg = sanitizeErrorMessage("", e, "Could not submit the ownership party request. Please try again later.");
             Map<String, Object> body = new HashMap<>();
@@ -326,8 +381,10 @@ public class CustomerController {
 
     @GetMapping("/ownership-check")
     public ResponseEntity<?> ownershipCheck(@RequestParam String code) {
+        LOGGER.info("Ownership duplicate check request: code={}", code);
         try {
             boolean dup = service.checkOwnershipDuplicate(code);
+            LOGGER.info("Ownership duplicate check result: code={} duplicate={}", code, dup);
             Map<String, Object> body = new HashMap<>();
             body.put("duplicate", dup);
             return ResponseEntity.ok(body);
@@ -342,8 +399,10 @@ public class CustomerController {
 
     @GetMapping("/ownership-party-check")
     public ResponseEntity<?> ownershipPartyCheck(@RequestParam String code) {
+        LOGGER.info("Ownership party duplicate check request: code={}", code);
         try {
             boolean dup = service.checkOwnershipPartyDuplicate(code);
+            LOGGER.info("Ownership party duplicate check result: code={} duplicate={}", code, dup);
             Map<String, Object> body = new HashMap<>();
             body.put("duplicate", dup);
             return ResponseEntity.ok(body);
