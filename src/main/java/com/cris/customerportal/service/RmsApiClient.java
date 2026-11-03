@@ -160,8 +160,7 @@ public class RmsApiClient {
     }
 
     public RmsApiResponse generateOtp(RmsOtpGenerateRequest request) {
-        LOGGER.info("Dispatching RMS OTP generation request for userId={} service={}",
-                request.getF_USERID(), request.getF_SRVCNAME());
+        LOGGER.info("Dispatching RMS OTP generation request for service={}", request.getF_SRVCNAME());
         try {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(generateOtpUrl, request, String.class);
@@ -187,7 +186,7 @@ public class RmsApiClient {
     }
 
     public RmsApiResponse verifyOtp(RmsOtpVerifyRequest request) {
-        LOGGER.info("Dispatching RMS OTP verification request for userId={}", request.getF_USERID());
+        LOGGER.info("Dispatching RMS OTP verification request");
         try {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(verifyOtpUrl, request, String.class);

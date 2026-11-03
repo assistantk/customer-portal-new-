@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- Override with LOG_PATH or logging.file.path; local dev defaults in application-dev.properties. -->
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="/switch/Application_Logs/FreightCodeLog"/>
+
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <!-- APPENDERS                                                                           -->
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+
+    <!-- Console: all levels, coloured in dev, plain in prod -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:-no-rid}] %logger{36} - %msg%n%ex{full}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Rolling file: all levels, 20 MB size roll, 30-day history, 1 GB cap -->
+    <appender name="FILE_ALL" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/FreightCodeLog.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/FreightCodeLog.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>20MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:-no-rid}] %logger{36} - %msg%n%ex{full}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Rolling file: errors only, 20 MB size roll, 30-day history, 200 MB cap -->
+    <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/FreightCodeError.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/FreightCodeError.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>20MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:-no-rid}] %logger{36} - %msg%n%ex{full}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <!-- PROFILE: dev — DEBUG application logging; SQL bind values are never logged.        -->
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <springProfile name="dev">
+        <!-- Application code: DEBUG -->
+        <logger name="com.cris.customerportal" level="DEBUG"/>
+        <!-- Hibernate 5 SQL statements only; parameter values are not logged. -->
+        <logger name="org.hibernate.SQL"                                    level="DEBUG"/>
+        <!-- Spring Web / MVC -->
+        <logger name="org.springframework.web"                              level="DEBUG"/>
+        <logger name="org.springframework.web.servlet.DispatcherServlet"    level="DEBUG"/>
+        <!-- Raw JDBC statements only; parameter values are never logged. -->
+        <logger name="org.springframework.jdbc.core.JdbcTemplate"           level="DEBUG"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE_ALL"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </root>
+    </springProfile>
+
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <!-- PROFILE: prod — INFO only; SQL at DEBUG level but NO bind values                   -->
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <springProfile name="prod">
+        <!-- Application code: INFO -->
+        <logger name="com.cris.customerportal" level="INFO"/>
+        <!-- Hibernate 5: SQL query shapes only; bind values are suppressed. -->
+        <logger name="org.hibernate.SQL"                                    level="DEBUG"/>
+        <!-- Hibernate bind values are never logged. -->
+        <!-- Spring noise suppressed in prod -->
+        <logger name="org.springframework.web"                              level="WARN"/>
+        <logger name="org.springframework.security"                         level="WARN"/>
+        <!-- Raw JDBC query logging without bind values. -->
+        <logger name="org.springframework.jdbc.core.JdbcTemplate"           level="DEBUG"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE_ALL"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </root>
+    </springProfile>
+
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <!-- DEFAULT (no profile active / test / local without a profile flag)                  -->
+    <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
+    <springProfile name="!dev &amp; !prod">
+        <logger name="com.cris.customerportal" level="DEBUG"/>
+        <logger name="org.hibernate.SQL"                                    level="DEBUG"/>
+        <logger name="org.springframework.jdbc.core.JdbcTemplate"           level="DEBUG"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE_ALL"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </root>
+    </springProfile>
+
+</configuration>

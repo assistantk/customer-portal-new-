@@ -29,3 +29,5 @@ Thumbs.db
 .DS_Store
 
 0.30.0
+
+logs/

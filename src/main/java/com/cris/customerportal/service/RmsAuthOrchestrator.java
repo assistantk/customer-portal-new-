@@ -83,7 +83,7 @@ public class RmsAuthOrchestrator {
      * @throws InvalidRmsCredentialsException on wrong password, unknown user, etc.
      */
     public RmsAuthSessionContext validateCredentials(String userId, String password, String divisionCode) {
-        LOGGER.info("RMS validateCredentials – userId={} divisionCode={}", userId, divisionCode);
+        LOGGER.info("RMS validateCredentials request received");
 
         String applyDate = LocalDate.now().format(APPLY_DATE_FMT);
 
@@ -96,8 +96,7 @@ public class RmsAuthOrchestrator {
         RmsApiResponse response = rmsApiClient.validateUser(req);
 
         if (!response.isCredentialValidationSuccessful(req.getF_USERID())) {
-            LOGGER.warn("ATVLDTUSER authentication rejected for userId={} status={}",
-                    userId, response.getStatus());
+            LOGGER.warn("ATVLDTUSER authentication rejected: status={}", response.getStatus());
             String rmsError = response.getErrorNo();
             throw new InvalidRmsCredentialsException(
                     rmsError != null && !rmsError.trim().isEmpty()
@@ -107,7 +106,7 @@ public class RmsAuthOrchestrator {
 
         List<String> rawDesignations = response.extractRoleIds();
         if (rawDesignations.isEmpty()) {
-            LOGGER.warn("ATVLDTUSER returned no designations for userId={}", userId);
+            LOGGER.warn("ATVLDTUSER returned no designations");
             throw new InvalidRmsCredentialsException("No designations found for your account. Please contact your administrator.");
         }
 
@@ -120,8 +119,7 @@ public class RmsAuthOrchestrator {
         ctx.setDesignations(rawDesignations);
         ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
 
-        LOGGER.info("ATVLDTUSER accepted for userId={} name={} designations={}",
-                userId, ctx.getUserName(), rawDesignations);
+        LOGGER.info("ATVLDTUSER accepted; designation count={}", rawDesignations.size());
         return ctx;
     }
 
@@ -245,13 +243,13 @@ public class RmsAuthOrchestrator {
         boolean inList = ctx.getDesignations() != null && ctx.getDesignations().stream()
                 .anyMatch(d -> d.trim().equalsIgnoreCase(raw));
         if (!inList) {
-            LOGGER.warn("Designation {} not in allowed list for userId={}", raw, ctx.getUserId());
+            LOGGER.warn("Selected designation is not in the allowed list");
             throw new InvalidRmsCredentialsException("Selected designation is not valid for your account.");
         }
 
         // Portal access is restricted to the confirmed SR-DCM role.
         if (!isAuthorizedDesignation(raw)) {
-            LOGGER.info("Access denied – userId={} selected unauthorized designation {}", ctx.getUserId(), raw);
+            LOGGER.info("Access denied: selected designation is unauthorized");
             throw new AccessDeniedException(
                     "Access denied. Only users with the SR-DCM role may access this portal.");
         }
@@ -271,11 +269,11 @@ public class RmsAuthOrchestrator {
 
         RmsApiResponse response = rmsApiClient.generateOtp(req);
         if (!response.isOtpGenerationAccepted(ctx.getUserId())) {
-            LOGGER.warn("RMS OTP generation rejected for userId={} serviceName={} errorNo={} status={}",
-                    ctx.getUserId(), response.getSrvcName(), response.getErrorNo(), response.getStatus());
+            LOGGER.warn("RMS OTP generation rejected: serviceName={} errorNo={} status={}",
+                    response.getSrvcName(), response.getErrorNo(), response.getStatus());
             throw new RmsApiException("OTP generation was rejected by the RMS service.");
         }
-        LOGGER.info("RMS OTP generation accepted for userId={} service={}", ctx.getUserId(), serviceName);
+        LOGGER.info("RMS OTP generation accepted: service={}", serviceName);
 
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
     }
@@ -295,7 +293,7 @@ public class RmsAuthOrchestrator {
      * @throws InvalidRmsCredentialsException on incorrect or expired OTP
      */
     public AuthUserDto verifyOtp(RmsAuthSessionContext ctx, String otp, String clientIp) {
-        LOGGER.info("RMS verifyOtp – userId={}", ctx.getUserId());
+        LOGGER.info("RMS OTP verification request received");
 
         if (otp == null || otp.trim().isEmpty()) {
             throw new InvalidRmsCredentialsException("OTP is required.");
@@ -314,16 +312,16 @@ public class RmsAuthOrchestrator {
         RmsApiResponse response = rmsApiClient.verifyOtp(req);
 
         if (!response.isSuccess()) {
-            LOGGER.warn("RMS OTP verification rejected for userId={} serviceName={} errorNo={} status={}",
-                    ctx.getUserId(), response.getSrvcName(), response.getErrorNo(), response.getStatus());
+            LOGGER.warn("RMS OTP verification rejected: serviceName={} errorNo={} status={}",
+                    response.getSrvcName(), response.getErrorNo(), response.getStatus());
             throw new InvalidRmsCredentialsException("Invalid OTP. Please enter the valid 5-digit OTP.");
         }
-        LOGGER.info("RMS OTP verification accepted for userId={}", ctx.getUserId());
+        LOGGER.info("RMS OTP verification accepted");
 
         String confirmedRole = ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION;
         otpResendAllowedAt.remove(userKey);
 
-        LOGGER.info("Authentication complete for userId={} role={}", ctx.getUserId(), confirmedRole);
+        LOGGER.info("Authentication complete for role={}", confirmedRole);
         AuthUserDto authUser = new AuthUserDto(
                 ctx.getUserId(),
                 ctx.getUserName() != null ? ctx.getUserName() : ctx.getUserId(),

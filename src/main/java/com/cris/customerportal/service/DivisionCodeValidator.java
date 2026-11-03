@@ -1,5 +1,8 @@
 package com.cris.customerportal.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
@@ -11,6 +14,7 @@ import java.util.Set;
  */
 public final class DivisionCodeValidator {
 
+    private static final Logger log = LoggerFactory.getLogger(DivisionCodeValidator.class);
     private static final Set<String> VALID_CODES;
 
     static {

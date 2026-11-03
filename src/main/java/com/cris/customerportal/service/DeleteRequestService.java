@@ -1,6 +1,8 @@
 package com.cris.customerportal.service;
 
 import com.cris.customerportal.exception.DatabaseUnavailableException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
@@ -12,6 +14,9 @@ import java.util.Locale;
 
 @Service
 public class DeleteRequestService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeleteRequestService.class);
+
     private final DataSource dataSource;
     private final DbaEmailService dbaEmailService;
 
@@ -21,6 +26,7 @@ public class DeleteRequestService {
     }
 
     public VerifiedRecord verify(String codeType, String code) {
+        log.debug("DeleteRequestService.verify: codeType={}", codeType);
         CodeMapping mapping = mappingFor(codeType);
         String normalizedCode = normalizeCode(code);
         String sql = "SELECT " + mapping.codeColumn + ", " + mapping.nameColumn
@@ -31,6 +37,7 @@ public class DeleteRequestService {
             statement.setString(1, normalizedCode);
             try (ResultSet results = statement.executeQuery()) {
                 if (!results.next()) {
+                    log.debug("DeleteRequestService.verify: no record found for codeType={}", codeType);
                     return null;
                 }
 
@@ -39,24 +46,28 @@ public class DeleteRequestService {
                 if (results.next()) {
                     throw new IllegalStateException("The selected code matches multiple records.");
                 }
+                log.debug("DeleteRequestService.verify: found record for codeType={}", codeType);
                 return record;
             }
         } catch (SQLException e) {
-            System.err.printf("[DELETE REQUEST DB ERROR] SQLState=%s ErrorCode=%d%n",
-                    e.getSQLState(), e.getErrorCode());
+            log.error("Delete request DB error: SQLState={} ErrorCode={}",
+                    e.getSQLState(), e.getErrorCode(), e);
             throw new DatabaseUnavailableException("Unable to verify the code at this time.", e);
         }
     }
 
     public void sendRequest(String codeType, String code, String companyName) {
+        log.info("DeleteRequestService.sendRequest: codeType={}", codeType);
         String normalizedCompanyName = normalizeCompanyName(companyName);
         VerifiedRecord record = verify(codeType, code);
         if (record == null) {
+            log.warn("DeleteRequestService.sendRequest: code not found for codeType={}", codeType);
             throw new IllegalArgumentException("This code was not found in the records, so it cannot be deleted.");
         }
         String verifiedCompanyName = record.companyName == null ? "" : record.companyName.trim();
         if (verifiedCompanyName.isEmpty()
                 || !verifiedCompanyName.equalsIgnoreCase(normalizedCompanyName)) {
+            log.warn("DeleteRequestService.sendRequest: company name mismatch for codeType={}", codeType);
             throw new IllegalArgumentException(
                     "Company name does not match the selected code. Please verify the company name.");
         }
@@ -64,6 +75,8 @@ public class DeleteRequestService {
         String sql = buildDeleteSql(record.mapping, record.code);
         dbaEmailService.sendDbaQueryEmail(
                 "DELETE", record.mapping.table, record.code, verifiedCompanyName, sql);
+        log.info("DeleteRequestService.sendRequest: DBA email sent for codeType={} table={}",
+                codeType, record.mapping.table);
     }
 
     private String buildDeleteSql(CodeMapping mapping, String code) {
