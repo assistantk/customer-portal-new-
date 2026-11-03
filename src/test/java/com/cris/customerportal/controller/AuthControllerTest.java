@@ -1,9 +1,5 @@
 package com.cris.customerportal.controller;
 
-import com.cris.customerportal.dto.AuthUserDto;
-import com.cris.customerportal.dto.LoginRequest;
-import com.cris.customerportal.exception.InvalidCredentialsException;
-import com.cris.customerportal.service.AuthService;
 import com.cris.customerportal.service.CaptchaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +15,6 @@ import static org.mockito.Mockito.*;
 
 class AuthControllerTest {
 
-    private AuthService authService;
     private CaptchaService captchaService;
     private AuthController controller;
     private HttpServletRequest request;
@@ -27,36 +22,35 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        authService = mock(AuthService.class);
         captchaService = mock(CaptchaService.class);
-        controller = new AuthController(authService, captchaService);
+        controller = new AuthController(captchaService);
         request = mock(HttpServletRequest.class);
         captchaSession = mock(HttpSession.class);
         when(request.getSession(false)).thenReturn(captchaSession);
     }
 
     @Test
-    void rejectsInvalidCaptchaBeforeLookingUpCredentials() {
-        LoginRequest loginRequest = loginRequest("RAILUSER", "password", "wrong");
-        when(captchaService.consumeChallenge(captchaSession, "wrong")).thenReturn(false);
+    void legacyLocalLoginIsDisabled() {
+        ResponseEntity<?> response = controller.legacyLogin(request);
 
-        ResponseEntity<?> response = controller.login(loginRequest, request);
-
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        verifyNoInteractions(authService);
+        assertEquals(HttpStatus.GONE, response.getStatusCode());
+        assertFalse((Boolean) ((Map<?, ?>) response.getBody()).get("success"));
+        verify(captchaSession).invalidate();
+        verifyNoInteractions(captchaService);
     }
 
     @Test
     void httpsRequiredRejectsCredentialSubmissionOverHttp() {
-        controller = new AuthController(authService, captchaService, null, true);
-        LoginRequest loginRequest = loginRequest("RAILUSER", "password", "AbCd23");
+        controller = new AuthController(captchaService, null, true);
+        com.cris.customerportal.dto.RmsValidateUserRequest loginRequest =
+                new com.cris.customerportal.dto.RmsValidateUserRequest("RAILUSER", "password", "TKD");
 
-        ResponseEntity<?> response = controller.login(loginRequest, request);
+        ResponseEntity<?> response = controller.validateUser(loginRequest, request);
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
         assertEquals("HTTPS is required for credential submission.",
                 ((Map<?, ?>) response.getBody()).get("message"));
-        verifyNoInteractions(authService, captchaService);
+        verifyNoInteractions(captchaService);
     }
 
     @Test
@@ -87,46 +81,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void successfulLoginConsumesCaptchaThenCreatesAuthenticatedSession() {
-        LoginRequest loginRequest = loginRequest("RAILUSER", "password", "AbCd23");
-        AuthUserDto user = new AuthUserDto("RAILUSER", "Rail User", "USER", "Y");
-        HttpSession authenticatedSession = mock(HttpSession.class);
-        when(captchaService.consumeChallenge(captchaSession, "AbCd23")).thenReturn(true);
-        when(authService.authenticate("RAILUSER", "password")).thenReturn(user);
-        when(request.getSession(true)).thenReturn(authenticatedSession);
-
-        ResponseEntity<?> response = controller.login(loginRequest, request);
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        verify(captchaSession).invalidate();
-        verify(authenticatedSession).setAttribute(AuthController.AUTH_SESSION_KEY, user);
-        verify(authenticatedSession).setMaxInactiveInterval(3600);
-    }
-
-    @Test
-    void invalidCredentialsDoNotCreateAuthenticatedSession() {
-        LoginRequest loginRequest = loginRequest("RAILUSER", "wrong", "AbCd23");
-        when(captchaService.consumeChallenge(captchaSession, "AbCd23")).thenReturn(true);
-        when(authService.authenticate("RAILUSER", "wrong"))
-                .thenThrow(new InvalidCredentialsException("Invalid User ID/Email or Password."));
-
-        assertThrows(InvalidCredentialsException.class, () -> controller.login(loginRequest, request));
-        verify(request, never()).getSession(true);
-    }
-
-    @Test
     void logoutInvalidatesExistingSession() {
         ResponseEntity<?> response = controller.logout(request);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(captchaSession).invalidate();
-    }
-
-    private LoginRequest loginRequest(String userId, String password, String captchaInput) {
-        LoginRequest loginRequest = new LoginRequest();
-        loginRequest.setUserId(userId);
-        loginRequest.setPassword(password);
-        loginRequest.setCaptchaInput(captchaInput);
-        return loginRequest;
     }
 }

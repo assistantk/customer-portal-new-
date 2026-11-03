@@ -169,7 +169,7 @@
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <polyline points="9 12 11 14 15 10" />
             </svg>
-            <span>RMS Authentication Gateway</span>
+            <span>Secure Authentication</span>
           </div>
 
           <div class="login-btns">
@@ -213,7 +213,7 @@
 
       <form *ngIf="currentStep !== 'LOGIN'" [formGroup]="designationForm" (ngSubmit)="onSubmitDesignation()" class="login-grid auth-expansion" autocomplete="off">
         <div class="login-field-wrap">
-          <label for="select-desig">Designation / Role <b>*</b></label>
+          <label for="select-desig">Role <b>*</b></label>
           <div class="login-control select-wrap">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -222,7 +222,7 @@
               <line x1="23" y1="11" x2="17" y2="11" />
             </svg>
             <select id="select-desig" formControlName="designation" class="login-select" (change)="onSubmitDesignation()" [disabled]="loading || currentStep === 'OTP'">
-              <option value="">Select Designation / Role</option>
+              <option value="">Select Role</option>
               <option *ngFor="let desig of availableDesignations" [value]="desig">
                 {{ desig }}
               </option>

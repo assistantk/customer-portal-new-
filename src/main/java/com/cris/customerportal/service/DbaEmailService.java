@@ -11,6 +11,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpSession;
@@ -27,6 +29,8 @@ import java.util.regex.Pattern;
 
 @Service
 public class DbaEmailService {
+
+    private static final Logger log = LoggerFactory.getLogger(DbaEmailService.class);
 
     private static final Set<String> ADDRESS_COLUMNS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
             "MAVGLBLCUSTADDRTEXT",
@@ -77,11 +81,14 @@ public class DbaEmailService {
             message.setSubject(buildEmailSubject(operation, tableName, customerCode));
 
             String auditSql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
-            boolean formatCustomerInsert = "INSERT".equalsIgnoreCase(audit.getOperationType())
-                    && "MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
-                    && auditSql.regionMatches(true, 0, "INSERT INTO MEMGLBLCUST", 0, "INSERT INTO MEMGLBLCUST".length());
+            boolean formatRegistrationInsert = "INSERT".equalsIgnoreCase(audit.getOperationType())
+                    && ("MEMGLBLCUST".equalsIgnoreCase(audit.getTableName())
+                        || "MEMGLBLHNDGAGNT".equalsIgnoreCase(audit.getTableName()))
+                    && auditSql.regionMatches(
+                            true, 0, "INSERT INTO " + audit.getTableName(),
+                            0, ("INSERT INTO " + audit.getTableName()).length());
             boolean formatUpdate = "UPDATE".equalsIgnoreCase(audit.getOperationType());
-            String sql = formatCustomerInsert || formatUpdate
+            String sql = formatRegistrationInsert || formatUpdate
                     ? formatSqlForEmail(new SqlRequest(
                             audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
                     : formatStringLiterals(toEmailSql(audit));
@@ -89,20 +96,21 @@ public class DbaEmailService {
 
             message.setText(text);
             mailSender.send(message);
-            System.out.println("[DBA EMAIL AUDIT] SMTP accepted notification to DBA and CC recipient for " + audit.getOperationType() + " on " + audit.getTableName() + " (Code: " + audit.getCustomerCode() + ")");
+            log.info("DbaEmailService.sendDbaAuditEmail: SMTP accepted notification for {} on {}",
+                    audit.getOperationType(), audit.getTableName());
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
-                System.err.println("[DBA EMAIL AUDIT ERROR] SendFailedException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: SendFailedException - failed to send DBA notification email: {}", e.getMessage(), e);
             } else if (cause != null && cause.getClass().getName().contains("MessagingException")) {
-                System.err.println("[DBA EMAIL AUDIT ERROR] MessagingException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: MessagingException - failed to send DBA notification email: {}", e.getMessage(), e);
             } else {
-                System.err.println("[DBA EMAIL AUDIT ERROR] MailException: Failed to send DBA notification email: " + e.getMessage());
+                log.error("DbaEmailService.sendDbaAuditEmail: MailException - failed to send DBA notification email: {}", e.getMessage(), e);
             }
             // Log without stopping the calling process (core Oracle transaction will continue)
             e.printStackTrace();
         } catch (Exception e) {
-            System.err.println("[DBA EMAIL AUDIT ERROR] Unexpected error while sending DBA notification email: " + e.getMessage());
+            log.error("DbaEmailService.sendDbaAuditEmail: unexpected error while sending DBA notification email: {}", e.getMessage(), e);
             e.printStackTrace();
         }
     }
@@ -171,12 +179,13 @@ public class DbaEmailService {
         body.append(buildUserFooter(resolvedEmailId));
         message.setText(body.toString());
 
-        System.out.println("[DBA EMAIL] Initiating DBA notification email to " + dbaEmail + " (From: " + fromEmail + ", Requests: " + requests.size() + ")...");
+        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
+                requests.size());
         try {
             mailSender.send(message);
-            System.out.println("[DBA EMAIL] Email successfully dispatched to DBA (" + dbaEmail + ")");
+            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
         } catch (Exception e) {
-            System.err.println("[DBA EMAIL ERROR] Failed to send DBA SQL notification email: " + e.getMessage());
+            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {}", e.getMessage(), e);
             e.printStackTrace();
             throw e;
         }
@@ -406,7 +415,56 @@ public class DbaEmailService {
         if ("MEMGLBLCUST".equalsIgnoreCase(table)) {
             return (insertPrefix + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
         }
-        return (insertPrefix + " " + valuesPart).toUpperCase(Locale.ROOT);
+        return (insertPrefix + " " + normalizeHandlingAgentInsertName(valuesPart)).toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeHandlingAgentInsertName(String valuesPart) {
+        int valuesOpen = valuesPart.indexOf('(', "VALUES".length());
+        if (valuesOpen < 0) {
+            return valuesPart;
+        }
+
+        int valuesClose = findClosingParenthesis(valuesPart, valuesOpen);
+        int firstComma = findCommaOutsideString(valuesPart, valuesOpen + 1, valuesClose);
+        if (firstComma < 0) {
+            return valuesPart;
+        }
+
+        int nameStart = firstComma + 1;
+        while (nameStart < valuesClose && Character.isWhitespace(valuesPart.charAt(nameStart))) {
+            nameStart++;
+        }
+        int nameEnd = findCommaOutsideString(valuesPart, nameStart, valuesClose);
+        if (nameEnd < 0) {
+            nameEnd = valuesClose;
+        }
+        while (nameEnd > nameStart && Character.isWhitespace(valuesPart.charAt(nameEnd - 1))) {
+            nameEnd--;
+        }
+
+        String expression = valuesPart.substring(nameStart, nameEnd);
+        String normalizedName = normalizeCompanyNameLiteral(expression);
+        if (normalizedName == null || normalizedName.equals(expression)) {
+            return valuesPart;
+        }
+        return valuesPart.substring(0, nameStart) + normalizedName + valuesPart.substring(nameEnd);
+    }
+
+    private int findCommaOutsideString(String sql, int start, int end) {
+        boolean inString = false;
+        for (int i = start; i < end; i++) {
+            char current = sql.charAt(i);
+            if (current == '\'') {
+                if (inString && i + 1 < end && sql.charAt(i + 1) == '\'') {
+                    i++;
+                } else {
+                    inString = !inString;
+                }
+            } else if (current == ',' && !inString) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private String compactSqlValues(String sql) {

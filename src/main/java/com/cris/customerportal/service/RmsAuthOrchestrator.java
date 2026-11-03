@@ -13,23 +13,19 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
 
 /**
  * Orchestrates the RMS authentication flow:
  *
  *   1. validateCredentials()      – calls ATVLDTUSER; validates credentials and retrieves designations.
- *   2. selectDesignation()        – enforces Senior DCM / Senior DFM authorization; requests OTP via RTGNRTOTP.
+ *   2. selectDesignation()        – enforces SR-DCM authorization; requests OTP via RTGNRTOTP.
  *   3. verifyOtp()                – calls RTVRFYOTP; on verification success returns a ready-to-store AuthUserDto.
  *
- * Defaults to LIVE mode in production (rms.auth.mode=live).
- * Offline mock mode (rms.auth.mode=mock) mocks credential validation only; OTP generation and verification still use RMS.
+ * Always uses the live RMS APIs; local mock credential validation is disabled.
  */
 @Service
 public class RmsAuthOrchestrator {
@@ -38,14 +34,13 @@ public class RmsAuthOrchestrator {
 
     /** Required canonical designation code for Senior DCM portal access. */
     public static final String REQUIRED_DESIGNATION = "SR-DCM";
-    public static final int OTP_RESEND_COOLDOWN_SECONDS = 300;
+    public static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final long OTP_RESEND_COOLDOWN_MILLIS = OTP_RESEND_COOLDOWN_SECONDS * 1000L;
 
     private static final DateTimeFormatter APPLY_DATE_FMT =
             DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
     private final RmsApiClient rmsApiClient;
-    private final boolean mockMode;
     private final String projectName;
     private final String configuredClientId;
 
@@ -54,34 +49,23 @@ public class RmsAuthOrchestrator {
 
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
-            @Value("${rms.auth.mode:live}") String authMode,
             @Value("${rms.api.project-name:FreightCodeGenerator}") String projectName) {
-        this(rmsApiClient, authMode, projectName, "1.1.1.1");
+        this(rmsApiClient, projectName, "1.1.1.1");
     }
 
     @Autowired
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
-            @Value("${rms.auth.mode:live}") String authMode,
             @Value("${rms.api.project-name:FreightCodeGenerator}") String projectName,
             @Value("${rms.api.client-id:1.1.1.1}") String configuredClientId) {
         this.rmsApiClient = rmsApiClient;
-        this.mockMode = "mock".equalsIgnoreCase(authMode != null ? authMode.trim() : "");
         this.projectName = (projectName != null && !projectName.trim().isEmpty())
                 ? projectName.trim() : "FreightCodeGenerator";
         this.configuredClientId = (configuredClientId != null && !configuredClientId.trim().isEmpty())
                 ? configuredClientId.trim() : "1.1.1.1";
 
-        if (this.mockMode) {
-            LOGGER.warn("RmsAuthOrchestrator started in DEVELOPMENT MOCK mode (AUTH_MODE=mock). Credentials are mocked; OTP generation and verification still use RMS.");
-        } else {
-            LOGGER.info("RmsAuthOrchestrator started in LIVE mode. Real RMS APIs will be called at configured endpoint with projectName={} clientId={}",
-                    this.projectName, this.configuredClientId);
-        }
-    }
-
-    public boolean isMockMode() {
-        return mockMode;
+        LOGGER.info("RmsAuthOrchestrator started in LIVE mode. RMS APIs will be called with projectName={} clientId={}",
+                this.projectName, this.configuredClientId);
     }
 
     // ─────────────────────────────────────────────────
@@ -89,7 +73,7 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
 
     /**
-     * Validates the user's credentials via ATVLDTUSER (or development mock if explicitly configured).
+     * Validates the user's credentials via ATVLDTUSER.
      *
      * @param userId       User-entered User ID
      * @param password     Plain-text password
@@ -99,12 +83,7 @@ public class RmsAuthOrchestrator {
      * @throws InvalidRmsCredentialsException on wrong password, unknown user, etc.
      */
     public RmsAuthSessionContext validateCredentials(String userId, String password, String divisionCode) {
-        LOGGER.info("RMS validateCredentials – userId={} divisionCode={} mode={}",
-                userId, divisionCode, mockMode ? "MOCK" : "LIVE");
-
-        if (mockMode) {
-            return mockValidateCredentials(userId, password, divisionCode);
-        }
+        LOGGER.info("RMS validateCredentials request received");
 
         String applyDate = LocalDate.now().format(APPLY_DATE_FMT);
 
@@ -116,16 +95,18 @@ public class RmsAuthOrchestrator {
 
         RmsApiResponse response = rmsApiClient.validateUser(req);
 
-        if (!response.isSuccess()) {
-            String msg = response.getMessage() != null ? response.getMessage() : "Invalid credentials.";
-            LOGGER.warn("ATVLDTUSER authentication rejected for userId={}: srvcName={} errorNo={} status={} message={}",
-                    userId, response.getSrvcName(), response.getErrorNo(), response.getStatus(), msg);
-            throw new InvalidRmsCredentialsException(msg);
+        if (!response.isCredentialValidationSuccessful(req.getF_USERID())) {
+            LOGGER.warn("ATVLDTUSER authentication rejected: status={}", response.getStatus());
+            String rmsError = response.getErrorNo();
+            throw new InvalidRmsCredentialsException(
+                    rmsError != null && !rmsError.trim().isEmpty()
+                            ? rmsError.trim()
+                            : "Invalid credentials.");
         }
 
-        List<String> rawDesignations = parseDesignations(response.getDesignations());
+        List<String> rawDesignations = response.extractRoleIds();
         if (rawDesignations.isEmpty()) {
-            LOGGER.warn("ATVLDTUSER returned no designations for userId={}", userId);
+            LOGGER.warn("ATVLDTUSER returned no designations");
             throw new InvalidRmsCredentialsException("No designations found for your account. Please contact your administrator.");
         }
 
@@ -138,8 +119,7 @@ public class RmsAuthOrchestrator {
         ctx.setDesignations(rawDesignations);
         ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
 
-        LOGGER.info("ATVLDTUSER accepted for userId={} name={} designations={}",
-                userId, ctx.getUserName(), rawDesignations);
+        LOGGER.info("ATVLDTUSER accepted; designation count={}", rawDesignations.size());
         return ctx;
     }
 
@@ -148,7 +128,7 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
 
     /**
-     * Checks if a designation is authorized for portal access (Senior DCM or Senior DFM).
+     * Checks if the exact SR-DCM role is authorized for portal access.
      */
     public static boolean isAuthorizedDesignation(String designation) {
         if (designation == null || designation.trim().isEmpty()) {
@@ -156,16 +136,7 @@ public class RmsAuthOrchestrator {
         }
         String clean = designation.trim().toUpperCase(Locale.ROOT)
                 .replaceAll("[^A-Z0-9]", "");
-        return "SRDCM".equals(clean)
-                || "SENIORDCM".equals(clean)
-                || "SENIORSRDCM".equals(clean)
-                || clean.startsWith("SRDCM")
-                || clean.startsWith("SENIORDCM")
-                || "SRDFM".equals(clean)
-                || "SENIORDFM".equals(clean)
-                || "SENIORSRDFM".equals(clean)
-                || clean.startsWith("SRDFM")
-                || clean.startsWith("SENIORDFM");
+        return "SRDCM".equals(clean);
     }
 
     public static boolean isSeniorDcm(String designation) {
@@ -178,7 +149,7 @@ public class RmsAuthOrchestrator {
      * @param ctx              Session context
      * @param selectedDesig    Designation chosen by the user (e.g. Senior DFM, Senior DCM)
      * @param clientIp         HTTP client IP
-     * @throws AccessDeniedException             if the designation is not Senior DCM / Senior DFM
+     * @throws AccessDeniedException             if the designation is not SR-DCM
      * @throws InvalidRmsCredentialsException    if the designation is empty or invalid
      * @throws OtpResendCooldownException        if cooldown is active
      * @throws RmsApiException                   on HTTP failure (live mode, no fallback)
@@ -216,6 +187,12 @@ public class RmsAuthOrchestrator {
         synchronized (lockForUser(userKey)) {
             if (ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING) {
                 throw new InvalidRmsCredentialsException("No OTP is pending. Please restart login.");
+            }
+            if (!isAuthorizedDesignation(ctx.getSelectedDesignation())
+                    || ctx.getDesignations() == null
+                    || ctx.getDesignations().stream().noneMatch(
+                            d -> d != null && d.equalsIgnoreCase(ctx.getSelectedDesignation()))) {
+                throw new InvalidRmsCredentialsException("The selected designation is not valid for this session.");
             }
             int remainingSeconds = getResendCooldownSeconds(userKey);
             if (remainingSeconds > 0) {
@@ -266,15 +243,15 @@ public class RmsAuthOrchestrator {
         boolean inList = ctx.getDesignations() != null && ctx.getDesignations().stream()
                 .anyMatch(d -> d.trim().equalsIgnoreCase(raw));
         if (!inList) {
-            LOGGER.warn("Designation {} not in allowed list for userId={}", raw, ctx.getUserId());
+            LOGGER.warn("Selected designation is not in the allowed list");
             throw new InvalidRmsCredentialsException("Selected designation is not valid for your account.");
         }
 
-        // Senior DCM / Senior DFM authorization gate
+        // Portal access is restricted to the confirmed SR-DCM role.
         if (!isAuthorizedDesignation(raw)) {
-            LOGGER.info("Access denied – userId={} selected unauthorized designation {}", ctx.getUserId(), raw);
+            LOGGER.info("Access denied: selected designation is unauthorized");
             throw new AccessDeniedException(
-                    "Access denied. Only Senior DCM / Senior DFM users may access this portal.");
+                    "Access denied. Only users with the SR-DCM role may access this portal.");
         }
 
         ctx.setSelectedDesignation(raw);
@@ -292,11 +269,11 @@ public class RmsAuthOrchestrator {
 
         RmsApiResponse response = rmsApiClient.generateOtp(req);
         if (!response.isOtpGenerationAccepted(ctx.getUserId())) {
-            LOGGER.warn("RMS OTP generation rejected for userId={} serviceName={} errorNo={} status={}",
-                    ctx.getUserId(), response.getSrvcName(), response.getErrorNo(), response.getStatus());
+            LOGGER.warn("RMS OTP generation rejected: serviceName={} errorNo={} status={}",
+                    response.getSrvcName(), response.getErrorNo(), response.getStatus());
             throw new RmsApiException("OTP generation was rejected by the RMS service.");
         }
-        LOGGER.info("RMS OTP generation accepted for userId={} service={}", ctx.getUserId(), serviceName);
+        LOGGER.info("RMS OTP generation accepted: service={}", serviceName);
 
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
     }
@@ -316,7 +293,7 @@ public class RmsAuthOrchestrator {
      * @throws InvalidRmsCredentialsException on incorrect or expired OTP
      */
     public AuthUserDto verifyOtp(RmsAuthSessionContext ctx, String otp, String clientIp) {
-        LOGGER.info("RMS verifyOtp – userId={}", ctx.getUserId());
+        LOGGER.info("RMS OTP verification request received");
 
         if (otp == null || otp.trim().isEmpty()) {
             throw new InvalidRmsCredentialsException("OTP is required.");
@@ -335,16 +312,16 @@ public class RmsAuthOrchestrator {
         RmsApiResponse response = rmsApiClient.verifyOtp(req);
 
         if (!response.isSuccess()) {
-            LOGGER.warn("RMS OTP verification rejected for userId={} serviceName={} errorNo={} status={}",
-                    ctx.getUserId(), response.getSrvcName(), response.getErrorNo(), response.getStatus());
+            LOGGER.warn("RMS OTP verification rejected: serviceName={} errorNo={} status={}",
+                    response.getSrvcName(), response.getErrorNo(), response.getStatus());
             throw new InvalidRmsCredentialsException("Invalid OTP. Please enter the valid 5-digit OTP.");
         }
-        LOGGER.info("RMS OTP verification accepted for userId={}", ctx.getUserId());
+        LOGGER.info("RMS OTP verification accepted");
 
         String confirmedRole = ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION;
         otpResendAllowedAt.remove(userKey);
 
-        LOGGER.info("Authentication complete for userId={} role={}", ctx.getUserId(), confirmedRole);
+        LOGGER.info("Authentication complete for role={}", confirmedRole);
         AuthUserDto authUser = new AuthUserDto(
                 ctx.getUserId(),
                 ctx.getUserName() != null ? ctx.getUserName() : ctx.getUserId(),
@@ -368,68 +345,6 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────
-
-    private List<String> parseDesignations(String raw) {
-        if (raw == null || raw.trim().isEmpty()) {
-            return new ArrayList<>();
-        }
-        String trimmed = raw.trim();
-        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-            trimmed = trimmed.substring(1, trimmed.length() - 1);
-        }
-        String[] parts = trimmed.contains("|") ? trimmed.split("\\|")
-                : trimmed.contains(",") ? trimmed.split(",")
-                : new String[]{trimmed};
-        return Arrays.stream(parts)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(s -> s.replace("\"", "").replace("'", ""))
-                .collect(Collectors.toList());
-    }
-
-    private RmsAuthSessionContext mockValidateCredentials(String userId, String password, String divisionCode) {
-        if (password == null || password.trim().isEmpty() || "wrong".equalsIgnoreCase(password.trim()) || "invalid".equalsIgnoreCase(password.trim())) {
-            LOGGER.info("MOCK mode – invalid password entered for userId={}", userId);
-            throw new InvalidRmsCredentialsException("Invalid User ID or Password.");
-        }
-
-        if (divisionCode == null || divisionCode.trim().isEmpty()
-                || "UNKNOWN_DIV_999".equalsIgnoreCase(divisionCode.trim())
-                || "NONEXISTENT_DIV".equalsIgnoreCase(divisionCode.trim())
-                || "INVALID".equalsIgnoreCase(divisionCode.trim())) {
-            LOGGER.info("MOCK mode – invalid division code simulation for divisionCode={}", divisionCode);
-            throw new InvalidRmsCredentialsException("Invalid Division Code. Please verify your division.");
-        }
-
-        String cleanId = userId != null ? userId.trim().toUpperCase(Locale.ROOT) : "";
-        if ("UNKNOWN".equalsIgnoreCase(cleanId) || "INVALID".equalsIgnoreCase(cleanId) || "NOTFOUND".equalsIgnoreCase(cleanId)) {
-            LOGGER.info("MOCK mode – unknown user ID simulation for userId={}", userId);
-            throw new InvalidRmsCredentialsException("Invalid User ID or credentials not found.");
-        }
-        if ("TIMEOUT".equalsIgnoreCase(cleanId)) {
-            LOGGER.info("MOCK mode – simulating API timeout for userId={}", userId);
-            throw new RmsApiException("Connection timed out while reaching RMS validation service.");
-        }
-
-        LOGGER.info("MOCK mode – credentials accepted for userId={}", userId);
-
-        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
-        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
-        ctx.setUserId(cleanId);
-        if ("SREEJU".equalsIgnoreCase(cleanId)) {
-            ctx.setUserName("SREEJU KRISHNAN");
-            ctx.setEmail("krishnan.sreeju@gmail.com");
-            ctx.setMobileNo("9910303868");
-        } else {
-            ctx.setUserName(cleanId + " (Mock)");
-            ctx.setEmail("user." + cleanId.toLowerCase(Locale.ROOT) + "@cris.org.in");
-            ctx.setMobileNo("9876543210");
-        }
-        ctx.setDivisionCode(divisionCode != null ? divisionCode.toUpperCase(Locale.ROOT) : "TKD");
-        // Provide Senior DFM, Senior DCM, SR-DCM, Senior SR-DCM, DCM, JDCM
-        ctx.setDesignations(Arrays.asList("Senior DFM", "Senior DCM", "SR-DCM", "Senior SR-DCM", "SR-DFM", "DCM", "JDCM"));
-        return ctx;
-    }
 
     public String getMaskedContact(RmsAuthSessionContext ctx) {
         StringBuilder sb = new StringBuilder();

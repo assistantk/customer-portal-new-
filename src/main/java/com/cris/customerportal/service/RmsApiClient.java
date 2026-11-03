@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -43,18 +44,6 @@ public class RmsApiClient {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public RmsApiClient(
-            RestTemplateBuilder builder,
-            String baseUrl,
-            String validateUserPath,
-            String generateOtpPath,
-            String verifyOtpPath,
-            long connectTimeoutMs,
-            long readTimeoutMs) {
-        this(builder, baseUrl, baseUrl, validateUserPath, generateOtpPath, verifyOtpPath,
-                connectTimeoutMs, readTimeoutMs, "mock");
-    }
-
     @Autowired
     public RmsApiClient(
             RestTemplateBuilder builder,
@@ -64,12 +53,9 @@ public class RmsApiClient {
             @Value("${rms.api.generate-otp-path:/RTGNRTOTP}") String generateOtpPath,
             @Value("${rms.api.verify-otp-path:/RTVRFYOTP}") String verifyOtpPath,
             @Value("${rms.api.connect-timeout-ms:5000}") long connectTimeoutMs,
-            @Value("${rms.api.read-timeout-ms:10000}") long readTimeoutMs,
-            @Value("${rms.auth.mode:live}") String authMode) {
-        if (!"mock".equalsIgnoreCase(authMode == null ? "" : authMode.trim())) {
-            requireHttpsBaseUrl(baseUrl);
-        }
-        requireHttpApiBaseUrl(otpBaseUrl);
+            @Value("${rms.api.read-timeout-ms:10000}") long readTimeoutMs) {
+        requireApiBaseUrl(baseUrl);
+        requireApiBaseUrl(otpBaseUrl);
 
         String normalizedBaseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
         String normalizedOtpBaseUrl = otpBaseUrl.replaceAll("/+$", "");
@@ -90,23 +76,7 @@ public class RmsApiClient {
                 connectTimeoutMs, readTimeoutMs);
     }
 
-    static void requireHttpsBaseUrl(String baseUrl) {
-        try {
-            URI uri = new URI(baseUrl);
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
-                    || uri.getUserInfo() != null || uri.getQuery() != null
-                    || uri.getFragment() != null) {
-                throw new IllegalStateException(
-                        "A valid HTTPS RMS_API_BASE_URL without embedded credentials or query parameters is required in live mode.");
-            }
-
-        } catch (URISyntaxException | NullPointerException ex) {
-            throw new IllegalStateException(
-                    "A valid HTTPS RMS_API_BASE_URL without embedded credentials or query parameters is required in live mode.", ex);
-        }
-    }
-
-    static void requireHttpApiBaseUrl(String baseUrl) {
+    static void requireApiBaseUrl(String baseUrl) {
         try {
             URI uri = new URI(baseUrl);
             String scheme = uri.getScheme();
@@ -114,11 +84,11 @@ public class RmsApiClient {
                     || uri.getHost() == null || uri.getUserInfo() != null
                     || uri.getQuery() != null || uri.getFragment() != null) {
                 throw new IllegalStateException(
-                        "A valid RMS OTP API base URL without embedded credentials or query parameters is required.");
+                        "A valid RMS API base URL without embedded credentials or query parameters is required.");
             }
         } catch (URISyntaxException | NullPointerException ex) {
             throw new IllegalStateException(
-                    "A valid RMS OTP API base URL without embedded credentials or query parameters is required.", ex);
+                    "A valid RMS API base URL without embedded credentials or query parameters is required.", ex);
         }
     }
 
@@ -143,8 +113,8 @@ public class RmsApiClient {
                 throw new RmsApiException("Empty response received from RMS validation service.");
             }
             RmsApiResponse body = objectMapper.readValue(rawJson, RmsApiResponse.class);
-            LOGGER.info("ATVLDTUSER parsed response: status={} errorNo={} roles={}",
-                    body.getStatus(), body.getErrorNo(), body.extractAllDesignations());
+            LOGGER.info("ATVLDTUSER response parsed: status={} roleCount={}",
+                    body.getStatus(), body.extractRoleIds().size());
             return body;
         } catch (ResourceAccessException ex) {
             LOGGER.error("Network/timeout error calling ATVLDTUSER");
@@ -152,15 +122,45 @@ public class RmsApiClient {
         } catch (JsonProcessingException ex) {
             LOGGER.error("JSON parse error calling ATVLDTUSER");
             throw new RmsApiException("RMS validation response format error.");
+        } catch (HttpStatusCodeException ex) {
+            if (ex.getStatusCode().is4xxClientError()) {
+                RmsApiResponse body = parseCredentialRejection(ex.getResponseBodyAsString());
+                if (body != null) {
+                    LOGGER.info("ATVLDTUSER rejected credentials with HTTP status {}", ex.getRawStatusCode());
+                    return body;
+                }
+            }
+            LOGGER.error("HTTP error calling ATVLDTUSER: status={}", ex.getRawStatusCode());
+            throw new RmsApiException("RMS validation service error.");
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling ATVLDTUSER");
             throw new RmsApiException("RMS validation service error.");
         }
     }
 
+    RmsApiResponse parseCredentialRejection(String responseBody) {
+        if (responseBody == null || responseBody.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            RmsApiResponse response = objectMapper.readValue(responseBody, RmsApiResponse.class);
+            String errorNo = response.getErrorNo();
+            if (!"ATVLDTUSER".equalsIgnoreCase(
+                    response.getSrvcName() == null ? "" : response.getSrvcName().trim())
+                    && (errorNo == null || errorNo.trim().isEmpty()
+                            || "0".equals(errorNo.trim()) || "00".equals(errorNo.trim()))) {
+                return null;
+            }
+            response.setStatus("E");
+            return response;
+        } catch (JsonProcessingException ex) {
+            LOGGER.warn("Non-JSON error response received from ATVLDTUSER");
+            return null;
+        }
+    }
+
     public RmsApiResponse generateOtp(RmsOtpGenerateRequest request) {
-        LOGGER.info("Dispatching RMS OTP generation request for userId={} service={}",
-                request.getF_USERID(), request.getF_SRVCNAME());
+        LOGGER.info("Dispatching RMS OTP generation request for service={}", request.getF_SRVCNAME());
         try {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(generateOtpUrl, request, String.class);
@@ -186,7 +186,7 @@ public class RmsApiClient {
     }
 
     public RmsApiResponse verifyOtp(RmsOtpVerifyRequest request) {
-        LOGGER.info("Dispatching RMS OTP verification request for userId={}", request.getF_USERID());
+        LOGGER.info("Dispatching RMS OTP verification request");
         try {
             ResponseEntity<String> response =
                     restTemplate.postForEntity(verifyOtpUrl, request, String.class);
