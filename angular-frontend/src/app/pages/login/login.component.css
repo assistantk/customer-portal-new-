@@ -572,6 +572,28 @@
   border-color: #94a3b8;
 }
 
+.captcha-refresh {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.captcha-refresh:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.captcha-refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .login-submit {
   border: 0;
   background: #2563eb;

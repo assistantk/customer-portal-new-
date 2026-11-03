@@ -1,5 +1,6 @@
 package com.cris.customerportal.controller;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.DeleteRequestPayload;
 import com.cris.customerportal.exception.DatabaseUnavailableException;
 import com.cris.customerportal.service.DeleteRequestService;
@@ -47,13 +48,16 @@ public class DeleteRequestController {
             }
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            log.warn("DELETE-REQUEST verify rejected: codeType={} reason={}", payload.getCodeType(), e.getMessage());
+            log.warn("DELETE-REQUEST verify rejected: codeType={} reason={}",
+                    payload.getCodeType(), DataMaskingUtil.maskSensitive(e.getMessage()));
             return error(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (DatabaseUnavailableException e) {
-            log.error("DELETE-REQUEST verify: database unavailable for codeType={}", payload.getCodeType(), e);
+            log.error("DELETE-REQUEST verify: database unavailable for codeType={} stackTrace={}",
+                    payload.getCodeType(), DataMaskingUtil.formatThrowable(e));
             return error(HttpStatus.SERVICE_UNAVAILABLE, "Unable to verify the code at this time. Please try again later.");
         } catch (IllegalStateException e) {
-            log.warn("DELETE-REQUEST verify conflict: codeType={} reason={}", payload.getCodeType(), e.getMessage());
+            log.warn("DELETE-REQUEST verify conflict: codeType={} reason={}",
+                    payload.getCodeType(), DataMaskingUtil.maskSensitive(e.getMessage()));
             return error(HttpStatus.CONFLICT, e.getMessage());
         }
     }
@@ -73,16 +77,20 @@ public class DeleteRequestController {
             response.put("message", "Delete request sent successfully. The SQL has been sent to the DBA for execution.");
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            log.warn("DELETE-REQUEST submit rejected: codeType={} reason={}", payload.getCodeType(), e.getMessage());
+            log.warn("DELETE-REQUEST submit rejected: codeType={} reason={}",
+                    payload.getCodeType(), DataMaskingUtil.maskSensitive(e.getMessage()));
             return error(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (DatabaseUnavailableException e) {
-            log.error("DELETE-REQUEST submit: database unavailable for codeType={}", payload.getCodeType(), e);
+            log.error("DELETE-REQUEST submit: database unavailable for codeType={} stackTrace={}",
+                    payload.getCodeType(), DataMaskingUtil.formatThrowable(e));
             return error(HttpStatus.SERVICE_UNAVAILABLE, "Unable to verify the code at this time. Please try again later.");
         } catch (IllegalStateException e) {
-            log.warn("DELETE-REQUEST submit conflict: codeType={} reason={}", payload.getCodeType(), e.getMessage());
+            log.warn("DELETE-REQUEST submit conflict: codeType={} reason={}",
+                    payload.getCodeType(), DataMaskingUtil.maskSensitive(e.getMessage()));
             return error(HttpStatus.CONFLICT, e.getMessage());
         } catch (MailException e) {
-            log.error("DELETE-REQUEST submit: mail delivery failed for codeType={}", payload.getCodeType(), e);
+            log.error("DELETE-REQUEST submit: mail delivery failed for codeType={} stackTrace={}",
+                    payload.getCodeType(), DataMaskingUtil.formatThrowable(e));
             return error(HttpStatus.BAD_GATEWAY, "Unable to send the delete request. Please try again later.");
         }
     }

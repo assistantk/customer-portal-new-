@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.FileAppender;
 import ch.qos.logback.core.rolling.RollingFileAppender;
+import ch.qos.logback.classic.sift.SiftingAppender;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
@@ -23,6 +24,7 @@ import javax.annotation.PreDestroy;
 public class LogFileStartupVerifier implements ApplicationRunner {
 
     private static final String FILE_APPENDER_NAME = "FILE_ALL";
+    private static final String CLASS_APPENDER_NAME = "CLASS_FILES";
     private static final org.slf4j.Logger LOGGER =
             LoggerFactory.getLogger(LogFileStartupVerifier.class);
     private final String configuredLogDirectory;
@@ -57,7 +59,18 @@ public class LogFileStartupVerifier implements ApplicationRunner {
                     || !Files.isWritable(logFile)) {
                 throw startupFailure(logDirectory, "active log file is missing or not writable");
             }
+
+            Appender<ILoggingEvent> classAppender =
+                    loggerContext.getLogger(Logger.ROOT_LOGGER_NAME).getAppender(CLASS_APPENDER_NAME);
+            if (!(classAppender instanceof SiftingAppender) || !classAppender.isStarted()) {
+                throw startupFailure(logDirectory, "class-specific rolling file appender is not running");
+            }
             LOGGER.info("File logging initialized at {}", logFile);
+            Path classLogFile = logDirectory.resolve("Configuration")
+                    .resolve("LogFileStartupVerifier.log");
+            if (!Files.isRegularFile(classLogFile) || !Files.isWritable(classLogFile)) {
+                throw startupFailure(logDirectory, "class-specific log file was not created or is not writable");
+            }
         } catch (IOException | InvalidPathException | SecurityException ex) {
             throw new IllegalStateException(
                     "File logging could not initialize under '" + configuredLogDirectory

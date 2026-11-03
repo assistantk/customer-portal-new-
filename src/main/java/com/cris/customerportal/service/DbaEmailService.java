@@ -1,5 +1,6 @@
 package com.cris.customerportal.service;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
 import com.cris.customerportal.controller.AuthController;
 import com.cris.customerportal.dto.AuthUserDto;
@@ -101,16 +102,19 @@ public class DbaEmailService {
         } catch (MailException e) {
             Throwable cause = e.getCause();
             if (cause != null && cause.getClass().getName().contains("SendFailedException")) {
-                log.error("DbaEmailService.sendDbaAuditEmail: SendFailedException - failed to send DBA notification email: {}", e.getMessage(), e);
+                log.error("DbaEmailService.sendDbaAuditEmail: SendFailedException - failed to send DBA notification email: {} stackTrace={}",
+                        DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
             } else if (cause != null && cause.getClass().getName().contains("MessagingException")) {
-                log.error("DbaEmailService.sendDbaAuditEmail: MessagingException - failed to send DBA notification email: {}", e.getMessage(), e);
+                log.error("DbaEmailService.sendDbaAuditEmail: MessagingException - failed to send DBA notification email: {} stackTrace={}",
+                        DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
             } else {
-                log.error("DbaEmailService.sendDbaAuditEmail: MailException - failed to send DBA notification email: {}", e.getMessage(), e);
+                log.error("DbaEmailService.sendDbaAuditEmail: MailException - failed to send DBA notification email: {} stackTrace={}",
+                        DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
             }
-            // Log without stopping the calling process (core Oracle transaction will continue)
-            e.printStackTrace();
+            // Notification failure is logged without stopping the calling process.
         } catch (Exception e) {
-            log.error("DbaEmailService.sendDbaAuditEmail: unexpected error while sending DBA notification email: {}", e.getMessage(), e);
+            log.error("DbaEmailService.sendDbaAuditEmail: unexpected error while sending DBA notification email: {} stackTrace={}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
             e.printStackTrace();
         }
     }
@@ -185,8 +189,8 @@ public class DbaEmailService {
             mailSender.send(message);
             log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
         } catch (Exception e) {
-            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {}", e.getMessage(), e);
-            e.printStackTrace();
+            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {} stackTrace={}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
             throw e;
         }
     }

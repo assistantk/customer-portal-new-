@@ -1,5 +1,6 @@
 package com.cris.customerportal.repository;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
@@ -50,7 +51,8 @@ public class JdbcPortalUserLookupRepository {
                         .filter(value -> !value.isEmpty());
             }
         } catch (SQLException exception) {
-            log.error("JdbcPortalUserLookupRepository.findUserId: query failed in TMS3T.AEM_USER", exception);
+            log.error("JdbcPortalUserLookupRepository.findUserId: query failed in TMS3T.AEM_USER stackTrace={}",
+                    DataMaskingUtil.formatThrowable(exception));
             throw new IllegalStateException("Unable to resolve authenticated user ID from TMS3T.AEM_USER.", exception);
         }
     }

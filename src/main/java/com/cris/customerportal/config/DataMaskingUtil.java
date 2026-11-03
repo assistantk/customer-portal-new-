@@ -7,8 +7,11 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Array;
 import java.util.Collection;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +26,9 @@ public final class DataMaskingUtil {
 
     // Regex for key-value pairs (JSON or toString: key="val", key='val', key=val, "key":"val")
     private static final Pattern SENSITIVE_KEY_PATTERN = Pattern.compile(
-            "(?i)(\"?\\b(password|pswd|passwd|pwd|otp|f_otp|totp|token|secret|authorization|captchaInput)\\b\"?\\s*[:=]\\s*[\"']?)([^\"',\\s\\}\\]&]+)([\"']?)");
+            "(?i)([\"']?\\b(password(hash)?|pswd|passwd|pwd|otp|f_otp|totp|(?:access|refresh|auth|id)?token|secret|clientsecret|credential(s)?|db[_-]?username|database[_-]?username|db[_-]?password|database[_-]?password|authorization|captchaInput|cookie|set-cookie|(?:j)?session[_-]?(id|cookie|token)?|sid|username|user(name|id)?|login(id|name)?|email|mobile|phone|address|company(name)?|trade(name)?|legal(name)?|pan(number)?|gstin(number)?|aadhaar|pin(code)?)\\b[\"']?\\s*[:=]\\s*)(?:\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|[^,\\s\\}\\]&]+)");
+    private static final Pattern JDBC_ORACLE_CREDENTIALS = Pattern.compile(
+            "(?i)(jdbc:oracle:thin:)[^/@:\\s]+/[^@:\\s]+(@)");
 
     // PAN: 5 uppercase letters, 4 digits, 1 uppercase letter (10 chars)
     private static final Pattern PAN_PATTERN = Pattern.compile(
@@ -53,39 +58,18 @@ public final class DataMaskingUtil {
         }
         if (arg instanceof MultipartFile) {
             MultipartFile file = (MultipartFile) arg;
-            return String.format("MultipartFile[name=%s, size=%d bytes, type=%s]",
-                    file.getOriginalFilename(), file.getSize(), file.getContentType());
+            return String.format("MultipartFile[name=redacted, size=%d bytes, type=%s]",
+                    file.getSize(), file.getContentType());
         }
         if (arg instanceof Collection<?>) {
-            Collection<?> coll = (Collection<?>) arg;
-            if (!coll.isEmpty() && coll.iterator().next() instanceof MultipartFile) {
-                StringBuilder sb = new StringBuilder("[");
-                int idx = 0;
-                for (Object item : coll) {
-                    if (idx++ > 0) sb.append(", ");
-                    if (item instanceof MultipartFile) {
-                        MultipartFile file = (MultipartFile) item;
-                        sb.append(String.format("MultipartFile[name=%s, size=%d bytes]",
-                                file.getOriginalFilename(), file.getSize()));
-                    } else {
-                        sb.append(formatArg(item));
-                    }
-                }
-                return sb.append("]").toString();
-            }
+            return "Collection[size=" + ((Collection<?>) arg).size() + "]";
+        }
+        if (arg instanceof Map<?, ?>) {
+            return "Map[size=" + ((Map<?, ?>) arg).size() + "]";
         }
         if (arg.getClass().isArray()) {
-            int length = Array.getLength(arg);
-            if (length > 0 && Array.get(arg, 0) instanceof MultipartFile) {
-                StringBuilder sb = new StringBuilder("[");
-                for (int i = 0; i < length; i++) {
-                    if (i > 0) sb.append(", ");
-                    MultipartFile file = (MultipartFile) Array.get(arg, i);
-                    sb.append(String.format("MultipartFile[name=%s, size=%d bytes]",
-                            file.getOriginalFilename(), file.getSize()));
-                }
-                return sb.append("]").toString();
-            }
+            return arg.getClass().getComponentType().getSimpleName()
+                    + "[length=" + Array.getLength(arg) + "]";
         }
         if (arg instanceof HttpServletRequest) {
             HttpServletRequest req = (HttpServletRequest) arg;
@@ -123,11 +107,10 @@ public final class DataMaskingUtil {
         StringBuffer sb1 = new StringBuffer();
         while (keyMatcher.find()) {
             String prefix = keyMatcher.group(1);
-            String suffix = keyMatcher.group(4);
-            keyMatcher.appendReplacement(sb1, Matcher.quoteReplacement(prefix + "***" + suffix));
+            keyMatcher.appendReplacement(sb1, Matcher.quoteReplacement(prefix + "***"));
         }
         keyMatcher.appendTail(sb1);
-        String result = sb1.toString();
+        String result = JDBC_ORACLE_CREDENTIALS.matcher(sb1.toString()).replaceAll("$1***:***$2");
 
         // 2. Mask GSTIN (must run before PAN since GSTIN contains PAN)
         Matcher gstinMatcher = GSTIN_PATTERN.matcher(result);
@@ -171,5 +154,14 @@ public final class DataMaskingUtil {
         mobileMatcher.appendTail(sb5);
 
         return EMAIL_PATTERN.matcher(sb5.toString()).replaceAll("***@***");
+    }
+
+    public static String formatThrowable(Throwable error) {
+        if (error == null) {
+            return "null";
+        }
+        StringWriter trace = new StringWriter();
+        error.printStackTrace(new PrintWriter(trace));
+        return maskSensitive(trace.toString());
     }
 }

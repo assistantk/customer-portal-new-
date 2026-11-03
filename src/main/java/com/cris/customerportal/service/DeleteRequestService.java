@@ -1,5 +1,6 @@
 package com.cris.customerportal.service;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.exception.DatabaseUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,8 +51,8 @@ public class DeleteRequestService {
                 return record;
             }
         } catch (SQLException e) {
-            log.error("Delete request DB error: SQLState={} ErrorCode={}",
-                    e.getSQLState(), e.getErrorCode(), e);
+            log.error("Delete request DB error: SQLState={} ErrorCode={} stackTrace={}",
+                    e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
             throw new DatabaseUnavailableException("Unable to verify the code at this time.", e);
         }
     }
