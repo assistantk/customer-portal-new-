@@ -5,6 +5,7 @@ import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } f
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
+import { PdfGeneratorService } from '../../services/pdf-generator.service';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -228,7 +229,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private panOcrService: PanOcrService,
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
-    private router?: Router
+    private router?: Router,
+    private pdfGeneratorService?: PdfGeneratorService
   ) { }
 
   openGlobalCodeForm(): void {
