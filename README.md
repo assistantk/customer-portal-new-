@@ -160,6 +160,8 @@ Deploy both WARs independently to the same Managed Server or cluster:
 
 The Angular production base href is `/FreightCodeWeb/`, and its production API base is `/FreightCodeApi/api`. The frontend WAR has its own `WEB-INF/weblogic.xml`; the backend context is set in `src/main/webapp/WEB-INF/weblogic.xml`. Do not set `server.servlet.context-path` to a competing value in Spring configuration.
 
+OCR runs in the browser. The frontend WAR maps `.wasm`, `.mjs`, and `.traineddata` to the required content types, and the WAR build verifies the Tesseract.js and PDF.js runtime assets are included. When diagnosing deployed OCR, confirm those asset URLs under `/FreightCodeWeb/assets/` return successfully with the expected content types.
+
 Angular uses hash URLs (for example `/FreightCodeWeb/#/login`, `/FreightCodeWeb/#/register`). The server only needs to serve the frontend context's `index.html`; it does not need SPA rewrite rules.
 
 ### Production smoke checks

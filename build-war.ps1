@@ -86,7 +86,18 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not inspect the generated frontend WAR.'
     }
-    foreach ($requiredEntry in @('index.html', 'WEB-INF/web.xml', 'WEB-INF/weblogic.xml')) {
+    foreach ($requiredEntry in @(
+        'index.html',
+        'WEB-INF/web.xml',
+        'WEB-INF/weblogic.xml',
+        'assets/tesseract-assets/worker.min.js',
+        'assets/tesseract-assets/tesseract-core-simd-lstm.wasm',
+        'assets/tesseract-assets/tesseract-core-simd-lstm.wasm.js',
+        'assets/tesseract-assets/tesseract-core-lstm.wasm',
+        'assets/tesseract-assets/tesseract-core-lstm.wasm.js',
+        'assets/tessdata/eng.traineddata',
+        'assets/pdfjs-assets/pdf.worker.min.mjs'
+    )) {
         if ($frontendEntries -notcontains $requiredEntry) {
             throw "Frontend WAR is missing required entry '$requiredEntry'."
         }
