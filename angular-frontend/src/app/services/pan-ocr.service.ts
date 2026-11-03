@@ -764,6 +764,8 @@ export class PanOcrService {
     }
 
     const needsOcr = !isPdf || pageRecords.some(p => p.isScanned) || !details.gstin || !details.address || !(details.tradeName || details.legalName);
+    let ocrFailed = false;
+    let ocrError: unknown;
 
     if (needsOcr && (!isPdf || pdf)) {
       let worker: OcrWorker | null = null;
@@ -822,7 +824,9 @@ export class PanOcrService {
           companyNameTooLong: details.companyNameTooLong ?? ocrCombined.companyNameTooLong,
         };
       } catch (error) {
-        console.warn('Client-side GSTIN OCR failed; trying the document API:', error);
+        console.error('Client-side GSTIN OCR failed:', error);
+        ocrFailed = true;
+        ocrError = error;
       } finally {
         if (worker) await worker.terminate();
         if (imageCanvas) {
@@ -833,6 +837,7 @@ export class PanOcrService {
     }
 
     if (pdf) await pdf.destroy();
+    if (ocrFailed) throw ocrError;
     return {
       ...details,
       stateName: details.state || getStateNameFromGstinCode(details.stateCode),
