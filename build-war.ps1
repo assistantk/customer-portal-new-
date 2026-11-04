@@ -96,7 +96,17 @@ try {
         'assets/tesseract-assets/tesseract-core-lstm.wasm',
         'assets/tesseract-assets/tesseract-core-lstm.wasm.js',
         'assets/tessdata/eng.traineddata',
-        'assets/pdfjs-assets/pdf.worker.min.mjs'
+        'assets/pdfjs-assets/pdf.worker.min.mjs',
+        'assets/cris-logo.webp',
+        'assets/3562.webp',
+        'assets/indian-railways-logo.webp',
+        'assets/railway-bg.webp',
+        'assets/portal-logo.webp',
+        'assets/portal-logo-photo.webp',
+        'assets/glbl_transparent.webp',
+        'assets/handling_agent_code_transparent.webp',
+        'assets/ownr_transparent.webp',
+        'assets/rail.webp'
     )) {
         if ($frontendEntries -notcontains $requiredEntry) {
             throw "Frontend WAR is missing required entry '$requiredEntry'."
@@ -112,6 +122,14 @@ try {
     }
     if ($frontendWebDescriptor -notmatch '<extension>wasm</extension>\s*<mime-type>application/wasm</mime-type>') {
         throw 'Frontend web descriptor must serve OCR .wasm files as application/wasm.'
+    }
+    if ($frontendWebDescriptor -notmatch '<extension>webp</extension>\s*<mime-type>image/webp</mime-type>') {
+        throw 'Frontend web descriptor must serve WebP images as image/webp.'
+    }
+    if ([regex]::Matches($frontendWebDescriptor, '<extension>mjs</extension>').Count -ne 1 -or
+        [regex]::Matches($frontendWebDescriptor, '<extension>wasm</extension>').Count -ne 1 -or
+        [regex]::Matches($frontendWebDescriptor, '<extension>webp</extension>').Count -ne 1) {
+        throw 'Frontend web descriptor must define exactly one MIME mapping each for .mjs, .wasm, and .webp.'
     }
     if (-not ($frontendEntries | Where-Object { $_ -match '^main-[^/]+\.js$' })) {
         throw 'Frontend WAR does not contain the compiled Angular JavaScript bundle.'

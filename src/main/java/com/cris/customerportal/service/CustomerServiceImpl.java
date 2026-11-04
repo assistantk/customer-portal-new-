@@ -493,6 +493,8 @@ public class CustomerServiceImpl implements CustomerService {
   String cityColumn;
   String panColumn = "MAVCUSTPANNUMB";
   String gstColumn;
+  String pincodeColumn = "MAVPCOCODE";
+  String divisionColumn = "MAVIMPLREMK";
   if (isGlobal) {
    oldCustomer = lookupOldCustomerByCode(customerCode);
    keyColumn = "MAVGLBLCUSTCODE";
@@ -508,6 +510,8 @@ public class CustomerServiceImpl implements CustomerService {
    oldCustomer.setCity(agent.getCity());
    oldCustomer.setPanNumber(agent.getPanNumber());
    oldCustomer.setGstinNumbers(agent.getGstinNumbers());
+   oldCustomer.setPincode(agent.getPcoCode());
+   oldCustomer.setDivision(agent.getDivision());
    keyColumn = hndgCodeCol;
    nameColumn = hndgNameCol;
    addressColumn = hndgAddrCol;
@@ -522,7 +526,7 @@ public class CustomerServiceImpl implements CustomerService {
   current.put(panColumn, oldCustomer.getPanNumber());
   current.put(gstColumn, oldCustomer.getGstinNumbers());
   Map<String, String> requested = new LinkedHashMap<>();
-  requested.put(nameColumn, formData.get("companyName"));
+  requested.put(nameColumn, normalizeNullableValue(formData.get("companyName")));
   String rawAddress = formData.get("address");
   String updateAddress = normalizeAddress(rawAddress);
   if (updateAddress != null && updateAddress.length() > 100) {
@@ -530,12 +534,22 @@ public class CustomerServiceImpl implements CustomerService {
   }
   requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
-  requested.put(panColumn, formData.get("panNumber"));
-  requested.put(gstColumn, formData.get("gstinNumbers"));
+  requested.put(panColumn, normalizeNullableValue(formData.get("panNumber")));
+  requested.put(gstColumn, normalizeNullableValue(formData.get("gstinNumbers")));
+  if (formData.containsKey("pincode")) {
+   current.put(pincodeColumn, oldCustomer.getPincode());
+   requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
+  }
+  if (formData.containsKey("operatingDivision")) {
+   current.put(divisionColumn, oldCustomer.getDivision());
+   requested.put(divisionColumn, DivisionDesignationResolver.resolve(formData.get("operatingDivision")));
+  }
 
   List<String> assignments = new ArrayList<>();
   for (Map.Entry<String, String> entry : requested.entrySet()) {
-   if (!Objects.equals(normalizeOracleValue(current.get(entry.getKey())), normalizeOracleValue(entry.getValue()))) {
+   if (!Objects.equals(
+       normalizeUpdateComparisonValue(entry.getKey(), current.get(entry.getKey())),
+       normalizeUpdateComparisonValue(entry.getKey(), entry.getValue()))) {
     assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
   }
@@ -559,6 +573,22 @@ public class CustomerServiceImpl implements CustomerService {
    return trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed) ? null : trimmed;
  }
 
+ private String normalizeUpdateComparisonValue(String column, String value) {
+  String normalized = normalizeNullableValue(value);
+  if (normalized == null) return null;
+  if (column.equalsIgnoreCase("MAVGLBLCUSTNAME") || column.equalsIgnoreCase("MAVHNDGAGNTNAME")
+      || column.equalsIgnoreCase("MAVHNDAGNTNAME")) {
+   normalized = withGlobalCompanyNamePrefix(normalized);
+  } else if (column.equalsIgnoreCase("MAVGLBLCUSTADDRTEXT")
+      || column.equalsIgnoreCase("MAVHNDGAGNTADDRTEXT")
+      || column.equalsIgnoreCase("MAVHNDAGNTADDRTEXT")) {
+   normalized = normalizeAddress(normalized);
+  } else if (column.equalsIgnoreCase(glblGstCol) || column.equalsIgnoreCase(hndgGstCol)) {
+   normalized = normalized.replaceAll("[\\[\\]\"\\s]", "");
+  }
+  return normalized.trim().toUpperCase(Locale.ROOT);
+ }
+
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
     initDbColumns();
     // SELECT all columns needed for the Old User Handling Agent fetch/edit flow
@@ -567,6 +597,7 @@ public class CustomerServiceImpl implements CustomerService {
         + hndgAddrCol + " AS MAVHNDAGNTADDRTEXT, "
         + hndgCityCol + " AS MAVHNDAGNTCITYNAME,"
         + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, "
+        + "MAVIMPLREMK, "
         + hndgGstCol + " AS MAVCUSTGSTNUMB, "
         + "MAVCUSTPANNUMB"
         + " FROM MEMGLBLHNDGAGNT WHERE " + hndgCodeCol + " = ?";
@@ -583,6 +614,7 @@ public class CustomerServiceImpl implements CustomerService {
      response.setCentBlng(rs.getString("MAVCENTBLNG"));
      response.setPcoCode(rs.getString("MAVPCOCODE"));
      response.setEdMndFlag(rs.getString("MAVEDMNDFLAG"));
+     response.setDivision(rs.getString("MAVIMPLREMK"));
      response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
      response.setStatus("Active");
@@ -669,22 +701,50 @@ public class CustomerServiceImpl implements CustomerService {
  public void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc) {
   boolean hasOwnership = ownershipCode != null && !ownershipCode.trim().isEmpty();
   boolean hasParty = partyCode != null && !partyCode.trim().isEmpty();
+  log.info("CustomerServiceImpl.submitOwnershipJDBC: Ownership INSERT request received ownershipCodePresent={} partyCodePresent={}",
+      hasOwnership, hasParty);
   if (!hasOwnership && !hasParty) throw new IllegalArgumentException("At least one ownership code is required.");
 
   List<DbaEmailService.SqlRequest> statements = new ArrayList<>();
+  boolean ownershipInsertSubmitted = false;
+  String ownershipSql = null;
   if (hasOwnership) {
-   String sql = generateOwnershipSql(ownershipCode, ownershipDesc);
-   if (sql != null) {
+   ownershipSql = generateOwnershipSql(ownershipCode, ownershipDesc);
+   logGeneratedOwnershipSql("MEMWGONOWNRSHIP", ownershipSql);
+   if (ownershipSql != null) {
+    ownershipInsertSubmitted = ownershipSql.startsWith("INSERT");
     statements.add(new DbaEmailService.SqlRequest(
-        sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
+        ownershipSql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRSHIP",
         ownershipCode.trim().toUpperCase(Locale.ROOT),
-        sql));
+        ownershipSql));
    }
   }
-  if (hasParty) {
+  if (ownershipInsertSubmitted) {
+   String partySql = generateOwnershipPartySql(ownershipCode, ownershipDesc);
+   logGeneratedOwnershipSql("MEMWGONOWNRPRTY", partySql);
+   if (partySql == null || !partySql.startsWith("INSERT")) {
+    throw new IllegalArgumentException(
+        "Cannot create both ownership records because the ownership party record already exists.");
+   }
+   statements.add(new DbaEmailService.SqlRequest(
+       "INSERT",
+       "MEMWGONOWNRPRTY",
+       ownershipCode.trim().toUpperCase(Locale.ROOT),
+       partySql));
+  } else if (hasParty) {
    String sql = generateOwnershipPartySql(partyCode, partyDesc);
+   logGeneratedOwnershipSql("MEMWGONOWNRPRTY", sql);
    if (sql != null) {
+    if (hasOwnership && ownershipSql == null && sql.startsWith("INSERT")) {
+     String unchangedOwnershipUpdate = generateOwnershipUpdateSql(ownershipCode, ownershipDesc);
+     statements.add(0, new DbaEmailService.SqlRequest(
+         "UPDATE",
+         "MEMWGONOWNRSHIP",
+         ownershipCode.trim().toUpperCase(Locale.ROOT),
+         unchangedOwnershipUpdate));
+     logGeneratedOwnershipSql("MEMWGONOWNRSHIP", unchangedOwnershipUpdate);
+    }
     statements.add(new DbaEmailService.SqlRequest(
         sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRPRTY",
@@ -693,7 +753,21 @@ public class CustomerServiceImpl implements CustomerService {
    }
   }
   if (statements.isEmpty()) throw new IllegalArgumentException("No changes detected for the ownership records.");
+  String tables = statements.stream()
+      .map(DbaEmailService.SqlRequest::table)
+      .collect(java.util.stream.Collectors.joining(", "));
+  String sqlForLog = statements.stream()
+      .map(statement -> DataMaskingUtil.maskSqlLiteralsForLog(statement.sql()))
+      .collect(java.util.stream.Collectors.joining("\n"));
+  log.info("CustomerServiceImpl.submitOwnershipJDBC: Combined SQL passed to email utility statements={} tables={}\n{}",
+      statements.size(), tables, sqlForLog);
   dbaEmailService.sendDbaSqlEmail(statements);
+ }
+
+ private void logGeneratedOwnershipSql(String table, String sql) {
+  log.info("CustomerServiceImpl.submitOwnershipJDBC: {} query generated operation={} sql={}",
+      table, sql == null ? "NONE" : sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
+      DataMaskingUtil.maskSqlLiteralsForLog(sql));
  }
 
  private String generateOwnershipSql(String ownershipCode, String ownershipDesc) {
@@ -701,8 +775,7 @@ public class CustomerServiceImpl implements CustomerService {
   Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
   if (existing != null) {
    if (Objects.equals(normalizeOracleValue(existing.get("ownershipDesc")), normalizeOracleValue(ownershipDesc))) return null;
-   return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
-       + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
+   return generateOwnershipUpdateSql(normalizedCode, ownershipDesc);
   }
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
    throw invalidOwnershipCode();
@@ -711,6 +784,11 @@ public class CustomerServiceImpl implements CustomerService {
       + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
       + ",NULL,'Y',SYSDATE,NULL);";
+ }
+
+ private String generateOwnershipUpdateSql(String ownershipCode, String ownershipDesc) {
+  return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
+      + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizeOwnershipCode(ownershipCode)) + ";";
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
@@ -781,6 +859,11 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
+  String normalizedCode = normalizeOwnershipCode(partyCode);
+  if (lookupExistingOwnershipRecord(normalizedCode) == null) {
+   submitOwnershipJDBC(normalizedCode, partyDesc, normalizedCode, partyDesc);
+   return;
+  }
   submitOwnershipJDBC(null, null, partyCode, partyDesc);
  }
 

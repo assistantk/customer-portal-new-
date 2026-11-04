@@ -5,6 +5,7 @@ import { merge, Subscription } from "rxjs";
 import { finalize, timeout } from "rxjs/operators";
 import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../../services/auth.service";
 import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
@@ -16,6 +17,7 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60;
   styleUrls: ["./login.component.css"]
 })
 export class LoginComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   currentStep: AuthStep = 'LOGIN';
   loadingOperation: 'LOGIN' | 'DESIGNATION' | 'RESEND' | 'VERIFY' | null = null;
 

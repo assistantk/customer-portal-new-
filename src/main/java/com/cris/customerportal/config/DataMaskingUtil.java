@@ -47,6 +47,9 @@ public final class DataMaskingUtil {
             "\\b([6-9]\\d{5})(\\d{4})\\b");
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SQL_STRING_LITERAL_PATTERN = Pattern.compile("'(?:''|[^'])*'");
+    private static final Pattern EMAIL_FOOTER_PATTERN = Pattern.compile(
+            "(?im)^(UserID|Email ID|Phone Number):\\s*.*$");
 
     /**
      * Formats an argument safely for logging, masking sensitive fields and
@@ -154,6 +157,20 @@ public final class DataMaskingUtil {
         mobileMatcher.appendTail(sb5);
 
         return EMAIL_PATTERN.matcher(sb5.toString()).replaceAll("***@***");
+    }
+
+    public static String maskSqlLiteralsForLog(String sql) {
+        return sql == null ? null : SQL_STRING_LITERAL_PATTERN.matcher(sql).replaceAll("'[REDACTED]'");
+    }
+
+    public static String maskEmailBodyForLog(String body) {
+        if (body == null) {
+            return null;
+        }
+        String maskedSql = maskSqlLiteralsForLog(body);
+        Matcher footerMatcher = EMAIL_FOOTER_PATTERN.matcher(maskedSql);
+        String maskedFooter = footerMatcher.replaceAll("$1: [REDACTED]");
+        return maskSensitive(maskedFooter);
     }
 
     public static String formatThrowable(Throwable error) {

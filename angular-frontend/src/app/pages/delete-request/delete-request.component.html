@@ -2,7 +2,7 @@
   <section class="delete-card">
     <!-- Dynamic Code-Type Logo or Neutral Placeholder -->
     <div class="logo-wrapper" *ngIf="currentLogo && !logoLoadFailed">
-      <img [src]="currentLogo" [alt]="currentLogoAlt" class="code-type-logo" (error)="onLogoError()" />
+      <img [src]="currentLogo" [alt]="currentLogoAlt" class="code-type-logo" width="120" height="120" decoding="async" (error)="onLogoError()" />
     </div>
 
     <header class="card-heading" [class.has-custom-logo]="!!currentLogo && !logoLoadFailed">

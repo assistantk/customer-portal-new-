@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { finalize } from 'rxjs';
 import { CustomerService, DeleteRequestCodeType } from '../../services/customer.service';
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 @Component({
   selector: 'app-delete-request',
@@ -9,6 +10,7 @@ import { CustomerService, DeleteRequestCodeType } from '../../services/customer.
   styleUrls: ['./delete-request.component.css']
 })
 export class DeleteRequestComponent {
+  readonly imageAssets = IMAGE_ASSETS;
   codeType: DeleteRequestCodeType | '' = '';
   code = '';
   companyName = '';
@@ -44,12 +46,12 @@ export class DeleteRequestComponent {
 
   get currentLogo(): string | null {
     if (this.codeType === 'GLOBAL_CUSTOMER') {
-      return 'assets/glbl_transparent.png';
+      return this.imageAssets.globalCustomerCode;
     }
     if (this.codeType === 'HANDLING_AGENT') {
-      return 'assets/handling_agent_code_transparent.png';
+      return this.imageAssets.handlingAgentCode;
     }
-    return 'assets/portal-logo.png';
+    return this.imageAssets.portalLogo;
   }
 
   get currentLogoAlt(): string {

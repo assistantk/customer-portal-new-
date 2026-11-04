@@ -1,4 +1,4 @@
-import { NgModule } from '@angular/core';
+import { APP_INITIALIZER, NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ReactiveFormsModule, FormsModule } from '@angular/forms';
@@ -17,6 +17,11 @@ import { NotificationComponent } from './components/notification/notification.co
 import { AuthInterceptor } from './services/auth.interceptor';
 import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
 import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
+import { ImagePreloadService } from './services/image-preload.service';
+
+export function initializeImagePreloader(preloader: ImagePreloadService): () => void {
+  return () => preloader.initialize();
+}
 
 @NgModule({
   declarations: [
@@ -41,6 +46,12 @@ import { AccessDeniedComponent } from './pages/access-denied/access-denied.compo
     FormsModule
   ],
   providers: [
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeImagePreloader,
+      deps: [ImagePreloadService],
+      multi: true
+    },
     {
       provide: HTTP_INTERCEPTORS,
       useClass: AuthInterceptor,

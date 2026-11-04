@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
 import { AuthService, AuthUserData } from './auth.service';
+import { OFFICIAL_SIGNATURE_ASPECT_RATIO } from './signature-asset';
 
 export interface RegistrationPdfData {
   title?: string;
@@ -38,13 +39,8 @@ export interface SignatureBlockDetails {
   signerIdentity: string;
   designationDivisionOrg: string;
   designationDivision: string;
-  designationDivisionOrg: string;
   formattedTimestamp: string;
   signatureImageBase64: string;
-  verifiedStatus?: string;
-  eSignedByLabel?: string;
-  signerName?: string;
-  signerIdentity?: string;
 }
 
 /**
@@ -189,7 +185,6 @@ export class PdfGeneratorService {
       signerIdentity,
       designationDivisionOrg,
       designationDivision,
-      designationDivisionOrg,
       formattedTimestamp,
       signatureImageBase64: ''
     };
@@ -198,7 +193,7 @@ export class PdfGeneratorService {
   /**
    * Renders the official e-signature block at the bottom-right corner of the current page.
    * If the current content overflows the signature space, a new page is automatically added.
-   * Embeds the uploaded reference signature image (3562.jpg) preserving its exact aspect ratio (573:468)
+   * Embeds the reference signature image while preserving its exact aspect ratio (573:468)
    * and preserves the authentic designation text (e.g. SR.DCM/PUNE/CRIS) along with the dynamic record date,
    * while omitting the unwanted "Signature Not Verified" information block and CDAC | CRIS / (SREEJU) elements.
    */
@@ -243,7 +238,7 @@ export class PdfGeneratorService {
     doc.setLineWidth(0.4);
     doc.roundedRect(sigX, sigY, sigWidth, sigHeight, 2, 2, 'S');
 
-    // 2. Embed uploaded official reference signature image (3562.jpg) preserving exact aspect ratio (573:468)
+    // 2. Embed the official reference signature image at its original aspect ratio (573:468)
     const imgWidth = 34;
     const imgHeight = imgWidth / OFFICIAL_SIGNATURE_ASPECT_RATIO;
     const imgX = sigX + 3.5;
@@ -553,14 +548,14 @@ export class PdfGeneratorService {
     const tableWidth = pageWidth - margin * 2;
     const lineHeight = 3.2;
     const fontSize = 7.2;
-    const signature = this.resolveSignatureDetails();
+    const fallbackSignature = this.resolveSignatureDetails();
     const divisionColumnIndex = reportData.columns.findIndex((column) => column.toLowerCase() === 'division');
     const reportDivision = divisionColumnIndex >= 0
       ? reportData.rows
         .map((row) => String(row[divisionColumnIndex] ?? '').trim())
         .find((value) => value && value !== '-')
       : undefined;
-    const signatureDivision = reportDivision || signature.designationDivision;
+    const signatureDivision = reportDivision || fallbackSignature.designationDivision;
     let lastTableBottomY = margin + 28;
 
     doc.setFont('helvetica', 'normal');

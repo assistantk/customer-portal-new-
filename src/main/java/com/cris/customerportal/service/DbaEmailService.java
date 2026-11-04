@@ -142,14 +142,49 @@ public class DbaEmailService {
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
 
-        SqlRequest firstRequest = requests == null || requests.isEmpty() ? null : requests.iterator().next();
+        List<SqlRequest> ownershipPair = orderedOwnershipInsertPair(requests);
+        SqlRequest firstRequest = ownershipPair != null
+                ? ownershipPair.get(0)
+                : requests == null || requests.isEmpty() ? null : requests.iterator().next();
+        String tableField = ownershipPair == null
+                ? firstRequest == null ? null : firstRequest.table()
+                : "MEMWGONOWNRSHIP, MEMWGONOWNRPRTY";
         message.setSubject(buildEmailSubject(
                 firstRequest == null ? "QUERY" : firstRequest.operation(),
-                firstRequest == null ? null : firstRequest.table(),
+                tableField,
                 firstRequest == null ? null : firstRequest.code()));
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
                 + "Kindly execute the attached/below script on rfrn3t and training.\n\n");
+        if (ownershipPair != null) {
+            appendOwnershipInsertPair(body, ownershipPair);
+        } else if (requests != null) {
+            appendSqlRequests(body, requests);
+        }
+        body.append(userFooter());
+        message.setText(body.toString());
+
+        Collection<SqlRequest> orderedRequests = ownershipPair == null ? requests : ownershipPair;
+        String combinedSqlForLog = orderedRequests == null ? "" : orderedRequests.stream()
+                .map(request -> DataMaskingUtil.maskSqlLiteralsForLog(request.sql()))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        log.info("DbaEmailService.sendDbaSqlEmail: Combined SQL passed to email utility statements={} tables={}\n{}",
+                requests == null ? 0 : requests.size(), tableField, combinedSqlForLog);
+        log.info("DbaEmailService.sendDbaSqlEmail: Final email body immediately before sending:\n{}",
+                DataMaskingUtil.maskEmailBodyForLog(message.getText()));
+        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
+                requests == null ? 0 : requests.size());
+        try {
+            mailSender.send(message);
+            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
+        } catch (Exception e) {
+            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {} stackTrace={}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
+            throw e;
+        }
+    }
+
+    private void appendSqlRequests(StringBuilder body, Collection<SqlRequest> requests) {
         int index = 1;
         for (SqlRequest request : requests) {
             body.append("Operation: ")
@@ -176,19 +211,47 @@ public class DbaEmailService {
                 body.append('\n');
             }
         }
-        body.append(userFooter());
-        message.setText(body.toString());
+    }
 
-        log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
-                requests.size());
-        try {
-            mailSender.send(message);
-            log.info("DbaEmailService.sendDbaSqlEmail: Email successfully dispatched to DBA");
-        } catch (Exception e) {
-            log.error("DbaEmailService.sendDbaSqlEmail: Failed to send DBA SQL notification email: {} stackTrace={}",
-                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
-            throw e;
+    private void appendOwnershipInsertPair(StringBuilder body, List<SqlRequest> requests) {
+        SqlRequest ownership = requests.get(0);
+        SqlRequest party = requests.get(1);
+        body.append("Operation: INSERT\n")
+                .append("Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\n")
+                .append("Code: ").append(ownership.code()).append("\n\n")
+                .append("SQL QUERY:\n")
+                .append("----------------------------------------1 INSERT---------------------------\n\n")
+                .append(formatSqlForEmail(ownership))
+                .append("\n\n")
+                .append("----------------------------------------2 INSERT---------------------------\n\n")
+                .append(formatSqlForEmail(party))
+                .append("\n\n");
+    }
+
+    private List<SqlRequest> orderedOwnershipInsertPair(Collection<SqlRequest> requests) {
+        if (requests == null || requests.size() != 2) {
+            return null;
         }
+        SqlRequest ownership = null;
+        SqlRequest party = null;
+        for (SqlRequest request : requests) {
+            if (request == null || !"INSERT".equalsIgnoreCase(request.operation())) {
+                return null;
+            }
+            if ("MEMWGONOWNRSHIP".equalsIgnoreCase(request.table()) && ownership == null) {
+                ownership = request;
+            } else if ("MEMWGONOWNRPRTY".equalsIgnoreCase(request.table()) && party == null) {
+                party = request;
+            } else {
+                return null;
+            }
+        }
+        if (ownership == null || party == null
+                || ownership.code() == null || party.code() == null
+                || !ownership.code().equalsIgnoreCase(party.code())) {
+            return null;
+        }
+        return Arrays.asList(ownership, party);
     }
 
     private String buildEmailBody(String operation, String table, String code, String sql, String footer) {
@@ -346,7 +409,8 @@ public class DbaEmailService {
         if ("MEMGLBLCUST".equalsIgnoreCase(table)) {
             return (insertPrefix + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
         }
-        return (insertPrefix + " " + normalizeHandlingAgentInsertName(valuesPart)).toUpperCase(Locale.ROOT);
+        String normalizedValues = normalizeHandlingAgentInsertName(valuesPart);
+        return (insertPrefix + " " + compactSqlValues(normalizedValues)).toUpperCase(Locale.ROOT);
     }
 
     private String normalizeHandlingAgentInsertName(String valuesPart) {

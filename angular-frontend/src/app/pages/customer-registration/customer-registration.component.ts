@@ -8,6 +8,7 @@ import { NotificationService } from '../../services/notification.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -99,6 +100,7 @@ const addressesMatch = (left: string, right: string) => {
   styleUrls: ['./customer-registration.component.css']
 })
 export class CustomerRegistrationComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   mode: 'ownership' | 'old' | 'new' | 'delete' = 'old';
   oldCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
   newCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
@@ -129,21 +131,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   get currentLogo(): string | null {
     if (this.mode === 'delete') {
       if (this.deleteCodeType === 'GLOBAL_CUSTOMER') {
-        return 'assets/glbl_transparent.png';
+        return this.imageAssets.globalCustomerCode;
       }
       if (this.deleteCodeType === 'HANDLING_AGENT') {
-        return 'assets/handling_agent_code_transparent.png';
+        return this.imageAssets.handlingAgentCode;
       }
-      return 'assets/portal-logo.png';
+      return this.imageAssets.portalLogo;
     }
 
     if ((this.mode === 'old' || this.mode === 'new')
       && this.codeType === 'HANDLING_AGENT') {
-      return 'assets/handling_agent_code_transparent.png';
+      return this.imageAssets.handlingAgentCode;
     }
     return this.mode === 'new'
-      ? 'assets/glbl_transparent.png'
-      : 'assets/portal-logo.png';
+      ? this.imageAssets.globalCustomerCode
+      : this.imageAssets.portalLogo;
   }
 
   get currentLogoAlt(): string {
@@ -662,10 +664,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             this.form.customerCode = this.verifiedCustomerCode;
             this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
             this.form.city = customer.city || '';
-            this.form.pincode = customer.pincode || '';
+            this.form.pincode = customer.pincode || customer.pcoCode || '';
             this.form.panNumber = customer.panNumber || '';
             this.form.email = customer.email || customer.emailId || '';
             this.form.mobile = customer.mobile || customer.phoneNumber || '';
+            this.applyOldRecordDivision(customer);
 
             if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
               const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
@@ -706,6 +709,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   handleOldCodeChange(code: string): void {
     this.triggerOldLookup(code, this.codeType);
+  }
+
+  private applyOldRecordDivision(customer: any): void {
+    const storedDivision = String(customer?.division || '').split('/').pop()?.trim();
+    const selection = storedDivision
+      ? getDivisionFormSelection(storedDivision, divisionsByZone)
+      : undefined;
+    if (selection) {
+      this.form.zone = selection.zone;
+      this.form.operatingDivision = selection.division;
+    }
+    this.divisionSelectionManuallyChanged = false;
   }
 
   handleOldCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
@@ -1087,7 +1102,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     } else {
       const customerCode = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
       this.customerService.updateOldCustomerJDBC(
-        { ...this.form, customerCode, codeType: this.codeType },
+        {
+          ...this.form,
+          customerCode,
+          codeType: this.codeType,
+          operatingDivision: this.divisionSelectionManuallyChanged && this.form.operatingDivision
+            ? this.form.operatingDivision
+            : undefined
+        },
         this.gstins
       ).pipe(
         finalize(() => {
@@ -1119,9 +1141,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                     this.form.companyName = refreshed.companyName || this.form.companyName;
                     this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
                     this.form.city = refreshed.city || this.form.city;
+                    this.form.pincode = refreshed.pincode || refreshed.pcoCode || this.form.pincode;
                     this.form.panNumber = refreshed.panNumber || this.form.panNumber;
                     this.form.email = refreshed.email || refreshed.emailId || this.form.email;
                     this.form.mobile = refreshed.mobile || refreshed.phoneNumber || this.form.mobile;
+                    this.applyOldRecordDivision(refreshed);
 
                     if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
                       const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');

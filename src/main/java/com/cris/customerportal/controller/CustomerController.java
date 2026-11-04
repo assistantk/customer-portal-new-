@@ -291,7 +291,9 @@ public class CustomerController {
     public ResponseEntity<?> ownershipSubmit(@RequestBody Map<String, String> payload) {
         String ownershipCode = payload.get("ownershipCode");
         String partyCode = payload.get("partyCode");
-        LOGGER.info("Ownership submit request: ownershipCode={} partyCode={}", ownershipCode, partyCode);
+        LOGGER.info("Ownership INSERT request received at /api/customers/ownership-submit ownershipCodePresent={} partyCodePresent={}",
+                ownershipCode != null && !ownershipCode.trim().isEmpty(),
+                partyCode != null && !partyCode.trim().isEmpty());
         try {
             service.submitOwnershipJDBC(
                     ownershipCode,
