@@ -106,6 +106,13 @@ try {
     if ($frontendDescriptor -notmatch '<context-root>FreightCodeWeb</context-root>') {
         throw 'Frontend WebLogic descriptor must declare the FreightCodeWeb context root.'
     }
+    $frontendWebDescriptor = [System.IO.File]::ReadAllText((Join-Path $frontendDescriptorDir 'web.xml'))
+    if ($frontendWebDescriptor -notmatch '<extension>mjs</extension>\s*<mime-type>application/javascript</mime-type>') {
+        throw 'Frontend web descriptor must serve PDF.js .mjs workers as application/javascript.'
+    }
+    if ($frontendWebDescriptor -notmatch '<extension>wasm</extension>\s*<mime-type>application/wasm</mime-type>') {
+        throw 'Frontend web descriptor must serve OCR .wasm files as application/wasm.'
+    }
     if (-not ($frontendEntries | Where-Object { $_ -match '^main-[^/]+\.js$' })) {
         throw 'Frontend WAR does not contain the compiled Angular JavaScript bundle.'
     }
