@@ -6,127 +6,71 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Array;
-import java.util.Collection;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Cross-cutting AOP logging aspect covering controller, service, and repository layers:
- * - Records class.method, sanitized/masked arguments, return value (truncated to 500 chars),
- *   execution time, and exceptions with stack traces.
- * - For repositories: explicitly logs operation and result count.
- * - Adheres strictly to security masking (no credentials, masked PAN/GSTIN/mobile/Aadhaar).
+ * Logs public calls crossing the controller, service, repository, audit, and exception
+ * Spring proxy boundaries. Logback routes each event using its originating class logger.
  */
 @Aspect
 @Component
 public class LoggingAspect {
 
-    private static final Logger log = LoggerFactory.getLogger(LoggingAspect.class);
     private static final int MAX_VALUE_LENGTH = 500;
 
-    @Pointcut("within(com.cris.customerportal.controller..*)")
-    public void controllerLayer() {}
+    @Pointcut("execution(public * com.cris.customerportal.controller..*(..))"
+            + " || execution(public * com.cris.customerportal.service..*(..))"
+            + " || execution(public * com.cris.customerportal.repository..*(..))"
+            + " || execution(public * com.cris.customerportal.audit..*(..))"
+            + " || execution(public * com.cris.customerportal.exception..*(..))"
+            + " || (execution(public * com.cris.customerportal.config..*(..))"
+            + " && !within(com.cris.customerportal.config.CorsConfig)"
+            + " && !within(com.cris.customerportal.config.LoggingAspect))")
+    public void applicationOperation() {}
 
-    @Pointcut("within(com.cris.customerportal.service..*)")
-    public void serviceLayer() {}
-
-    @Pointcut("within(com.cris.customerportal.repository..*)")
-    public void repositoryLayer() {}
-
-    @Around("controllerLayer()")
-    public Object logController(ProceedingJoinPoint joinPoint) throws Throwable {
-        String className = joinPoint.getSignature().getDeclaringType().getSimpleName();
-        String methodName = joinPoint.getSignature().getName();
-        Object[] args = joinPoint.getArgs();
-
-        if (log.isInfoEnabled()) {
-            log.info("CONTROLLER ENTER: {}.{}() args={}", className, methodName, sanitizeArgs(args));
+    @Around("applicationOperation()")
+    public Object logApplicationOperation(ProceedingJoinPoint joinPoint) throws Throwable {
+        Class<?> targetClass = AopUtils.getTargetClass(joinPoint.getTarget());
+        if (targetClass == null || !targetClass.getName().startsWith("com.cris.customerportal.")) {
+            targetClass = joinPoint.getSignature().getDeclaringType();
         }
+        String className = targetClass.getSimpleName();
+        String methodName = joinPoint.getSignature().getName();
+        Logger logger = LoggerFactory.getLogger(targetClass);
+        String previousClassName = MDC.get("className");
+        String previousMethodName = MDC.get("methodName");
+        MDC.put("className", className);
+        MDC.put("methodName", methodName);
 
-        long start = System.currentTimeMillis();
+        long start = System.nanoTime();
         try {
+            logger.info("METHOD START args={}", sanitizeArgs(joinPoint.getArgs()));
             Object result = joinPoint.proceed();
-            long elapsed = System.currentTimeMillis() - start;
-            if (log.isInfoEnabled()) {
-                log.info("CONTROLLER EXIT : {}.{}() result={} duration={}ms",
-                        className, methodName, truncateAndMask(result), elapsed);
-            }
+            logger.info("METHOD COMPLETE result={} duration={}ms",
+                    truncateAndMask(result), elapsedMillis(start));
             return result;
-        } catch (Exception ex) {
-            long elapsed = System.currentTimeMillis() - start;
-            log.error("CONTROLLER EXCEPTION: {}.{}() failed after {}ms: {}",
-                    className, methodName, elapsed, ex.getMessage(), ex);
-            throw ex;
+        } catch (Throwable error) {
+            logger.error("METHOD FAILED duration={}ms stackTrace={}",
+                    elapsedMillis(start), sanitizedStackTrace(error));
+            throw error;
+        } finally {
+            restoreMdc("className", previousClassName);
+            restoreMdc("methodName", previousMethodName);
         }
     }
-
-    @Around("serviceLayer()")
-    public Object logService(ProceedingJoinPoint joinPoint) throws Throwable {
-        String className = joinPoint.getSignature().getDeclaringType().getSimpleName();
-        String methodName = joinPoint.getSignature().getName();
-        Object[] args = joinPoint.getArgs();
-
-        if (log.isDebugEnabled()) {
-            log.debug("SERVICE ENTER: {}.{}() args={}", className, methodName, sanitizeArgs(args));
-        }
-
-        long start = System.currentTimeMillis();
-        try {
-            Object result = joinPoint.proceed();
-            long elapsed = System.currentTimeMillis() - start;
-            if (log.isDebugEnabled()) {
-                log.debug("SERVICE EXIT : {}.{}() result={} duration={}ms",
-                        className, methodName, truncateAndMask(result), elapsed);
-            }
-            return result;
-        } catch (Exception ex) {
-            long elapsed = System.currentTimeMillis() - start;
-            log.error("SERVICE EXCEPTION: {}.{}() failed after {}ms: {}",
-                    className, methodName, elapsed, ex.getMessage(), ex);
-            throw ex;
-        }
-    }
-
-    @Around("repositoryLayer()")
-    public Object logRepository(ProceedingJoinPoint joinPoint) throws Throwable {
-        String className = joinPoint.getSignature().getDeclaringType().getSimpleName();
-        String methodName = joinPoint.getSignature().getName();
-        Object[] args = joinPoint.getArgs();
-
-        if (log.isDebugEnabled()) {
-            log.debug("REPO OPERATION: {}.{}() args={}", className, methodName, sanitizeArgs(args));
-        }
-
-        long start = System.currentTimeMillis();
-        try {
-            Object result = joinPoint.proceed();
-            long elapsed = System.currentTimeMillis() - start;
-            if (log.isDebugEnabled()) {
-                log.debug("REPO RESULT   : {}.{}() count={} duration={}ms",
-                        className, methodName, determineResultCount(result), elapsed);
-            }
-            return result;
-        } catch (Exception ex) {
-            long elapsed = System.currentTimeMillis() - start;
-            log.error("REPO EXCEPTION: {}.{}() failed after {}ms: {}",
-                    className, methodName, elapsed, ex.getMessage(), ex);
-            throw ex;
-        }
-    }
-
-    // ── helpers ──────────────────────────────────────────────────────────────
 
     private String sanitizeArgs(Object[] args) {
         if (args == null || args.length == 0) return "[]";
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < args.length; i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(DataMaskingUtil.formatArg(args[i]));
+        List<String> formatted = new ArrayList<String>(args.length);
+        for (Object arg : args) {
+            formatted.add(DataMaskingUtil.formatArg(arg));
         }
-        sb.append("]");
-        return truncate(sb.toString());
+        return truncate(formatted.toString());
     }
 
     private String truncateAndMask(Object value) {
@@ -141,25 +85,19 @@ public class LoggingAspect {
         return s.substring(0, MAX_VALUE_LENGTH) + "…[truncated]";
     }
 
-    private String determineResultCount(Object result) {
-        if (result == null) {
-            return "0 (null)";
+    private String sanitizedStackTrace(Throwable error) {
+        return DataMaskingUtil.formatThrowable(error);
+    }
+
+    private long elapsedMillis(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    private void restoreMdc(String key, String previousValue) {
+        if (previousValue == null) {
+            MDC.remove(key);
+        } else {
+            MDC.put(key, previousValue);
         }
-        if (result instanceof Collection<?>) {
-            return ((Collection<?>) result).size() + " rows";
-        }
-        if (result instanceof Optional<?>) {
-            return ((Optional<?>) result).isPresent() ? "1 row" : "0 rows";
-        }
-        if (result.getClass().isArray()) {
-            return Array.getLength(result) + " items";
-        }
-        if (result instanceof Boolean) {
-            return (Boolean) result ? "matched (true)" : "not matched (false)";
-        }
-        if (result instanceof Number) {
-            return result.toString();
-        }
-        return "1 record";
     }
 }

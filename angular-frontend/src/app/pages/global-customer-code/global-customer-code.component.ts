@@ -1,10 +1,12 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, Subscription } from 'rxjs';
 import { CustomerService, CustomerPayload } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
+import { AuthService } from '../../services/auth.service';
+import { getDivisionFormSelection } from '../../utils/division-codes';
 
 export interface GlobalCodeForm {
   customerCode: string;
@@ -63,24 +65,34 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
 
   private codeTimer: any = null;
   private codeRequestId = 0;
+  private divisionSelectionManuallyChanged = false;
+  private userDivisionSubscription?: Subscription;
 
   constructor(
     private customerService: CustomerService,
     private notificationService: NotificationService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private authService?: AuthService
   ) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+      this.applyLoginDivisionDefault();
+    });
+  }
 
   ngOnDestroy(): void {
     if (this.codeTimer) {
       clearTimeout(this.codeTimer);
     }
+    this.userDivisionSubscription?.unsubscribe();
   }
 
   get zones(): string[] {
-    return Object.keys(divisionsByZone);
+    const zones = Object.keys(divisionsByZone);
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision && !zones.includes(loginDivision.zone) ? [...zones, loginDivision.zone] : zones;
   }
 
   get filteredZones(): string[] {
@@ -89,7 +101,25 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   }
 
   get divisions(): string[] {
-    return this.form.zone ? (divisionsByZone[this.form.zone] || []) : [];
+    if (!this.form.zone) return [];
+    const divisions = divisionsByZone[this.form.zone] || [];
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision?.zone === this.form.zone && !divisions.includes(loginDivision.division)
+      ? [...divisions, loginDivision.division]
+      : divisions;
+  }
+
+  private get loginDivisionSelection(): { zone: string; division: string } | undefined {
+    return getDivisionFormSelection(this.authService?.currentUser?.divisionCode, divisionsByZone);
+  }
+
+  private applyLoginDivisionDefault(): void {
+    const selection = this.loginDivisionSelection;
+    if (!this.divisionSelectionManuallyChanged && !this.form.operatingDivision && selection) {
+      this.form.zone = selection.zone;
+      this.form.operatingDivision = selection.division;
+      this.cdr.markForCheck();
+    }
   }
 
   /* ===== Auto-generate customer code from Company Name ===== */
@@ -162,6 +192,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   }
 
   chooseZone(zone: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
     this.zoneOpen = false;
@@ -180,6 +211,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   }
 
   chooseDivision(div: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];
@@ -194,6 +226,8 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   /* ===== Reset Form ===== */
   reset(): void {
     this.form = { ...blankForm };
+    this.divisionSelectionManuallyChanged = false;
+    this.applyLoginDivisionDefault();
     this.errors = {};
     this.notice = '';
     this.loading = false;
@@ -237,10 +271,6 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
       e['address'] = 'Address is required';
     } else if (this.form.address.length > 100) {
       e['address'] = 'Address cannot exceed 100 characters.';
-    }
-
-    if (!this.form.city?.trim()) {
-      e['city'] = 'City is required';
     }
 
     const pin = (this.form.pincode || '').trim();

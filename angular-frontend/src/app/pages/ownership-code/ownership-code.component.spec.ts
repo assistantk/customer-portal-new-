@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OwnershipCodeComponent } from './ownership-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { of, throwError } from 'rxjs';
+import { BehaviorSubject, of, throwError } from 'rxjs';
 
 describe('OwnershipCodeComponent', () => {
   let component: OwnershipCodeComponent;
@@ -11,6 +11,8 @@ describe('OwnershipCodeComponent', () => {
   let notificationService: NotificationService;
   let routerMock: any;
   let cdrMock: ChangeDetectorRef;
+  let authUserSubject: BehaviorSubject<any>;
+  let authServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -37,12 +39,15 @@ describe('OwnershipCodeComponent', () => {
       detach: vi.fn(),
       reattach: vi.fn()
     } as unknown as ChangeDetectorRef;
+    authUserSubject = new BehaviorSubject<any>(null);
+    authServiceMock = { currentUser$: authUserSubject.asObservable(), currentUser: null };
 
     component = new OwnershipCodeComponent(
       customerServiceMock as CustomerService,
       notificationService,
       routerMock,
-      cdrMock
+      cdrMock,
+      authServiceMock
     );
   });
 
@@ -55,6 +60,25 @@ describe('OwnershipCodeComponent', () => {
     expect(component.form.panNumber).toBe('');
     expect(component.errors).toEqual({});
     expect(component.loading).toBe(false);
+  });
+
+  it('defaults the division from login and keeps manual changes local', () => {
+    const loginUser = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = loginUser;
+    authUserSubject.next(loginUser);
+
+    component.ngOnInit();
+
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.divisions).toContain('Tughlakabad / Delhi Area (TKD)');
+
+    component.chooseZone('Central Railway (CR)');
+    authUserSubject.next({ divisionCode: 'DLI' });
+    expect(component.form.zone).toBe('Central Railway (CR)');
+    expect(component.form.operatingDivision).toBe('');
+    expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
   });
 
   it('should lookup ownership code in Section 1', () => {
@@ -135,7 +159,7 @@ describe('OwnershipCodeComponent', () => {
     expect(component.errors['ownershipCode']).toBeDefined();
     expect(component.errors['ownershipAddress']).toBeDefined();
     expect(component.errors['panNumber']).toBeDefined();
-    expect(component.errors['city']).toBeDefined();
+    expect(component.errors['city']).toBeUndefined();
     expect(component.errors['pincode']).toBeDefined();
     expect(component.errors['state']).toBeDefined();
     expect(component.errors['zone']).toBeDefined();
@@ -171,6 +195,29 @@ describe('OwnershipCodeComponent', () => {
       'Address 2'
     );
     expect(component.notice).toContain('Request sent to DBA');
+  });
+
+  it('should allow submission validation when city is blank or whitespace', () => {
+    component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
+    component.form = {
+      ownershipCode: 'OWN1',
+      ownershipAddress: 'Address 1',
+      panNumber: 'ABCDE1234F',
+      address: '123 Main Street',
+      city: '   ',
+      pincode: '400001',
+      state: 'Maharashtra',
+      zone: 'Central Railway (CR)',
+      operatingDivision: 'Mumbai (CSTM)',
+      email: '',
+      mobile: '',
+      ownershipPartyCode: 'PRT1',
+      ownershipPartyAddress: 'Address 2'
+    };
+
+    expect(component.validate()).toBe(true);
+    expect(component.errors['city']).toBeUndefined();
   });
 
   it('should reset form fields back to blank', () => {

@@ -1,5 +1,6 @@
 package com.cris.customerportal.controller;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.AuthUserDto;
 import com.cris.customerportal.dto.RmsSelectDesignationRequest;
 import com.cris.customerportal.dto.RmsValidateUserRequest;
@@ -163,8 +164,8 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
 
         } catch (Exception ex) {
-            LOGGER.error("Unexpected error in validate-user. Status: {}. Designation step can proceed: false",
-                    HttpStatus.INTERNAL_SERVER_ERROR.value(), ex);
+            LOGGER.error("Unexpected error in validate-user. Status: {}. Designation step can proceed: false stackTrace={}",
+                    HttpStatus.INTERNAL_SERVER_ERROR.value(), DataMaskingUtil.formatThrowable(ex));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", "Authentication service error. Please try again.");
@@ -241,7 +242,8 @@ public class AuthController {
                     .body(body);
 
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("Access denied: {}. Status: {}", ex.getMessage(), HttpStatus.FORBIDDEN.value());
+            LOGGER.warn("Access denied: {}. Status: {}",
+                    DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.FORBIDDEN.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("accessDenied", true);
@@ -250,7 +252,7 @@ public class AuthController {
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS select-designation result: FAILED (invalid credentials/designation): {}. Status: {}",
-                    ex.getMessage(), HttpStatus.BAD_REQUEST.value());
+                    DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.BAD_REQUEST.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());
@@ -321,12 +323,12 @@ public class AuthController {
                     .body(body);
 
         } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("RMS resend-otp denied: {}", ex.getMessage());
+            LOGGER.warn("RMS resend-otp denied: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(errorBody(ex.getMessage()));
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
-            LOGGER.info("RMS resend-otp rejected: {}", ex.getMessage());
+            LOGGER.info("RMS resend-otp rejected: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
             return ResponseEntity.badRequest()
                     .body(errorBody(ex.getMessage()));
 
@@ -427,7 +429,8 @@ public class AuthController {
             return ResponseEntity.ok(body);
 
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
-            LOGGER.info("RMS verify-otp result: FAILED: {}. Status: {}", ex.getMessage(), HttpStatus.UNAUTHORIZED.value());
+            LOGGER.info("RMS verify-otp result: FAILED: {}. Status: {}",
+                    DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.UNAUTHORIZED.value());
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", ex.getMessage());

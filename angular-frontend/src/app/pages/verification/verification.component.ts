@@ -184,11 +184,15 @@ export class VerificationComponent implements OnInit {
       )
     );
 
+    const firstRecord = records[0] as Record<string, unknown> | undefined;
+    const recordDate = (firstRecord?.['creationDate'] || firstRecord?.['date'] || firstRecord?.['createdDate'] || null) as string | Date | null;
+
     return {
       searchType: this.verificationType === "gstin" ? "GST Number" : "Global Customer Code",
       searchValue: this.verifiedSearchValue,
       columns: allColumns,
       rows,
+      recordDate,
       generatedAt: new Date()
     };
   }

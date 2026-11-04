@@ -36,6 +36,34 @@ class JdbcPortalUserLookupRepositoryTest {
     }
 
     @Test
+    void findsContactDetailsByAuthenticatedUserId() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true, false);
+        when(resultSet.getString("AAVUSERID")).thenReturn("DBUSER");
+        when(resultSet.getString("AAVEMAILID")).thenReturn("user@example.org");
+        when(resultSet.getString("AAVPHONENO")).thenReturn("9910303868");
+
+        JdbcPortalUserLookupRepository.UserContactDetails details =
+                new JdbcPortalUserLookupRepository(dataSource)
+                        .findUserContactDetails("railuser")
+                        .orElseThrow(AssertionError::new);
+
+        assertEquals("DBUSER", details.userId());
+        assertEquals("user@example.org", details.emailId());
+        assertEquals("9910303868", details.phoneNumber());
+        verify(connection).prepareStatement(
+                "SELECT AAVUSERID, AAVEMAILID, AAVPHONENO FROM TMS3T.AEM_USER "
+                        + "WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))");
+        verify(statement).setString(1, "railuser");
+    }
+
+    @Test
     void returnsEmptyWhenTheAuthenticatedUserIsNotInAemUserTable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);

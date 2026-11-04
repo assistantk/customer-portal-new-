@@ -1,5 +1,6 @@
 package com.cris.customerportal.exception;
 
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.config.RequestIdFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,63 +28,68 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .map(e -> e.getDefaultMessage())
                 .orElse("Validation failed");
-        LOGGER.warn("Validation failure: requestId={} url={} message={}",
-                requestId(), request.getRequestURI(), message, exception);
+        LOGGER.warn("Validation failure: requestId={} url={} message={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.maskSensitive(message),
+                DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
     ResponseEntity<?> invalidCredentials(InvalidCredentialsException exception,
                                          HttpServletRequest request) {
-        LOGGER.warn("Invalid credentials: requestId={} url={}",
-                requestId(), request.getRequestURI(), exception);
+        LOGGER.warn("Invalid credentials: requestId={} url={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.UNAUTHORIZED, exception.getMessage());
     }
 
     @ExceptionHandler(AccountInactiveException.class)
     ResponseEntity<?> accountInactive(AccountInactiveException exception,
                                       HttpServletRequest request) {
-        LOGGER.warn("Account inactive: requestId={} url={} message={}",
-                requestId(), request.getRequestURI(), exception.getMessage(), exception);
+        LOGGER.warn("Account inactive: requestId={} url={} message={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.maskSensitive(exception.getMessage()),
+                DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
     @ExceptionHandler(DatabaseUnavailableException.class)
     ResponseEntity<?> databaseUnavailable(DatabaseUnavailableException exception,
                                           HttpServletRequest request) {
-        LOGGER.error("Database unavailable: requestId={} url={}",
-                requestId(), request.getRequestURI(), exception);
+        LOGGER.error("Database unavailable: requestId={} url={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 
     @ExceptionHandler(ResourceAlreadyExistsException.class)
     ResponseEntity<?> duplicate(ResourceAlreadyExistsException exception,
                                 HttpServletRequest request) {
-        LOGGER.warn("Resource conflict: requestId={} url={} message={}",
-                requestId(), request.getRequestURI(), exception.getMessage(), exception);
+        LOGGER.warn("Resource conflict: requestId={} url={} message={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.maskSensitive(exception.getMessage()),
+                DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     ResponseEntity<?> notFound(ResourceNotFoundException exception,
                                HttpServletRequest request) {
-        LOGGER.warn("Resource not found: requestId={} url={} message={}",
-                requestId(), request.getRequestURI(), exception.getMessage(), exception);
+        LOGGER.warn("Resource not found: requestId={} url={} message={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.maskSensitive(exception.getMessage()),
+                DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<?> bad(IllegalArgumentException exception,
                           HttpServletRequest request) {
-        LOGGER.warn("Bad argument: requestId={} url={} message={}",
-                requestId(), request.getRequestURI(), exception.getMessage(), exception);
+        LOGGER.warn("Bad argument: requestId={} url={} message={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.maskSensitive(exception.getMessage()),
+                DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<?> general(Exception exception, HttpServletRequest request) {
-        LOGGER.error("Unhandled request error: requestId={} url={}",
-                requestId(), request.getRequestURI(), exception);
+        LOGGER.error("Unhandled request error: requestId={} url={} stackTrace={}",
+                requestId(), request.getRequestURI(), DataMaskingUtil.formatThrowable(exception));
         return error(HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred. Please try again later.");
     }

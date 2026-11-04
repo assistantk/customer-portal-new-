@@ -3,6 +3,8 @@ package com.cris.customerportal.service;
 import com.cris.customerportal.audit.DatabaseOperationAudit;
 import com.cris.customerportal.controller.AuthController;
 import com.cris.customerportal.dto.AuthUserDto;
+import com.cris.customerportal.dto.CustomerRegistrationRequest;
+import com.cris.customerportal.dto.GstinRequest;
 import com.cris.customerportal.repository.CustomerRepository;
 import com.cris.customerportal.repository.JdbcPortalUserLookupRepository;
 import org.junit.jupiter.api.Test;
@@ -16,10 +18,12 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.sql.DataSource;
+import javax.validation.Validation;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -173,6 +177,109 @@ class CustomerServiceImplTest {
             "panNumber", "APEPA6196G"
         )));
         assertTrue(emailedBody(mailSender).contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: MSBC"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_emailsSqlNullForEmptyCityInBothCustomerSections() throws SQLException {
+        String[] cityValues = { null, "", "   ", "null" };
+        for (String codeType : new String[] { "global", "handling_agent" }) {
+            String table = "global".equals(codeType) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+            for (String city : cityValues) {
+                DataSource dataSource = mock(DataSource.class);
+                Connection connection = mock(Connection.class);
+                PreparedStatement existsPs = mock(PreparedStatement.class);
+                ResultSet existsRs = mock(ResultSet.class);
+                JavaMailSender mailSender = mock(JavaMailSender.class);
+                when(dataSource.getConnection()).thenReturn(connection);
+                when(connection.prepareStatement(anyString())).thenReturn(existsPs);
+                when(existsPs.executeQuery()).thenReturn(existsRs);
+                when(existsRs.next()).thenReturn(false);
+
+                Map<String, String> formData = new HashMap<>(Map.of(
+                    "codeType", codeType,
+                    "customerCode", "ABCD",
+                    "companyName", "Example Company",
+                    "address", "Main Road",
+                    "operatingDivision", "Dhanbad (DNR)",
+                    "zone", "East Central Railway",
+                    "gstinNumbers", "10ABACA6462C1ZD",
+                    "panNumber", "ABACA6462C"
+                ));
+                if (city != null) formData.put("city", city);
+
+                service(dataSource, mailSender).registerNewEntryJDBC(formData);
+
+                String body = emailedBody(mailSender);
+                assertTrue(body.contains("INSERT INTO " + table), body);
+                String citySql = "global".equals(codeType)
+                    ? "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE"
+                    : "'MAIN ROAD', NULL, NULL, NULL, NULL, SYSDATE";
+                assertTrue(body.contains(citySql), body);
+                assertFalse(body.contains("'NULL'"), body);
+                verify(connection, never()).prepareStatement(startsWith("INSERT"));
+                verify(existsPs, never()).executeUpdate();
+            }
+        }
+    }
+
+    @Test
+    void registerNewEntryJDBC_trimsAndPreservesProvidedCityInDbaInsert() throws SQLException {
+        for (String codeType : new String[] { "global", "handling_agent" }) {
+            DataSource dataSource = mock(DataSource.class);
+            Connection connection = mock(Connection.class);
+            PreparedStatement existsPs = mock(PreparedStatement.class);
+            ResultSet existsRs = mock(ResultSet.class);
+            JavaMailSender mailSender = mock(JavaMailSender.class);
+            when(dataSource.getConnection()).thenReturn(connection);
+            when(connection.prepareStatement(anyString())).thenReturn(existsPs);
+            when(existsPs.executeQuery()).thenReturn(existsRs);
+            when(existsRs.next()).thenReturn(false);
+
+            service(dataSource, mailSender).registerNewEntryJDBC(new HashMap<>(Map.of(
+                "codeType", codeType,
+                "customerCode", "ABCD",
+                "companyName", "Example Company",
+                "address", "Main Road",
+                "city", "  New Delhi  ",
+                "operatingDivision", "Dhanbad (DNR)",
+                "zone", "East Central Railway",
+                "gstinNumbers", "10ABACA6462C1ZD",
+                "panNumber", "ABACA6462C"
+            )));
+
+            String body = emailedBody(mailSender);
+            String citySql = "global".equals(codeType)
+                ? "'MAIN ROAD','NEW DELHI'"
+                : "'MAIN ROAD', 'NEW DELHI'";
+            assertTrue(body.contains(citySql), body);
+            assertFalse(body.contains("'  NEW DELHI  '"), body);
+        }
+    }
+
+    @Test
+    void customerRegistrationRequest_allowsNullAndBlankCity() {
+        try (javax.validation.ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            javax.validation.Validator validator = factory.getValidator();
+            for (String city : new String[] { null, "", "   " }) {
+                CustomerRegistrationRequest request = new CustomerRegistrationRequest(
+                    "Example Company",
+                    "ABCD",
+                    "Main Road",
+                    city,
+                    "",
+                    List.of(new GstinRequest("Delhi", "10ABACA6462C1ZD")),
+                    "ABACA6462C",
+                    "Dhanbad (DNR)",
+                    "East Central Railway",
+                    null,
+                    null,
+                    "GLOBAL"
+                );
+
+                assertTrue(validator.validate(request).stream()
+                    .noneMatch(violation -> "city".equals(violation.getPropertyPath().toString())));
+            }
+        }
     }
 
     @Test
@@ -350,6 +457,97 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void updateOldCustomerJDBC_emailsSqlNullForEmptyCityInBothCustomerSections() throws SQLException {
+        String[] cityValues = { null, "", "   ", "null" };
+        for (String codeType : new String[] { "global", "handling_agent" }) {
+            String table = "global".equals(codeType) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+            for (String city : cityValues) {
+                DataSource dataSource = mock(DataSource.class);
+                Connection connection = mock(Connection.class);
+                PreparedStatement lookupPs = mock(PreparedStatement.class);
+                ResultSet lookupRs = mock(ResultSet.class);
+                JavaMailSender mailSender = mock(JavaMailSender.class);
+                when(dataSource.getConnection()).thenReturn(connection);
+                when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+                when(lookupPs.executeQuery()).thenReturn(lookupRs);
+                when(lookupRs.next()).thenReturn(true);
+                when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
+                when(lookupRs.getString("MAVHNDAGNTCODE")).thenReturn("ABCD");
+                when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S EXAMPLE COMPANY");
+                when(lookupRs.getString("MAVHNDAGNTNAME")).thenReturn("M/S EXAMPLE COMPANY");
+                when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("MAIN ROAD");
+                when(lookupRs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("MAIN ROAD");
+                when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("ABACA6462C");
+                when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("10ABACA6462C1ZD");
+                when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("PATNA");
+                when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("PATNA");
+
+                Map<String, String> formData = new HashMap<>(Map.of(
+                    "codeType", codeType,
+                    "customerCode", "ABCD",
+                    "companyName", "Example Company",
+                    "address", "Main Road",
+                    "panNumber", "ABACA6462C",
+                    "gstinNumbers", "10ABACA6462C1ZD"
+                ));
+                if (city != null) formData.put("city", city);
+
+                service(dataSource, mailSender).updateOldCustomerJDBC(formData);
+
+                String body = emailedBody(mailSender);
+                assertTrue(body.contains("UPDATE " + table), body);
+                assertTrue(body.contains("CITYNAME = NULL"), body);
+                assertFalse(body.contains("CITYNAME = 'NULL'"), body);
+                verify(lookupPs, never()).executeUpdate();
+                verify(connection, never()).prepareStatement(startsWith("UPDATE"));
+            }
+        }
+    }
+
+    @Test
+    void updateOldCustomerJDBC_trimsAndPreservesProvidedCityInBothCustomerSections() throws SQLException {
+        for (String codeType : new String[] { "global", "handling_agent" }) {
+            String table = "global".equals(codeType) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+            DataSource dataSource = mock(DataSource.class);
+            Connection connection = mock(Connection.class);
+            PreparedStatement lookupPs = mock(PreparedStatement.class);
+            ResultSet lookupRs = mock(ResultSet.class);
+            JavaMailSender mailSender = mock(JavaMailSender.class);
+            when(dataSource.getConnection()).thenReturn(connection);
+            when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+            when(lookupPs.executeQuery()).thenReturn(lookupRs);
+            when(lookupRs.next()).thenReturn(true);
+            when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
+            when(lookupRs.getString("MAVHNDAGNTCODE")).thenReturn("ABCD");
+            when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S EXAMPLE COMPANY");
+            when(lookupRs.getString("MAVHNDAGNTNAME")).thenReturn("M/S EXAMPLE COMPANY");
+            when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("MAIN ROAD");
+            when(lookupRs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("MAIN ROAD");
+            when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("ABACA6462C");
+            when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("10ABACA6462C1ZD");
+            when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("PATNA");
+            when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("PATNA");
+
+            service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+                "codeType", codeType,
+                "customerCode", "ABCD",
+                "companyName", "Example Company",
+                "address", "Main Road",
+                "city", "  New Delhi  ",
+                "panNumber", "ABACA6462C",
+                "gstinNumbers", "10ABACA6462C1ZD"
+            ));
+
+            String body = emailedBody(mailSender);
+            assertTrue(body.contains("UPDATE " + table), body);
+            assertTrue(body.contains("CITYNAME = 'NEW DELHI'"), body);
+            assertFalse(body.contains("CITYNAME = '  NEW DELHI  '"), body);
+            verify(lookupPs, never()).executeUpdate();
+            verify(connection, never()).prepareStatement(startsWith("UPDATE"));
+        }
+    }
+
+    @Test
     void updateOldGlobalCustomer_doesNotPrefixAnUnchangedCompanyNameWhenAnotherFieldChanges() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
@@ -504,10 +702,10 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRSHIP VALUES ('AB12', 'M/S O''BRIEN OWNERSHIP', NULL, 'Y', SYSDATE, NULL);"
+            "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);"
         ));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES ('PT34', 'M/S PARTY & CO');"
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('PT34','M/S PARTY & CO');"
         ));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP ("));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY ("));
@@ -726,22 +924,28 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaSqlEmailUsesAuthenticatedUserIdAndEmailInFooter() {
+    void dbaSqlEmailUsesDatabaseContactDetailsForAuthenticatedUserInFooter() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
-        when(userLookupRepository.findUserId("RAILUSER")).thenReturn(java.util.Optional.of("DBUSER"));
+        when(userLookupRepository.findUserContactDetails("RAILUSER")).thenReturn(java.util.Optional.of(
+            new JdbcPortalUserLookupRepository.UserContactDetails(
+                "DBUSER", "database.user@example.org", "9910303868")));
         DbaEmailService emailService =
             new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.getSession(true).setAttribute(
             AuthController.AUTH_SESSION_KEY,
-            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "rail.user@example.org", "9771429950"));
+            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "stale@example.org", "9000000000"));
         request.getSession(false).setAttribute("CURRENT_OPERATING_DIVISION", "Nagpur (NGP)");
         ServletRequestAttributes requestAttributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(requestAttributes);
 
         try {
-            emailService.sendDbaSqlEmail("INSERT", "INSERT INTO TEST_TABLE VALUES ('A');");
+            emailService.sendDbaSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "TEST_TABLE", "A", "INSERT INTO TEST_TABLE VALUES ('A');",
+                    "RAILUSER", "submitted@example.org")
+            ));
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -749,8 +953,8 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "UserID: DBUSER\nEmail ID: rail.user@example.org\nPhone Number: 9771429950"));
-        verify(userLookupRepository).findUserId("RAILUSER");
+            "UserID: DBUSER\nEmail ID: database.user@example.org\nPhone Number: 9910303868"));
+        verify(userLookupRepository).findUserContactDetails("RAILUSER");
     }
 
     @Test

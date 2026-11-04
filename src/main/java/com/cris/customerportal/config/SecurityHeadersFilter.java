@@ -13,7 +13,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 public class SecurityHeadersFilter implements Filter {
 
     @Override
@@ -42,4 +42,3 @@ public class SecurityHeadersFilter implements Filter {
         // No-op destruction
     }
 }
-

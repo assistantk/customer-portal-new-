@@ -29,7 +29,8 @@ public class CustomerController {
     }
 
     private String sanitizeErrorMessage(String prefix, Exception e, String fallback) {
-        LOGGER.error(prefix + ": {}", e.getMessage(), e);
+        LOGGER.error(prefix + ": {} stackTrace={}",
+                DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
         String msg = e.getMessage();
         if (msg == null || msg.trim().isEmpty()) {
             return fallback;
@@ -134,7 +135,7 @@ public class CustomerController {
             LOGGER.info("New generate code succeeded: code={}", code);
             return ResponseEntity.ok(r);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("New generate code rejected: {}", e.getMessage());
+            LOGGER.warn("New generate code rejected: {}", DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -157,13 +158,13 @@ public class CustomerController {
             body.put("customerCode", code);
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("New register validation failed: {}", e.getMessage());
+            LOGGER.warn("New register validation failed: {}", DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         } catch (ResourceAlreadyExistsException e) {
-            LOGGER.warn("New register conflict: {}", e.getMessage());
+            LOGGER.warn("New register conflict: {}", DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -190,13 +191,15 @@ public class CustomerController {
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("Old customer update validation failed for code={}: {}", customerCode, e.getMessage());
+            LOGGER.warn("Old customer update validation failed for code={}: {}",
+                    customerCode, DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(body);
         } catch (ResourceNotFoundException e) {
-            LOGGER.warn("Old customer update not found for code={}: {}", customerCode, e.getMessage());
+            LOGGER.warn("Old customer update not found for code={}: {}",
+                    customerCode, DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -268,7 +271,8 @@ public class CustomerController {
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("Ownership save validation failed for code={}: {}", code, e.getMessage());
+            LOGGER.warn("Ownership save validation failed for code={}: {}",
+                    code, DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -300,7 +304,7 @@ public class CustomerController {
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("Ownership submit validation failed: {}", e.getMessage());
+            LOGGER.warn("Ownership submit validation failed: {}", DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());
@@ -363,7 +367,8 @@ public class CustomerController {
             body.put("message", "Request email sent to DBA. Database changes are pending DBA execution.");
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException e) {
-            LOGGER.warn("Ownership party save validation failed for code={}: {}", code, e.getMessage());
+            LOGGER.warn("Ownership party save validation failed for code={}: {}",
+                    code, DataMaskingUtil.maskSensitive(e.getMessage()));
             Map<String, Object> body = new HashMap<>();
             body.put("success", false);
             body.put("message", e.getMessage());

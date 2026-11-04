@@ -102,7 +102,8 @@ Credential validation uses `RMS_API_BASE_URL` (default `http://10.60.201.192:710
 
 Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle datasource product/current schema, eligibility rejection reason, password-comparison outcome, and session creation without logging identifiers, passwords, or hash values.
 
-DBA request emails resolve the footer `UserID` by matching the authenticated session user ID to `TMS3T.AEM_USER.AAVUSERID`; they do not use the selected operating-division designation as the email user ID.
+DBA request emails resolve the footer `UserID`, Email ID, and Phone Number from the authenticated user's matching `TMS3T.AEM_USER` row (`AAVUSERID`, `AAVEMAILID`, and `AAVPHONENO`); they do not use session/request contact fields or the selected operating-division designation as the email user ID.
+City is optional in Global Customer, Handling Agent, Ownership Code, and customer registration/update forms. For Global Customer and Handling Agent DBA INSERT/UPDATE requests, an absent, blank, whitespace-only, or case-insensitive `null` city is rendered as the SQL `NULL` literal; populated city values are trimmed before the DBA email is generated.
 
 The admin Delete Request page offers only **Global Code** and **Handling Agent Code**. Global Code verification uses `MEMGLBLCUST.MAVGLBLCUSTCODE`; Handling Agent Code verification uses `MEMGLBLHNDGAGNT.MAVHNDGAGNTCODE`. The page requires the verified company name to be confirmed before emailing the matching DELETE SQL to the DBA. The application does not execute these DELETE statements; the DBA reviews and executes them manually.
 
@@ -160,6 +161,8 @@ Deploy both WARs independently to the same Managed Server or cluster:
 
 The Angular production base href is `/FreightCodeWeb/`, and its production API base is `/FreightCodeApi/api`. The frontend WAR has its own `WEB-INF/weblogic.xml`; the backend context is set in `src/main/webapp/WEB-INF/weblogic.xml`. Do not set `server.servlet.context-path` to a competing value in Spring configuration.
 
+OCR runs in the browser. The frontend WAR maps `.wasm`, `.mjs`, and `.traineddata` to the required content types, and the WAR build verifies the Tesseract.js and PDF.js runtime assets are included. When diagnosing deployed OCR, confirm those asset URLs under `/FreightCodeWeb/assets/` return successfully with the expected content types.
+
 Angular uses hash URLs (for example `/FreightCodeWeb/#/login`, `/FreightCodeWeb/#/register`). The server only needs to serve the frontend context's `index.html`; it does not need SPA rewrite rules.
 
 ### Production smoke checks
@@ -191,7 +194,7 @@ Spring Boot 2.7.12 uses Spring Framework 5.3, Java 8-compatible bytecode, and th
 
 For readable Unicode logs on WebLogic, configure the WebLogic server JVM startup options with `-Dfile.encoding=UTF-8` and configure the Windows server console code page with `chcp 65001` when applicable. On PowerShell, set `[Console]::InputEncoding` and `[Console]::OutputEncoding` to `[System.Text.UTF8Encoding]::new()` before starting WebLogic. These are server/terminal settings and should not be added to the WAR or `weblogic.xml`; the application Logback console and file encoders already use UTF-8.
 
-The backend WAR writes `FreightCodeLog.log` and `FreightCodeError.log` under `/switch/Application_Logs/FreightCodeLog` by default. Logback creates the final directory when the server user can write to `/switch/Application_Logs`. Rolling archives are compressed by date and index at 20 MB, retained for 30 days, and capped at 1 GB (main log) / 200 MB (error log). Startup fails with a clear diagnostic if the directory or active log files cannot be created or written. Timestamps use the server JVM's configured timezone; set `-Duser.timezone=Asia/Kolkata` in the server startup options only if the host should use IST.
+The backend WAR writes `FreightCodeLog.log`, `FreightCodeError.log`, `Application.log`, and lazily-created class-specific logs under `/switch/Application_Logs/FreightCodeLog` by default. Logback creates the final directory and category subdirectories when the server user can write to `/switch/Application_Logs`. Rolling archives are compressed by date and index at 20 MB, retained for 30 days, and capped by the configured size limits. Startup fails with a clear diagnostic if the directory, main log, or class-specific appender cannot be created or written. Timestamps use the server JVM's configured timezone; set `-Duser.timezone=Asia/Kolkata` in the server startup options only if the host should use IST.
 
 Before deploying, have the server administrator identify the actual Tomcat/WebLogic service account and grant it access to the parent directory. For example, replace `APP_USER` and `APP_GROUP` with the service account and group:
 
@@ -249,6 +252,12 @@ The backend uses a production-ready SLF4J + Logback configuration with contextua
    - Filtered with `ThresholdFilter` set strictly to `ERROR`.
    - Captures exceptions and critical system failures.
    - Rolled daily and on reaching 20 MB: `FreightCodeError.%d{yyyy-MM-dd}.%i.log.gz` (30 days history, 200 MB cap).
+4. **Per-class rolling files (`CLASS_FILES`):**
+   - Sifts application log events by their Java logger name and creates a class log on that class's first event; it does not pre-create empty files.
+   - Routes common packages to `Controllers/`, `Services/`, `Repositories/`, `DAO/`, `Configuration/`, `Security/`, `DTO/`, `Entities/`, and `Exceptions/`. Other framework logs go to `Application.log`.
+   - Public methods crossing Spring proxy boundaries in controllers, services, repositories, audit, exception, and configuration components log sanitized arguments, result summaries, status, duration, and sanitized exception stack traces.
+   - Every class using its own SLF4J logger is routed to its own destination. DTOs, entities, exceptions without log calls, static/private helper methods, and self-invoked methods that do not cross a Spring proxy do not emit synthetic method-entry logs; no class-specific file appears unless that class logs.
+   - Each class log rolls by date or at 20 MB and retains up to 30 days. Override using `CLASS_LOG_MAX_SIZE`, `CLASS_LOG_MAX_HISTORY`, `CLASS_LOG_TOTAL_SIZE_CAP`, `CLASS_LOG_MAX_OPEN_FILES`, and `CLASS_LOG_TIMEOUT` (a Logback duration such as `30 minutes`; or the matching `logging.class-file.*` properties).
 
 ### Profiles and SQL Logging
 
@@ -265,7 +274,7 @@ The backend uses a production-ready SLF4J + Logback configuration with contextua
 
 ### Security and Masking
 
-- **Sensitive credentials:** Passwords, OTPs, session IDs, and Authorization headers are not logged.
-- **Personally Identifiable Information (PII):** Email addresses are redacted; PAN numbers, GSTINs, Aadhaar numbers, and Indian mobile numbers are masked, exposing only the last 4 characters (e.g. `******1234`).
-- **Multipart files:** File contents and binary streams are skipped entirely; only the original filename, file size in bytes, and content type are logged.
-- **Request Tracing:** Every HTTP request is assigned a unique `UUID` in MDC (`requestId`) and echoed back in the `X-Request-Id` response header.
+- **Sensitive credentials:** Passwords, OTPs, tokens, cookies, session identifiers, and Authorization values are masked. Incoming `X-Request-Id` values are restricted to safe characters and length.
+- **Personally Identifiable Information (PII):** Emails and labeled personal/business fields are redacted; PAN, GSTIN, Aadhaar, and Indian mobile numbers are masked. Collection and map contents are summarized by count.
+- **Multipart files:** File contents, streams, and original filenames are not logged; only file size and content type are included.
+- **Request Tracing:** Every HTTP request is assigned or validated as a safe request ID in MDC (`requestId`) and echoed back in the `X-Request-Id` response header. The ID is retained across controller/service/repository calls.
