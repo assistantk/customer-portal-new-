@@ -19,6 +19,9 @@ public class JdbcPortalUserLookupRepository {
 
     private static final String FIND_USER_ID_SQL =
             "SELECT AAVUSERID FROM TMS3T.AEM_USER WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))";
+    private static final String FIND_USER_CONTACT_DETAILS_SQL =
+            "SELECT AAVUSERID, AAVEMAILID, AAVPHONENO FROM TMS3T.AEM_USER "
+                    + "WHERE UPPER(TRIM(AAVUSERID)) = UPPER(TRIM(?))";
 
     private final DataSource dataSource;
 
@@ -54,6 +57,64 @@ public class JdbcPortalUserLookupRepository {
             log.error("JdbcPortalUserLookupRepository.findUserId: query failed in TMS3T.AEM_USER stackTrace={}",
                     DataMaskingUtil.formatThrowable(exception));
             throw new IllegalStateException("Unable to resolve authenticated user ID from TMS3T.AEM_USER.", exception);
+        }
+    }
+
+    public Optional<UserContactDetails> findUserContactDetails(String authenticatedUserId) {
+        if (authenticatedUserId == null || authenticatedUserId.trim().isEmpty()) {
+            log.debug("JdbcPortalUserLookupRepository.findUserContactDetails: blank identifier, skipping lookup");
+            return Optional.empty();
+        }
+
+        log.debug("JdbcPortalUserLookupRepository.findUserContactDetails: querying TMS3T.AEM_USER");
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(FIND_USER_CONTACT_DETAILS_SQL)) {
+            statement.setString(1, authenticatedUserId.trim());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    log.debug("JdbcPortalUserLookupRepository.findUserContactDetails: no match found in TMS3T.AEM_USER");
+                    return Optional.empty();
+                }
+
+                UserContactDetails details = new UserContactDetails(
+                        resultSet.getString("AAVUSERID"),
+                        resultSet.getString("AAVEMAILID"),
+                        resultSet.getString("AAVPHONENO"));
+                if (resultSet.next()) {
+                    throw new IllegalStateException(
+                            "Multiple TMS3T.AEM_USER rows matched the authenticated user ID.");
+                }
+                return Optional.of(details);
+            }
+        } catch (SQLException exception) {
+            log.error("JdbcPortalUserLookupRepository.findUserContactDetails: query failed in TMS3T.AEM_USER stackTrace={}",
+                    DataMaskingUtil.formatThrowable(exception));
+            throw new IllegalStateException(
+                    "Unable to resolve authenticated user contact details from TMS3T.AEM_USER.", exception);
+        }
+    }
+
+    public static final class UserContactDetails {
+        private final String userId;
+        private final String emailId;
+        private final String phoneNumber;
+
+        public UserContactDetails(String userId, String emailId, String phoneNumber) {
+            this.userId = userId;
+            this.emailId = emailId;
+            this.phoneNumber = phoneNumber;
+        }
+
+        public String userId() {
+            return userId;
+        }
+
+        public String emailId() {
+            return emailId;
+        }
+
+        public String phoneNumber() {
+            return phoneNumber;
         }
     }
 }

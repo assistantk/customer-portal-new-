@@ -151,7 +151,6 @@ public class DbaEmailService {
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
                 + "Kindly execute the attached/below script on rfrn3t and training.\n\n");
         int index = 1;
-        String resolvedEmailId = null;
         for (SqlRequest request : requests) {
             body.append("Operation: ")
                     .append(request.operation().toUpperCase(Locale.ROOT))
@@ -165,9 +164,6 @@ public class DbaEmailService {
             if (request.companyName() != null && !request.companyName().trim().isEmpty()) {
                 body.append("Company Name: ").append(request.companyName()).append('\n');
             }
-            if (request.emailId() != null && !request.emailId().trim().isEmpty()) {
-                resolvedEmailId = request.emailId().trim();
-            }
             body.append("\nSQL QUERY:\n")
                     .append("----------------------------------------")
                     .append(index)
@@ -180,7 +176,7 @@ public class DbaEmailService {
                 body.append('\n');
             }
         }
-        body.append(buildUserFooter(resolvedEmailId));
+        body.append(userFooter());
         message.setText(body.toString());
 
         log.info("DbaEmailService.sendDbaSqlEmail: Initiating DBA notification email (Requests: {})...",
@@ -222,44 +218,21 @@ public class DbaEmailService {
     }
 
     private String userFooter() {
-        return buildUserFooter(null);
-    }
-
-    private String buildUserFooter(String providedEmailId) {
-        String userId = resolveUserIdFromRequest();
-        String emailId = firstNonBlank(providedEmailId, resolveUserEmailFromSession(), resolveUserEmailFromRequest());
-        String phoneNumber = resolveUserPhoneNumberFromSession();
+        JdbcPortalUserLookupRepository.UserContactDetails user = resolveUserContactDetailsFromRequest();
+        String userId = user == null ? null : user.userId();
+        String emailId = user == null ? null : user.emailId();
+        String phoneNumber = user == null ? null : user.phoneNumber();
 
         StringBuilder footer = new StringBuilder();
-        footer.append("UserID: ").append(userId == null ? "Not available" : userId).append("\n");
-        footer.append("Email ID: ").append(emailId == null ? "Not available" : emailId).append("\n");
-        footer.append("Phone Number: ").append(phoneNumber == null ? "Not available" : phoneNumber);
+        footer.append("UserID: ").append(valueOrNotAvailable(userId)).append("\n");
+        footer.append("Email ID: ").append(valueOrNotAvailable(emailId)).append("\n");
+        footer.append("Phone Number: ").append(valueOrNotAvailable(phoneNumber));
         return footer.toString();
     }
 
-    private String resolveUserIdFromRequest() {
+    private JdbcPortalUserLookupRepository.UserContactDetails resolveUserContactDetailsFromRequest() {
         Object requestAttributes = RequestContextHolder.getRequestAttributes();
-        if (!(requestAttributes instanceof ServletRequestAttributes)) {
-            return null;
-        }
-
-        HttpSession session = ((ServletRequestAttributes) requestAttributes)
-                .getRequest()
-                .getSession(false);
-        if (session == null) {
-            return null;
-        }
-        Object sessionUser = session.getAttribute(AuthController.AUTH_SESSION_KEY);
-        if (!(sessionUser instanceof AuthUserDto) || portalUserLookupRepository == null) {
-            return null;
-        }
-
-        return portalUserLookupRepository.findUserId(((AuthUserDto) sessionUser).getUserId()).orElse(null);
-    }
-
-    private String resolveUserEmailFromSession() {
-        Object requestAttributes = RequestContextHolder.getRequestAttributes();
-        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+        if (!(requestAttributes instanceof ServletRequestAttributes) || portalUserLookupRepository == null) {
             return null;
         }
 
@@ -271,54 +244,8 @@ public class DbaEmailService {
             return null;
         }
 
-        AuthUserDto user = (AuthUserDto) sessionUser;
-        return user.getEmail();
-    }
-
-    private String resolveUserPhoneNumberFromSession() {
-        Object requestAttributes = RequestContextHolder.getRequestAttributes();
-        if (!(requestAttributes instanceof ServletRequestAttributes)) {
-            return null;
-        }
-
-        HttpSession session = ((ServletRequestAttributes) requestAttributes)
-                .getRequest()
-                .getSession(false);
-        Object sessionUser = session == null ? null : session.getAttribute(AuthController.AUTH_SESSION_KEY);
-        if (!(sessionUser instanceof AuthUserDto)) {
-            return null;
-        }
-
-        return ((AuthUserDto) sessionUser).getPhoneNumber();
-    }
-
-    private String resolveUserEmailFromRequest() {
-        Object requestAttributes = RequestContextHolder.getRequestAttributes();
-        if (!(requestAttributes instanceof ServletRequestAttributes)) {
-            return null;
-        }
-
-        HttpSession session = ((ServletRequestAttributes) requestAttributes)
-                .getRequest()
-                .getSession(false);
-        if (session == null) {
-            return null;
-        }
-        Object rawEmail = session.getAttribute("CURRENT_USER_EMAIL");
-        if (!(rawEmail instanceof String)) {
-            return null;
-        }
-        String email = ((String) rawEmail).trim();
-        return email.isEmpty() ? null : email;
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.trim().isEmpty()) {
-                return value.trim();
-            }
-        }
-        return null;
+        String authenticatedUserId = ((AuthUserDto) sessionUser).getUserId();
+        return portalUserLookupRepository.findUserContactDetails(authenticatedUserId).orElse(null);
     }
 
     private String valueOrNotAvailable(String value) {

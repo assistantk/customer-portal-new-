@@ -702,10 +702,10 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRSHIP VALUES ('AB12', 'M/S O''BRIEN OWNERSHIP', NULL, 'Y', SYSDATE, NULL);"
+            "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);"
         ));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES ('PT34', 'M/S PARTY & CO');"
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('PT34','M/S PARTY & CO');"
         ));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP ("));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY ("));
@@ -924,22 +924,28 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaSqlEmailUsesAuthenticatedUserIdAndEmailInFooter() {
+    void dbaSqlEmailUsesDatabaseContactDetailsForAuthenticatedUserInFooter() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
-        when(userLookupRepository.findUserId("RAILUSER")).thenReturn(java.util.Optional.of("DBUSER"));
+        when(userLookupRepository.findUserContactDetails("RAILUSER")).thenReturn(java.util.Optional.of(
+            new JdbcPortalUserLookupRepository.UserContactDetails(
+                "DBUSER", "database.user@example.org", "9910303868")));
         DbaEmailService emailService =
             new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.getSession(true).setAttribute(
             AuthController.AUTH_SESSION_KEY,
-            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "rail.user@example.org", "9771429950"));
+            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "stale@example.org", "9000000000"));
         request.getSession(false).setAttribute("CURRENT_OPERATING_DIVISION", "Nagpur (NGP)");
         ServletRequestAttributes requestAttributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(requestAttributes);
 
         try {
-            emailService.sendDbaSqlEmail("INSERT", "INSERT INTO TEST_TABLE VALUES ('A');");
+            emailService.sendDbaSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "TEST_TABLE", "A", "INSERT INTO TEST_TABLE VALUES ('A');",
+                    "RAILUSER", "submitted@example.org")
+            ));
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -947,8 +953,8 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "UserID: DBUSER\nEmail ID: rail.user@example.org\nPhone Number: 9771429950"));
-        verify(userLookupRepository).findUserId("RAILUSER");
+            "UserID: DBUSER\nEmail ID: database.user@example.org\nPhone Number: 9910303868"));
+        verify(userLookupRepository).findUserContactDetails("RAILUSER");
     }
 
     @Test

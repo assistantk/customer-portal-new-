@@ -707,10 +707,10 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRSHIP VALUES ("
-      + formatSqlValue(normalizedCode) + ", "
+  return "INSERT INTO MEMWGONOWNRSHIP VALUES("
+      + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
-      + ", NULL, 'Y', SYSDATE, NULL);";
+      + ",NULL,'Y',SYSDATE,NULL);";
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
@@ -811,8 +811,8 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnershipParty(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRPRTY VALUES ("
-      + formatSqlValue(normalizedCode) + ", "
+  return "INSERT INTO MEMWGONOWNRPRTY VALUES("
+      + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(partyDesc)) + ");";
  }
 
