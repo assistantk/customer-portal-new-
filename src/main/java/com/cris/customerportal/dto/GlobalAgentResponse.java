@@ -14,6 +14,7 @@ public class GlobalAgentResponse {
     private String centBlng;
     private String pcoCode;
     private String edMndFlag;
+    private String division;
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
@@ -50,4 +51,7 @@ public class GlobalAgentResponse {
 
     public String getEdMndFlag() { return edMndFlag; }
     public void setEdMndFlag(String edMndFlag) { this.edMndFlag = edMndFlag; }
+
+    public String getDivision() { return division; }
+    public void setDivision(String division) { this.division = division; }
 }

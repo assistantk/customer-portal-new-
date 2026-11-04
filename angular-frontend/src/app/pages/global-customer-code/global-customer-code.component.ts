@@ -7,6 +7,7 @@ import { generateCustomerCode } from '../../services/customer-code-generator';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 export interface GlobalCodeForm {
   customerCode: string;
@@ -48,6 +49,7 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   styleUrls: ['./global-customer-code.component.css']
 })
 export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   form: GlobalCodeForm = { ...blankForm };
   errors: Record<string, string> = {};
   notice = '';

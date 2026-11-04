@@ -2,6 +2,7 @@ import { Component, OnInit } from "@angular/core";
 import { FormBuilder, FormGroup, Validators } from "@angular/forms";
 import { Router } from "@angular/router";
 import { AuthService } from "../../services/auth.service";
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -27,6 +28,7 @@ function checkPassword(password: string): string {
   styleUrls: ["./signup.component.css"]
 })
 export class SignupComponent implements OnInit {
+  readonly imageAssets = IMAGE_ASSETS;
   form!: FormGroup;
   showPassword = false;
   showConfirmPassword = false;

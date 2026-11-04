@@ -7,6 +7,7 @@ import { generateCustomerCode } from '../../services/customer-code-generator';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 export interface HandlingAgentForm {
   agentCompanyName: string;
@@ -49,6 +50,7 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   styleUrls: ['./handling-agent-code.component.css']
 })
 export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   form: HandlingAgentForm = { ...blankForm };
   errors: Record<string, string> = {};
   notice = '';

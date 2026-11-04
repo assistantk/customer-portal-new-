@@ -266,6 +266,22 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         expect.objectContaining({ city: '   ' }),
         expect.any(Array)
       );
+      expect(customerServiceMock.updateOldCustomerJDBC.mock.calls[0][0].operatingDivision).toBeUndefined();
+    });
+
+    it('sends the division only after the user changes it', () => {
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true }));
+      component.chooseDivision('Mumbai (CSTM)');
+
+      component.submit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pincode: '400001',
+          operatingDivision: 'Mumbai (CSTM)'
+        }),
+        expect.any(Array)
+      );
     });
 
     it('loads the legacy customer details after entering a four-character code', () => {
@@ -275,7 +291,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         city: 'Delhi',
         pincode: '110001',
         panNumber: 'ABCDE1234F',
-        gstinNumbers: '07ABCDE1234F1Z5'
+        gstinNumbers: '07ABCDE1234F1Z5',
+        division: 'SR.DCM/RNY'
       }));
 
       vi.useFakeTimers();
@@ -287,6 +304,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.address).toBe('Railway Road');
       expect(component.form.city).toBe('Delhi');
       expect(component.form.pincode).toBe('110001');
+      expect(component.form.zone).toBe('Northeast Frontier Railway (NFR)');
+      expect(component.form.operatingDivision).toBe('Rangiya (RNY)');
       expect(component.form.panNumber).toBe('ABCDE1234F');
       expect(component.verifiedCustomerCode).toBe('SAEB');
       expect(component.lookupDone).toBe(true);
@@ -789,19 +808,19 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   describe('Delete Request Mode', () => {
     it('shows the selected code-type logo and switches immediately between both delete options', () => {
       component.mode = 'delete';
-      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogo).toBe('assets/portal-logo.webp');
       expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
       component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
       expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
 
       component.onDeleteCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
       expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
 
       component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     });
 
     it('shows a missing-logo fallback and retries the image after changing code type', () => {
@@ -816,7 +835,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       component.onDeleteCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
 
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
       expect(component.deleteLogoMissing).toBe(false);
     });
 
@@ -867,7 +886,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     it('should default to GLOBAL codeType with Global Customer Code logo in old mode', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogo).toBe('assets/portal-logo.webp');
       expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
@@ -877,31 +896,31 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(component.codeType).toBe('HANDLING_AGENT');
       expect(component.oldCodeType).toBe('HANDLING_AGENT');
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
       expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
 
       // Switch back to GLOBAL
       component.handleOldCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/portal-logo.png');
+      expect(component.currentLogo).toBe('assets/portal-logo.webp');
       expect(component.currentLogoAlt).toBe('Freight Code Generator');
     });
 
     it('should dynamically switch logo when toggling codeType in new mode', () => {
       component.mode = 'new';
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
       expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
 
       component.handleNewCodeTypeChange('HANDLING_AGENT');
       expect(component.codeType).toBe('HANDLING_AGENT');
       expect(component.newCodeType).toBe('HANDLING_AGENT');
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
       expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
 
       component.handleNewCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     });
 
     it('should keep Old User and New Entry codeType independent', () => {
@@ -909,17 +928,17 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       component.handleOldCodeTypeChange('HANDLING_AGENT');
       expect(component.codeType).toBe('HANDLING_AGENT');
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
 
       // Switch to New Entry (default GLOBAL)
       component.mode = 'new';
       expect(component.codeType).toBe('GLOBAL');
-      expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+      expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
 
       // Switch back to Old User (should remain HANDLING_AGENT)
       component.mode = 'old';
       expect(component.codeType).toBe('HANDLING_AGENT');
-      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+      expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     });
   });
 });

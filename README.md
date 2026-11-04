@@ -104,6 +104,7 @@ Backend authentication logs record CAPTCHA outcome, AEM lookup outcome, Oracle d
 
 DBA request emails resolve the footer `UserID`, Email ID, and Phone Number from the authenticated user's matching `TMS3T.AEM_USER` row (`AAVUSERID`, `AAVEMAILID`, and `AAVPHONENO`); they do not use session/request contact fields or the selected operating-division designation as the email user ID.
 City is optional in Global Customer, Handling Agent, Ownership Code, and customer registration/update forms. For Global Customer and Handling Agent DBA INSERT/UPDATE requests, an absent, blank, whitespace-only, or case-insensitive `null` city is rendered as the SQL `NULL` literal; populated city values are trimmed before the DBA email is generated.
+Old Global Customer and Handling Agent updates compare the submitted values with the current Oracle record and include only changed mapped fields in the emailed `SET` clause. The supported mapped fields are company name, address, city, pincode, division, PAN, and GSTIN; a request with no differences is rejected with `No changes detected for this record.` Zone, standalone state, email, and mobile have no writable column mapping in the legacy update SQL and are not included.
 
 The admin Delete Request page offers only **Global Code** and **Handling Agent Code**. Global Code verification uses `MEMGLBLCUST.MAVGLBLCUSTCODE`; Handling Agent Code verification uses `MEMGLBLHNDGAGNT.MAVHNDGAGNTCODE`. The page requires the verified company name to be confirmed before emailing the matching DELETE SQL to the DBA. The application does not execute these DELETE statements; the DBA reviews and executes them manually.
 
@@ -162,6 +163,8 @@ Deploy both WARs independently to the same Managed Server or cluster:
 The Angular production base href is `/FreightCodeWeb/`, and its production API base is `/FreightCodeApi/api`. The frontend WAR has its own `WEB-INF/weblogic.xml`; the backend context is set in `src/main/webapp/WEB-INF/weblogic.xml`. Do not set `server.servlet.context-path` to a competing value in Spring configuration.
 
 OCR runs in the browser. The frontend WAR maps `.wasm`, `.mjs`, and `.traineddata` to the required content types, and the WAR build verifies the Tesseract.js and PDF.js runtime assets are included. When diagnosing deployed OCR, confirm those asset URLs under `/FreightCodeWeb/assets/` return successfully with the expected content types.
+
+Frequently used raster UI assets are served as WebP and centrally listed in `angular-frontend/src/app/config/image-assets.ts`. An Angular app initializer preloads the CRIS logo and images for the active route; it does not fetch every page's large logo on every startup. The frontend descriptor maps `.webp` to `image/webp`, and the WAR build validates that mapping and the converted assets. Since WebLogic's static-resource response headers are configured outside this static WAR descriptor, configure WebLogic or the fronting web server to return a short-lived `Cache-Control: public, max-age=86400` for `/FreightCodeWeb/assets/*.webp`; do not mark these stable filenames `immutable`.
 
 Angular uses hash URLs (for example `/FreightCodeWeb/#/login`, `/FreightCodeWeb/#/register`). The server only needs to serve the frontend context's `index.html`; it does not need SPA rewrite rules.
 
