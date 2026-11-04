@@ -6,6 +6,7 @@ import { NotificationService } from '../../services/notification.service';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
+import { IMAGE_ASSETS } from '../../config/image-assets';
 
 export interface OwnershipForm {
   // Section 1
@@ -54,6 +55,7 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   styleUrls: ['./ownership-code.component.css']
 })
 export class OwnershipCodeComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   form: OwnershipForm = { ...blankForm };
   errors: Record<string, string> = {};
   notice = '';

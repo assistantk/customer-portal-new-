@@ -114,8 +114,8 @@
             <!-- Center: Portal Logo -->
             <div class="portal-logo-wrap railways-banner">
                 <img *ngIf="mode !== 'ownership' && currentLogo && !(mode === 'delete' && deleteLogoMissing)"
-                    [src]="currentLogo" [alt]="currentLogoAlt" class="portal-logo" (error)="onCurrentLogoError()" />
-                <img *ngIf="mode === 'ownership' && !ownershipLogoMissing" src="assets/ownr_transparent.png" alt="Ownership Portal" class="portal-logo" (error)="ownershipLogoMissing = true" />
+                    [src]="currentLogo" [alt]="currentLogoAlt" class="portal-logo" width="400" height="400" loading="eager" decoding="async" (error)="onCurrentLogoError()" />
+                <img *ngIf="mode === 'ownership' && !ownershipLogoMissing" [src]="imageAssets.ownershipCode" alt="Ownership Portal" class="portal-logo" width="400" height="267" loading="eager" decoding="async" (error)="ownershipLogoMissing = true" />
                 <div *ngIf="mode === 'ownership' && ownershipLogoMissing" class="portal-logo portal-logo-fallback" aria-label="Ownership logo unavailable">OWNERSHIP</div>
                 <div *ngIf="mode === 'delete' && deleteLogoMissing"
                     class="portal-logo portal-logo-fallback" aria-label="Code type logo unavailable">

@@ -23,7 +23,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -213,7 +215,7 @@ class CustomerServiceImplTest {
                 assertTrue(body.contains("INSERT INTO " + table), body);
                 String citySql = "global".equals(codeType)
                     ? "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE"
-                    : "'MAIN ROAD', NULL, NULL, NULL, NULL, SYSDATE";
+                    : "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE";
                 assertTrue(body.contains(citySql), body);
                 assertFalse(body.contains("'NULL'"), body);
                 verify(connection, never()).prepareStatement(startsWith("INSERT"));
@@ -250,7 +252,7 @@ class CustomerServiceImplTest {
             String body = emailedBody(mailSender);
             String citySql = "global".equals(codeType)
                 ? "'MAIN ROAD','NEW DELHI'"
-                : "'MAIN ROAD', 'NEW DELHI'";
+                : "'MAIN ROAD','NEW DELHI'";
             assertTrue(body.contains(citySql), body);
             assertFalse(body.contains("'  NEW DELHI  '"), body);
         }
@@ -377,9 +379,9 @@ class CustomerServiceImplTest {
         ));
 
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', "
-                + "'22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', NULL, NULL, NULL, SYSDATE, "
-                + "'SR.DCM/MDU', NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K');"
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED',"
+                + "'22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,"
+                + "'SR.DCM/MDU',NULL,'09AAACJ2055K1ZJ','AAACJ2055K');"
         ));
         assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
         verify(existsPs, never()).executeUpdate();
@@ -410,10 +412,10 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         String body = message.getValue().getText();
         assertTrue(body.contains(
-            "VALUES ('RINK', 'M/S RINKU BORUAH', 'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501', "
-                + "'TEZPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/RNY', NULL, '18AMKPB8046M2ZM', 'AMKPB8046M');"
+            "VALUES('RINK','M/S RINKU BORUAH','NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501',"
+                + "'TEZPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/RNY',NULL,'18AMKPB8046M2ZM','AMKPB8046M');"
         ));
-        assertTrue(body.contains("VALUES ('EXISTING', 'M/S ALREADY PREFIXED');"));
+        assertTrue(body.contains("VALUES('EXISTING','M/S ALREADY PREFIXED');"));
         assertFalse(body.contains("'M/S M/S"));
     }
 
@@ -619,6 +621,125 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void updateOldCustomerJDBC_includesOnlyChangedMappedFieldsForBothTables() throws SQLException {
+        Map<String, Map<String, String>> cases = new LinkedHashMap<>();
+        cases.put("company name", Map.of(
+            "companyName", "M/S NEW COMPANY",
+            "expected", "MAVGLBLCUSTNAME = 'M/S NEW COMPANY'"));
+        cases.put("address", Map.of(
+            "address", "NEW ROAD,MARKET AREA",
+            "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA'"));
+        cases.put("GSTIN", Map.of(
+            "gstinNumbers", "29AAAAA1111A1Z5",
+            "expected", "MAVCUSTGSTNUMB = '29AAAAA1111A1Z5'"));
+        cases.put("PAN", Map.of(
+            "panNumber", "BBBBB2222B",
+            "expected", "MAVCUSTPANNUMB = 'BBBBB2222B'"));
+        cases.put("city", Map.of(
+            "city", "Mumbai",
+            "expected", "CITYNAME = 'MUMBAI'"));
+        cases.put("pincode", Map.of(
+            "pincode", "400001",
+            "expected", "MAVPCOCODE = '400001'"));
+        cases.put("division", Map.of(
+            "operatingDivision", "Mumbai (CSTM)",
+            "expected", "MAVIMPLREMK = 'SR.DCM/CSTM'"));
+        cases.put("multiple fields", Map.of(
+            "address", "NEW ROAD,MARKET AREA",
+            "panNumber", "BBBBB2222B",
+            "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA',\nMAVCUSTPANNUMB = 'BBBBB2222B'"));
+
+        for (String codeType : Arrays.asList("global", "handling_agent")) {
+            String table = "global".equals(codeType) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
+            String nameColumn = "global".equals(codeType) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
+            String addressColumn = "global".equals(codeType) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
+            for (Map.Entry<String, Map<String, String>> testCase : cases.entrySet()) {
+                DataSource dataSource = mock(DataSource.class);
+                Connection connection = mock(Connection.class);
+                PreparedStatement lookupPs = mock(PreparedStatement.class);
+                ResultSet lookupRs = mock(ResultSet.class);
+                JavaMailSender mailSender = mock(JavaMailSender.class);
+                when(dataSource.getConnection()).thenReturn(connection);
+                when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+                when(lookupPs.executeQuery()).thenReturn(lookupRs);
+                when(lookupRs.next()).thenReturn(true);
+                Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
+                when(lookupRs.getString(anyString()))
+                    .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+
+                Map<String, String> formData = new HashMap<>(Map.of(
+                    "codeType", codeType,
+                    "customerCode", "AB12",
+                    "companyName", "M/S OLD COMPANY",
+                    "address", "OLD ROAD,MARKET AREA",
+                    "city", "PATNA",
+                    "pincode", "800001",
+                    "panNumber", "AAAAA1111A",
+                    "gstinNumbers", "27AAAAA1111A1Z5",
+                    "operatingDivision", "Danapur (DNR)"
+                ));
+                formData.putAll(testCase.getValue());
+
+                service(dataSource, mailSender).updateOldCustomerJDBC(formData);
+
+                String body = emailedBody(mailSender);
+                String expectedAssignments = testCase.getValue().get("expected")
+                    .replace("MAVGLBLCUSTNAME", nameColumn)
+                    .replace("MAVGLBLCUSTADDRTEXT", addressColumn)
+                    .replace("MAVCUSTGSTNUMB", "MAVCUSTGSTNUMB")
+                    .replace("CITYNAME", "global".equals(codeType) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME");
+                assertTrue(body.contains("UPDATE " + table + " SET\n" + expectedAssignments
+                    + "\nWHERE "), () -> codeType + " " + testCase.getKey() + ":\n" + body);
+                verify(lookupPs, never()).executeUpdate();
+                verify(connection, never()).prepareStatement(startsWith("UPDATE"));
+            }
+        }
+    }
+
+    @Test
+    void updateOldCustomerJDBC_rejectsNoChangeAndRestoredValuesForBothTables() throws SQLException {
+        for (String codeType : Arrays.asList("global", "handling_agent")) {
+            for (boolean restoreOriginal : Arrays.asList(false, true)) {
+                DataSource dataSource = mock(DataSource.class);
+                Connection connection = mock(Connection.class);
+                PreparedStatement lookupPs = mock(PreparedStatement.class);
+                ResultSet lookupRs = mock(ResultSet.class);
+                JavaMailSender mailSender = mock(JavaMailSender.class);
+                when(dataSource.getConnection()).thenReturn(connection);
+                when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+                when(lookupPs.executeQuery()).thenReturn(lookupRs);
+                when(lookupRs.next()).thenReturn(true);
+                Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD, MARKET AREA");
+                when(lookupRs.getString(anyString()))
+                    .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+
+                Map<String, String> unchanged = Map.of(
+                    "codeType", codeType,
+                    "customerCode", "AB12",
+                    "companyName", restoreOriginal ? "TEMP COMPANY" : "  m/s old company ",
+                    "address", restoreOriginal ? "TEMP ROAD" : " old road, market area ",
+                    "city", " patna ",
+                    "pincode", " 800001 ",
+                    "panNumber", " aaaaa1111a ",
+                    "gstinNumbers", "27 AAA AA1111A1Z5",
+                    "operatingDivision", "Danapur (DNR)"
+                );
+                Map<String, String> submitted = new HashMap<>(unchanged);
+                if (restoreOriginal) {
+                    submitted.put("companyName", "M/S OLD COMPANY");
+                    submitted.put("address", "OLD ROAD, MARKET AREA");
+                }
+
+                IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> service(dataSource, mailSender).updateOldCustomerJDBC(submitted));
+                assertEquals("No changes detected for this record.", error.getMessage());
+                verify(mailSender, never()).send(any(SimpleMailMessage.class));
+            }
+        }
+    }
+
+    @Test
     void ownershipSubmission_updatesExistingCodeInsteadOfInsertingIt() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
@@ -695,27 +816,246 @@ class CustomerServiceImplTest {
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("O'BRIEN OWNERSHIP");
         when(partyRs.next()).thenReturn(false);
         when(partyGlobalRs.next()).thenReturn(true);
-        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("PT34");
-        when(partyGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("PARTY & CO");
+        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(partyGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("O'BRIEN OWNERSHIP");
 
-        service(dataSource, mailSender).submitOwnershipJDBC("AB12", "O'Brien ownership", "PT34", "m/s Party & Co");
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "AB12", "O'Brien ownership", "PT34", "m/s Party & Co");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
             "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);"
         ));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES('PT34','M/S PARTY & CO');"
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');"
         ));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP ("));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY ("));
-        assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
-            + "----------------------------------------1 INSERT---------------------------"));
-        assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRPRTY\nCode: PT34\n\nSQL QUERY:\n"
-            + "----------------------------------------2 INSERT---------------------------"));
+        assertTrue(body.contains(
+            "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: AB12\n\nSQL QUERY:\n"
+                + "----------------------------------------1 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);\n\n"
+                + "----------------------------------------2 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');\n\n"
+        ));
         assertTrue(body.indexOf("MEMWGONOWNRSHIP") < body.indexOf("MEMWGONOWNRPRTY"));
         verify(ownershipLookup, never()).executeUpdate();
         verify(partyLookup, never()).executeUpdate();
+    }
+
+    @Test
+    void saveOwnership_emailsBothInsertStatementsUsingOwnershipValues() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement ownershipGlobalLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        PreparedStatement partyGlobalLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet ownershipGlobalRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        ResultSet partyGlobalRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString()))
+            .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup, partyGlobalLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
+        when(ownershipRs.next()).thenReturn(false);
+        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+        when(partyRs.next()).thenReturn(false);
+        when(partyGlobalRs.next()).thenReturn(true);
+        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+
+        service(dataSource, mailSender).saveOwnershipJDBC(
+            "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: ALPS\n\nSQL QUERY:\n"
+                + "----------------------------------------1 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);\n\n"
+                + "----------------------------------------2 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');\n\n"));
+        verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
+        verify(ownershipLookup, never()).executeUpdate();
+        verify(partyLookup, never()).executeUpdate();
+    }
+
+    @Test
+    void submitOwnership_emailsOwnershipUpdateAndPartyInsertWhenOwnershipAlreadyMatches() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        PreparedStatement partyGlobalLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        ResultSet partyGlobalRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString()))
+            .thenReturn(ownershipLookup, partyLookup, partyGlobalLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ALPS");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC"))
+            .thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
+        when(partyRs.next()).thenReturn(false);
+        when(partyGlobalRs.next()).thenReturn(true);
+        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED",
+            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED");
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, times(1)).send(message.capture());
+        String body = message.getValue().getText();
+        assertTrue(body.contains("UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = "
+            + "'M/S ALPS MINING SERVICES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ALPS';"));
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"));
+        assertTrue(body.indexOf("----------------------------------------1 UPDATE")
+            < body.indexOf("----------------------------------------2 INSERT"));
+        assertTrue(body.indexOf("UPDATE MEMWGONOWNRSHIP")
+            < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
+        assertEquals(1, body.split("UPDATE MEMWGONOWNRSHIP", -1).length - 1);
+        assertEquals(1, body.split("INSERT INTO MEMWGONOWNRPRTY", -1).length - 1);
+    }
+
+    @Test
+    void dbaEmailServiceSendsOneOrderedCombinedOwnershipInsertEmail() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
+        when(userLookupRepository.findUserContactDetails("SREEJU")).thenReturn(java.util.Optional.of(
+            new JdbcPortalUserLookupRepository.UserContactDetails(
+                "SREEJU", "krishnan.sreeju@gmail.com", "9910303868")));
+        DbaEmailService emailService =
+            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.getSession(true).setAttribute(
+            AuthController.AUTH_SESSION_KEY,
+            new AuthUserDto("SREEJU", "Sreeju", "USER", "Y", "stale@example.org", "9000000000"));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        try {
+            emailService.sendDbaSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "MEMWGONOWNRPRTY", "ALPS",
+                    "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"),
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "MEMWGONOWNRSHIP", "ALPS",
+                    "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);")
+            ));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, times(1)).send(message.capture());
+        SimpleMailMessage sentMessage = message.getValue();
+        assertArrayEquals(new String[] { "dba@example.com" }, sentMessage.getTo());
+        assertEquals("Request for INSERT – MEMWGONOWNRSHIP, MEMWGONOWNRPRTY – ALPS", sentMessage.getSubject());
+        assertEquals("Dear DBA Team,\n\n"
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
+                + "Operation: INSERT\n"
+                + "Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\n"
+                + "Code: ALPS\n\n"
+                + "SQL QUERY:\n"
+                + "----------------------------------------1 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);\n\n"
+                + "----------------------------------------2 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');\n\n"
+                + "UserID: SREEJU\n"
+                + "Email ID: krishnan.sreeju@gmail.com\n"
+                + "Phone Number: 9910303868",
+            sentMessage.getText());
+        verify(userLookupRepository).findUserContactDetails("SREEJU");
+    }
+
+    @Test
+    void saveOwnershipParty_emailsBothInsertsWhenOwnershipRecordIsNew() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement ownershipGlobalLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        PreparedStatement partyGlobalLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet ownershipGlobalRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        ResultSet partyGlobalRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString()))
+            .thenReturn(ownershipLookup, ownershipLookup, ownershipGlobalLookup, partyLookup, partyGlobalLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
+        when(ownershipRs.next()).thenReturn(false);
+        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+        when(partyRs.next()).thenReturn(false);
+        when(partyGlobalRs.next()).thenReturn(true);
+        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+
+        service(dataSource, mailSender).saveOwnershipPartyJDBC(
+            "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY"));
+        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP")
+            < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
+        verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void ownershipSubmission_doesNotSendPartialInsertWhenPartyRecordAlreadyExists() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement ownershipGlobalLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet ownershipGlobalRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString()))
+            .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(ownershipRs.next()).thenReturn(false);
+        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ALPS");
+        when(partyRs.next()).thenReturn(true);
+        when(partyRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("AB12");
+        when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S ALPS");
+
+        assertThrows(IllegalArgumentException.class,
+            () -> service(dataSource, mailSender).submitOwnershipJDBC(
+                "AB12", "ALPS", "OTHER", "Other Description"));
+
+        verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
 
     @Test
@@ -1016,6 +1356,28 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void dbaSqlEmailFormatsHandlingAgentInsertWithoutChangingQuotedWhitespace() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        String sql = "INSERT INTO MEMGLBLHNDGAGNT (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) "
+            + "VALUES ('JPPL', 'M/S JINDAL PARADIP PORT LIMITED', "
+            + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142', "
+            + "'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');";
+
+        emailService.sendDbaSqlEmail(List.of(
+            new DbaEmailService.SqlRequest("INSERT", "MEMGLBLHNDGAGNT", "JPPL", sql)
+        ));
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertTrue(message.getValue().getText().contains(
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JPPL','M/S JINDAL PARADIP PORT LIMITED',"
+                + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142',"
+                + "'JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"
+        ));
+    }
+
+    @Test
     void dbaUpdateEmailPrefixesAndNormalizesCompanyNamesWithoutChangingOtherAssignments() {
         assertUpdateEmailSql(
             "MEMGLBLCUST",
@@ -1102,7 +1464,7 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES ('RINK', 'M/S RINKU BORUAH');"));
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES('RINK','M/S RINKU BORUAH');"));
     }
 
     private void assertUpdateEmailSql(String table, String sql, String expectedSql) {
@@ -1334,6 +1696,24 @@ class CustomerServiceImplTest {
         ReflectionTestUtils.setField(service, "dbaEmailService",
             new DbaEmailService(mailSender, "portal@example.com", "dba@example.com"));
         return service;
+    }
+
+    private Map<String, String> originalOldCustomerValues(String address) {
+        Map<String, String> values = new HashMap<>();
+        values.put("MAVGLBLCUSTCODE", "AB12");
+        values.put("MAVHNDAGNTCODE", "AB12");
+        values.put("MAVHNDGAGNTCODE", "AB12");
+        values.put("MAVGLBLCUSTNAME", "M/S OLD COMPANY");
+        values.put("MAVHNDAGNTNAME", "M/S OLD COMPANY");
+        values.put("MAVGLBLCUSTADDRTEXT", address);
+        values.put("MAVHNDAGNTADDRTEXT", address);
+        values.put("MAVGNBLCUSTCITYNAME", "PATNA");
+        values.put("MAVHNDAGNTCITYNAME", "PATNA");
+        values.put("MAVCUSTPANNUMB", "AAAAA1111A");
+        values.put("MAVCUSTGSTNUMB", "27AAAAA1111A1Z5");
+        values.put("MAVPCOCODE", "800001");
+        values.put("MAVIMPLREMK", "SR.DCM/DNR");
+        return values;
     }
 
     private String emailedBody(JavaMailSender mailSender) {

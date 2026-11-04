@@ -42,7 +42,7 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
         <configuration>
           <jvmArguments>-Dfile.encoding=UTF-8</jvmArguments>
-          <skip>true</skip>
+          <!-- <skip>true</skip> -->
         </configuration>
       </plugin>
     </plugins>

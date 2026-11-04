@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AuthService, AuthUserData } from '../services/auth.service';
+import { IMAGE_ASSETS } from '../config/image-assets';
 
 @Component({
   selector: 'app-layout',
@@ -10,6 +11,7 @@ import { AuthService, AuthUserData } from '../services/auth.service';
   styleUrls: ['./layout.component.css']
 })
 export class LayoutComponent implements OnInit, OnDestroy {
+  readonly imageAssets = IMAGE_ASSETS;
   isDrawerOpen = false;
   currentUser: AuthUserData | null = null;
   private userSub!: Subscription;

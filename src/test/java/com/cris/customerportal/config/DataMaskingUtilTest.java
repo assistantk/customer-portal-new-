@@ -36,4 +36,20 @@ class DataMaskingUtilTest {
     void summarizesCollectionsInsteadOfDumpingBusinessRecords() {
         assertEquals("Collection[size=2]", DataMaskingUtil.formatArg(Arrays.asList("first", "second")));
     }
+
+    @Test
+    void masksSqlValuesAndContactDetailsFromEmailBodyLogs() {
+        String body = "Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\n"
+                + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','PRIVATE COMPANY');\n"
+                + "UserID: SREEJU\nEmail ID: user@example.org\nPhone Number: 9910303868";
+
+        String masked = DataMaskingUtil.maskEmailBodyForLog(body);
+
+        org.junit.jupiter.api.Assertions.assertTrue(masked.contains("Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY"));
+        org.junit.jupiter.api.Assertions.assertTrue(masked.contains("VALUES('[REDACTED]','[REDACTED]')"));
+        org.junit.jupiter.api.Assertions.assertFalse(masked.contains("PRIVATE COMPANY"));
+        org.junit.jupiter.api.Assertions.assertFalse(masked.contains("user@example.org"));
+        org.junit.jupiter.api.Assertions.assertFalse(masked.contains("9910303868"));
+        org.junit.jupiter.api.Assertions.assertFalse(masked.contains("SREEJU"));
+    }
 }

@@ -214,6 +214,8 @@ export class CustomerService {
       companyName: payload.companyName,
       address: payload.address,
       city: payload.city || '',
+      pincode: payload.pincode || '',
+      operatingDivision: payload.operatingDivision || undefined,
       email: payload.email,
       mobile: payload.mobile,
       panNumber: payload.panNumber,

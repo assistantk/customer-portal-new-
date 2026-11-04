@@ -21,7 +21,7 @@ describe('DeleteRequestComponent', () => {
   it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
     expect(component.codeType).toBe('');
     expect(component.pageTitle).toBe('Delete Request');
-    expect(component.currentLogo).toBe('assets/portal-logo.png');
+    expect(component.currentLogo).toBe('assets/portal-logo.webp');
     expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
     component.code = 'AEIP';
@@ -35,7 +35,7 @@ describe('DeleteRequestComponent', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
 
     expect(component.pageTitle).toBe('Global Customer Code Deletion Request');
-    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
   });
 
@@ -43,23 +43,23 @@ describe('DeleteRequestComponent', () => {
     component.codeType = 'HANDLING_AGENT';
 
     expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
-    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
   });
 
   it('switches the logo on every selection change and resets image fallback state', () => {
     component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
-    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
 
     component.onLogoError();
     expect(component.logoLoadFailed).toBe(true);
 
     component.onCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
-    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     expect(component.logoLoadFailed).toBe(false);
 
     component.onCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
-    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     expect(component.logoLoadFailed).toBe(false);
   });
 
@@ -71,7 +71,7 @@ describe('DeleteRequestComponent', () => {
 
     expect(component.logoLoadFailed).toBe(true);
     expect(component.code).toBe('AEIP');
-    expect(component.currentLogo).toBe('assets/glbl_transparent.png');
+    expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
   });
 
   it('clears code, company name, messages, and verification when switching code types', () => {
@@ -101,7 +101,7 @@ describe('DeleteRequestComponent', () => {
     expect(component.errorMessage).toBe('');
     expect(component.successMessage).toBe('');
     expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
-    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.png');
+    expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
 
     component.sendRequest();
     expect(customerService.submitDeleteRequest).not.toHaveBeenCalled();
