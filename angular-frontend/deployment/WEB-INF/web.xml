@@ -14,4 +14,16 @@
     <welcome-file-list>
         <welcome-file>index.html</welcome-file>
     </welcome-file-list>
+    <mime-mapping>
+        <extension>wasm</extension>
+        <mime-type>application/wasm</mime-type>
+    </mime-mapping>
+    <mime-mapping>
+        <extension>mjs</extension>
+        <mime-type>application/javascript</mime-type>
+    </mime-mapping>
+    <mime-mapping>
+        <extension>traineddata</extension>
+        <mime-type>application/octet-stream</mime-type>
+    </mime-mapping>
 </web-app>

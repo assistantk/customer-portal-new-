@@ -1,9 +1,11 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize, timeout } from 'rxjs';
+import { finalize, Subscription, timeout } from 'rxjs';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
 import { INDIAN_STATES, divisionsByZone } from '../customer-registration/customer-registration.component';
+import { AuthService } from '../../services/auth.service';
+import { getDivisionFormSelection } from '../../utils/division-codes';
 
 export interface OwnershipForm {
   // Section 1
@@ -74,6 +76,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   ownSection2Source: 'EXISTING_OWNERSHIP_RECORD' | 'NEW_RECORD_FROM_GLOBAL_CUSTOMER' | 'INVALID_CODE' | 'LOOKUP_ERROR' | null = null;
   private ownSection2Timer: any = null;
   private ownSection2ReqId = 0;
+  private divisionSelectionManuallyChanged = false;
+  private userDivisionSubscription?: Subscription;
 
   // Dropdown states
   zoneOpen = false;
@@ -87,18 +91,26 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     private customerService: CustomerService,
     private notificationService: NotificationService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private authService?: AuthService
   ) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+      this.applyLoginDivisionDefault();
+    });
+  }
 
   ngOnDestroy(): void {
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
+    this.userDivisionSubscription?.unsubscribe();
   }
 
   get zones(): string[] {
-    return Object.keys(divisionsByZone);
+    const zones = Object.keys(divisionsByZone);
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision && !zones.includes(loginDivision.zone) ? [...zones, loginDivision.zone] : zones;
   }
 
   get filteredZones(): string[] {
@@ -107,7 +119,25 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   }
 
   get divisions(): string[] {
-    return this.form.zone ? (divisionsByZone[this.form.zone] || []) : [];
+    if (!this.form.zone) return [];
+    const divisions = divisionsByZone[this.form.zone] || [];
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision?.zone === this.form.zone && !divisions.includes(loginDivision.division)
+      ? [...divisions, loginDivision.division]
+      : divisions;
+  }
+
+  private get loginDivisionSelection(): { zone: string; division: string } | undefined {
+    return getDivisionFormSelection(this.authService?.currentUser?.divisionCode, divisionsByZone);
+  }
+
+  private applyLoginDivisionDefault(): void {
+    const selection = this.loginDivisionSelection;
+    if (!this.divisionSelectionManuallyChanged && !this.form.operatingDivision && selection) {
+      this.form.zone = selection.zone;
+      this.form.operatingDivision = selection.division;
+      this.cdr.markForCheck();
+    }
   }
 
   /* ===== Section 1: Ownership Code Lookup ===== */
@@ -250,6 +280,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   }
 
   chooseZone(zone: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
     this.zoneOpen = false;
@@ -268,6 +299,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   }
 
   chooseDivision(div: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];
@@ -282,6 +314,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   /* ===== Reset Form ===== */
   reset(): void {
     this.form = { ...blankForm };
+    this.divisionSelectionManuallyChanged = false;
+    this.applyLoginDivisionDefault();
     this.errors = {};
     this.notice = '';
     this.loading = false;
@@ -326,10 +360,6 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
       e['panNumber'] = 'PAN Number is required';
     } else if (!panRe.test(pan)) {
       e['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
-    }
-
-    if (!this.form.city?.trim()) {
-      e['city'] = 'City is required';
     }
 
     const pin = (this.form.pincode || '').trim();

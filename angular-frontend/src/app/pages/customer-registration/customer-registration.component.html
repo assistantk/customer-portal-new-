@@ -340,12 +340,11 @@
 
             <!-- City -->
             <div *ngIf="mode !== 'ownership'" class="field">
-                <label for="city">City <b>*</b></label>
-                <div class="control" [class.invalid]="errors['city']">
+                <label for="city">City (Optional)</label>
+                <div class="control">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     <input id="city" name="city" [(ngModel)]="form.city" placeholder="Enter city" />
                 </div>
-                <small *ngIf="errors['city']" class="error">{{ errors['city'] }}</small>
             </div>
 
             <!-- Pincode -->

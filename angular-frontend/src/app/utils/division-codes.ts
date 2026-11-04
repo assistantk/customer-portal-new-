@@ -129,3 +129,19 @@ export function getDivisionDetails(code: string | null | undefined): DivisionInf
   if (!code) return undefined;
   return CODE_MAP.get(code.trim().toUpperCase());
 }
+
+export function getDivisionFormSelection(
+  code: string | null | undefined,
+  divisionsByZone: Record<string, string[]>
+): { zone: string; division: string } | undefined {
+  const details = getDivisionDetails(code);
+  if (!details) return undefined;
+
+  const division = (divisionsByZone[details.zone] || [])
+    .find((option) => option.match(/\(([^()]+)\)\s*$/)?.[1].toUpperCase() === details.code);
+
+  return {
+    zone: details.zone,
+    division: division || `${details.name} (${details.code})`
+  };
+}

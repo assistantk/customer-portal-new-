@@ -1,6 +1,7 @@
 package com.cris.customerportal.service;
 
 import java.util.Collections;
+import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
@@ -108,7 +109,8 @@ public class CustomerServiceImpl implements CustomerService {
     else if (hndgCols.contains("MADEDMNDDATE")) hndgDateCol = "MADEDMNDDATE";
    }
   } catch (Throwable t) {
-   log.debug("initDbColumns: column metadata discovery fell back to defaults: {}", t.getMessage());
+   log.debug("initDbColumns: column metadata discovery fell back to defaults: {}",
+           DataMaskingUtil.maskSensitive(t.getMessage()));
   } finally {
    columnsResolved = true;
   }
@@ -193,7 +195,8 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-     log.error("CustomerServiceImpl.lookupOldCustomerByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+     log.error("CustomerServiceImpl.lookupOldCustomerByCode: SQLState={} ErrorCode={} stackTrace={}",
+             e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error occurred while fetching old customer data: " + e.getMessage(), e);
   }
  }
@@ -231,7 +234,8 @@ public class CustomerServiceImpl implements CustomerService {
     return responses;
    }
   } catch (SQLException e) {
-    log.error("CustomerServiceImpl.lookupOldCustomerByGstin: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+    log.error("CustomerServiceImpl.lookupOldCustomerByGstin: SQLState={} ErrorCode={} stackTrace={}",
+            e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error occurred while fetching customer by GSTIN", e);
   }
  }
@@ -263,7 +267,8 @@ public class CustomerServiceImpl implements CustomerService {
     throw new IllegalArgumentException("Invalid file format. File must be a valid PDF document.");
    }
   } catch (IOException e) {
-    log.error("CustomerServiceImpl.validateFile: failed reading PDF header", e);
+    log.error("CustomerServiceImpl.validateFile: failed reading PDF header stackTrace={}",
+            DataMaskingUtil.formatThrowable(e));
    throw new IllegalArgumentException("Unable to read file content for validation: " + e.getMessage(), e);
   }
  }
@@ -305,7 +310,8 @@ public class CustomerServiceImpl implements CustomerService {
      if (!rs.next()) return candidate;
     }
    } catch (SQLException e) {
-    log.error("CustomerServiceImpl.generateUniqueCodeJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+    log.error("CustomerServiceImpl.generateUniqueCodeJDBC: SQLState={} ErrorCode={} stackTrace={}",
+            e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
     throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
    }
    
@@ -343,7 +349,7 @@ public class CustomerServiceImpl implements CustomerService {
   if ("handling_agent".equals(type)) type = "handling";
   if (!"global".equals(type) && !"handling".equals(type)) throw new IllegalArgumentException("Invalid codeType: " + type);
 
-  List<String> requiredFields = Arrays.asList("companyName", "address", "city", "operatingDivision", "zone", "panNumber", "gstinNumbers");
+  List<String> requiredFields = Arrays.asList("companyName", "address", "operatingDivision", "zone", "panNumber", "gstinNumbers");
   for (String field : requiredFields) {
    if (firstValue(formData, field) == null) {
     throw new IllegalArgumentException(field + " is required");
@@ -352,6 +358,7 @@ public class CustomerServiceImpl implements CustomerService {
   validateCompanyNameLength(firstValue(formData, "companyName", "customerName"));
   String rawAddress = firstValue(formData, "address");
   String address = normalizeAddress(rawAddress);
+  String city = normalizeNullableValue(formData.get("city"));
   if (address == null || address.isEmpty()) {
    throw new IllegalArgumentException("address is required");
   }
@@ -424,7 +431,8 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-    log.error("CustomerServiceImpl.registerNewEntryJDBC: duplicate check error SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+    log.error("CustomerServiceImpl.registerNewEntryJDBC: duplicate check error SQLState={} ErrorCode={} stackTrace={}",
+            e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while checking customer code availability: " + e.getMessage(), e);
   }
 
@@ -432,7 +440,7 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(finalCode);
     insertParameters.add(companyName);
     insertParameters.add(address);
-    insertParameters.add(formData.get("city"));
+    insertParameters.add(city);
     if ("global".equals(type)) {
         insertParameters.add(null);
         insertParameters.add(null);
@@ -521,7 +529,7 @@ public class CustomerServiceImpl implements CustomerService {
    throw new IllegalArgumentException("Address cannot exceed 100 characters.");
   }
   requested.put(addressColumn, updateAddress);
-  requested.put(cityColumn, formData.get("city"));
+  requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
   requested.put(panColumn, formData.get("panNumber"));
   requested.put(gstColumn, formData.get("gstinNumbers"));
 
@@ -546,7 +554,9 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String normalizeNullableValue(String value) {
-   return value == null || value.trim().isEmpty() ? null : value;
+   if (value == null) return null;
+   String trimmed = value.trim();
+   return trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed) ? null : trimmed;
  }
 
  public com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode) {
@@ -582,7 +592,8 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.lookupHandlingAgentByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.lookupHandlingAgentByCode: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error occurred while fetching handling agent data", e);
   }
  }
@@ -614,7 +625,8 @@ public class CustomerServiceImpl implements CustomerService {
     return null;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnership: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnership: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
   }
  }
@@ -648,7 +660,8 @@ public class CustomerServiceImpl implements CustomerService {
     return rs.next() && rs.getInt(1) > 0;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.checkOwnershipDuplicate: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.checkOwnershipDuplicate: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while checking ownership code: " + e.getMessage(), e);
   }
  }
@@ -694,10 +707,10 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRSHIP VALUES ("
-      + formatSqlValue(normalizedCode) + ", "
+  return "INSERT INTO MEMWGONOWNRSHIP VALUES("
+      + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
-      + ", NULL, 'Y', SYSDATE, NULL);";
+      + ",NULL,'Y',SYSDATE,NULL);";
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
@@ -714,7 +727,8 @@ public class CustomerServiceImpl implements CustomerService {
     return result;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.lookupOwnershipJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.lookupOwnershipJDBC: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while looking up ownership code: " + e.getMessage(), e);
   }
  }
@@ -745,7 +759,8 @@ public class CustomerServiceImpl implements CustomerService {
     return null;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnershipParty: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnershipParty: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while looking up global customer code: " + e.getMessage(), e);
   }
  }
@@ -779,7 +794,8 @@ public class CustomerServiceImpl implements CustomerService {
     return rs.next() && rs.getInt(1) > 0;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.checkOwnershipPartyDuplicate: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.checkOwnershipPartyDuplicate: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while checking ownership party code: " + e.getMessage(), e);
   }
  }
@@ -795,8 +811,8 @@ public class CustomerServiceImpl implements CustomerService {
   if (lookupGlobalCustomerForOwnershipParty(normalizedCode) == null) {
    throw invalidOwnershipCode();
   }
-  return "INSERT INTO MEMWGONOWNRPRTY VALUES ("
-      + formatSqlValue(normalizedCode) + ", "
+  return "INSERT INTO MEMWGONOWNRPRTY VALUES("
+      + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(partyDesc)) + ");";
  }
 
@@ -824,7 +840,8 @@ public class CustomerServiceImpl implements CustomerService {
     return result;
    }
   } catch (SQLException e) {
-   log.error("CustomerServiceImpl.lookupOwnershipPartyJDBC: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+   log.error("CustomerServiceImpl.lookupOwnershipPartyJDBC: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error while looking up ownership party code: " + e.getMessage(), e);
   }
  }
@@ -902,7 +919,8 @@ public class CustomerServiceImpl implements CustomerService {
     }
    }
   } catch (SQLException e) {
-     log.error("CustomerServiceImpl.lookupOwnershipCustomerByCode: SQLState={} ErrorCode={}", e.getSQLState(), e.getErrorCode(), e);
+     log.error("CustomerServiceImpl.lookupOwnershipCustomerByCode: SQLState={} ErrorCode={} stackTrace={}",
+             e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database mapping error: Ownership columns must be mapped in SQL before this function can execute.", e);
   }
  }
@@ -911,5 +929,3 @@ public class CustomerServiceImpl implements CustomerService {
   throw new IllegalStateException("The legacy ownership update has no valid Oracle column mapping. Use the ownership request workflow.");
  }
 }
-
-

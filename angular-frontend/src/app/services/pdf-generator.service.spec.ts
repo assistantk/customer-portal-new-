@@ -6,7 +6,6 @@ import {
   RegistrationPdfData
 } from './pdf-generator.service';
 import { AuthService, AuthUserData } from './auth.service';
-import { OFFICIAL_SIGNATURE_BASE64, OFFICIAL_SIGNATURE_ASPECT_RATIO } from './signature-asset';
 
 class MockAuthService {
   private user: AuthUserData | null = null;
@@ -107,7 +106,16 @@ describe('PdfGeneratorService', () => {
       expect(sig.signerIdentity).toBe('SREEJU KRISHNAN, 5219');
       expect(sig.designationDivisionOrg).toBe('SR.DCM/CSTM/CRIS');
       expect(sig.formattedTimestamp).toBe('Fri Oct 30 15:27:55 IST 2026');
-      expect(sig.signatureImageBase64).toBe(OFFICIAL_SIGNATURE_BASE64);
+      expect(sig.signatureImageBase64).toBe('');
+    });
+
+    it('shows the signer name once when it matches the user ID', () => {
+      mockAuthService.setCurrentUser({
+        userId: 'SREEJU',
+        userName: 'SREEJU'
+      });
+
+      expect(service.resolveSignatureDetails().signerIdentity).toBe('SREEJU');
     });
 
     it('normalizes trailing slash in designation (e.g., SR.DCM/) and attaches division code TKD', () => {
@@ -170,8 +178,9 @@ describe('PdfGeneratorService', () => {
       });
 
       const sig = service.resolveSignatureDetails();
-      expect(sig.signerIdentity).toBe('9999, 9999');
-      expect(sig.designationDivisionOrg).toBe('SR.DCM/PUNE/CRIS');
+      expect(sig.signerIdentity).toBe('9999');
+      expect(sig.designationDivisionOrg).toBe('SR.DCM/CSTM/CRIS');
+      expect(sig.verifiedStatus).toBe('Signature Not Verified');
     });
 
     it('allows explicit user override for testing synthetic users across designations and divisions', () => {
@@ -189,8 +198,8 @@ describe('PdfGeneratorService', () => {
     });
   });
 
-  describe('PDF Generation & Image Embedding', () => {
-    it('generates a valid PDF with correct content, dynamic signature block, and embedded image', () => {
+  describe('PDF Generation & Signature Block', () => {
+    it('generates a valid PDF with correct content and signature block without embedding an image', () => {
       mockAuthService.setCurrentUser({
         userId: '5219',
         userName: 'SREEJU KRISHNAN',
@@ -219,11 +228,15 @@ describe('PdfGeneratorService', () => {
       const output = doc.output('arraybuffer');
       expect(output.byteLength).toBeGreaterThan(10000);
 
-      // Verify the PDF buffer contains the signature image object (/Subtype /Image)
+      // Verify the PDF no longer embeds the signature image object
       const binaryString = doc.output();
-      expect(binaryString).toContain('/Subtype /Image');
+      expect(binaryString).not.toContain('/Subtype /Image');
 
-      // Verify preserved designation and dynamic record date
+      // Verify dynamic text content
+      expect(binaryString).toContain('Signature Not Verified');
+      expect(binaryString).toContain('eSigned by');
+      expect(binaryString).toContain('SREEJU KRISHNAN');
+      expect(binaryString).not.toContain('SREEJU KRISHNAN, 5219');
       expect(binaryString).toContain('SR.DCM/CSTM/CRIS');
       expect(binaryString).toContain('Fri Oct 30 15:27:55 IST 2026');
 
@@ -299,6 +312,11 @@ describe('PdfGeneratorService', () => {
     });
 
     it('generates a landscape verification report with retained fields and omits contact details and pincode', () => {
+      mockAuthService.setCurrentUser({
+        userId: '5219',
+        userName: 'SREEJU'
+      });
+
       const doc = service.generateVerificationPdf({
         searchType: 'GST Number',
         searchValue: '27ABCDE1234F1Z5',
@@ -333,6 +351,12 @@ describe('PdfGeneratorService', () => {
       expect(text).toContain('Customer Verification Report');
       expect(text).toContain('Search Type: GST Number');
       expect(text).toContain('27ABCDE1234F1Z5');
+      expect(text).not.toContain('Signature Not Verified');
+      expect(text).toContain('eSigned by');
+      expect(text).not.toContain('(SREEJU) Tj');
+      expect(text).not.toContain('(5219) Tj');
+      expect(text).toContain('(SR.DCM/RNY) Tj');
+      expect(text).not.toContain('(SR.DCM/CSTM) Tj');
       expect(text).toContain('(SR.DCM/) Tj');
       expect(text).toContain('(SR.DCM/RNY) Tj');
       expect(text).toContain('(API EXTRA FIELD) Tj');

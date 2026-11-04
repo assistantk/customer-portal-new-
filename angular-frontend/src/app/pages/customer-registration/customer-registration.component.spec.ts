@@ -4,7 +4,7 @@ import { CustomerRegistrationComponent } from './customer-registration.component
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
-import { of, throwError, Subject } from 'rxjs';
+import { BehaviorSubject, of, throwError, Subject } from 'rxjs';
 
 describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   let component: CustomerRegistrationComponent;
@@ -12,6 +12,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   let panOcrServiceMock: any;
   let notificationService: NotificationService;
   let cdrMock: ChangeDetectorRef;
+  let authUserSubject: BehaviorSubject<any>;
+  let authServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -54,13 +56,37 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       detach: vi.fn(),
       reattach: vi.fn()
     } as unknown as ChangeDetectorRef;
+    authUserSubject = new BehaviorSubject<any>(null);
+    authServiceMock = { currentUser$: authUserSubject.asObservable(), currentUser: null };
 
     component = new CustomerRegistrationComponent(
       customerServiceMock as CustomerService,
       panOcrServiceMock as PanOcrService,
       notificationService,
-      cdrMock
+      cdrMock,
+      undefined,
+      undefined,
+      authServiceMock
     );
+  });
+
+  it('defaults registration division from login and preserves a manual form choice', () => {
+    const loginUser = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = loginUser;
+    authUserSubject.next(loginUser);
+
+    component.ngOnInit();
+
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.divisions).toContain('Tughlakabad / Delhi Area (TKD)');
+
+    component.chooseZone('Central Railway (CR)');
+    authUserSubject.next({ divisionCode: 'DLI' });
+    expect(component.form.zone).toBe('Central Railway (CR)');
+    expect(component.form.operatingDivision).toBe('');
+    expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
   });
 
   describe('New Entry Flow (mode: new)', () => {
@@ -125,6 +151,25 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(component.validate()).toBe(false);
       expect(component.errors['companyName']).toBe('Company name cannot exceed 40 characters.');
+    });
+
+    it('allows a new registration when city is blank or whitespace', () => {
+      component.form.city = '   ';
+
+      expect(component.validate()).toBe(true);
+      expect(component.errors['city']).toBeUndefined();
+    });
+
+    it('submits a new registration when city is empty', () => {
+      component.form.city = '';
+      customerServiceMock.registerCustomer.mockReturnValue(of({ success: true, customerCode: 'TCOR' }));
+
+      component.submit();
+
+      expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({ city: '' }),
+        expect.any(Array)
+      );
     });
 
     it('should reset loading to false and display error notification on HTTP error', () => {
@@ -210,6 +255,19 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       ];
     });
 
+    it('submits an existing-record update when city is empty', () => {
+      component.form.city = '   ';
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true }));
+
+      expect(component.validate()).toBe(true);
+      component.submit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({ city: '   ' }),
+        expect.any(Array)
+      );
+    });
+
     it('loads the legacy customer details after entering a four-character code', () => {
       customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
         companyName: 'Legacy Company',
@@ -230,9 +288,101 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.city).toBe('Delhi');
       expect(component.form.pincode).toBe('110001');
       expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.verifiedCustomerCode).toBe('SAEB');
       expect(component.lookupDone).toBe(true);
       expect(component.lookupLoading).toBe(false);
       vi.useRealTimers();
+    });
+
+    it('preserves the verified customer and code through GSTIN edits and submits using that code', () => {
+      const customer = {
+        companyName: 'Verified Legacy Company',
+        address: 'Verified Railway Road',
+        city: 'Delhi',
+        pincode: '110001',
+        panNumber: 'ABCDE1234F',
+        email: 'verified@example.com',
+        mobile: '9876543210',
+        gstinNumbers: '27ABCDE1234F1Z5'
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(customer));
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({
+        success: true,
+        message: 'Request email sent to DBA.'
+      }));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('SAEB');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      component.addGstin();
+      component.handleGstinChange(1, { gstin: '07ABCDE1234F1Z5' });
+      component.addGstin();
+      component.handleGstinChange(2, { gstin: '29ABCDE1234F1Z5' });
+      component.addGstin();
+      component.handleGstinChange(3, { gstin: '06ABCDE1234F1Z5' });
+      component.removeGstin(2);
+
+      expect(component.verifiedCustomerCode).toBe('SAEB');
+      expect(component.form.customerCode).toBe('SAEB');
+      expect(component.form.companyName).toBe(customer.companyName);
+      expect(component.form.address).toBe(customer.address);
+      expect(component.form.panNumber).toBe(customer.panNumber);
+      expect(component.gstins.map((entry) => entry.gstin)).toEqual([
+        '27ABCDE1234F1Z5',
+        '07ABCDE1234F1Z5',
+        '06ABCDE1234F1Z5'
+      ]);
+
+      component.submit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({ customerCode: 'SAEB', companyName: customer.companyName }),
+        expect.arrayContaining([
+          expect.objectContaining({ gstin: '27ABCDE1234F1Z5' }),
+          expect.objectContaining({ gstin: '07ABCDE1234F1Z5' }),
+          expect.objectContaining({ gstin: '06ABCDE1234F1Z5' })
+        ])
+      );
+    });
+
+    it('keeps fetched Old User details and all GSTIN rows when OCR scans another GSTIN', async () => {
+      component.verifiedCustomerCode = 'SAEB';
+      component.form = {
+        ...component.form,
+        customerCode: 'SAEB',
+        companyName: 'Verified Legacy Company',
+        address: 'Verified Railway Road',
+        city: 'Delhi',
+        pincode: '110001',
+        panNumber: 'ABCDE1234F'
+      };
+      component.addGstin();
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07ABCDE1234F1Z5',
+        businessName: 'OCR Company',
+        pan: 'ABCDE1234F',
+        address: 'OCR Address',
+        city: 'Mumbai',
+        pincode: '400001',
+        stateName: 'Delhi'
+      });
+      const file = new File(['pdf'], 'gstin.pdf', { type: 'application/pdf' });
+
+      await component.handleGstinFileChange(1, {
+        target: { files: [file], value: 'gstin.pdf' }
+      } as unknown as Event);
+
+      expect(component.verifiedCustomerCode).toBe('SAEB');
+      expect(component.form.customerCode).toBe('SAEB');
+      expect(component.form.companyName).toBe('Verified Legacy Company');
+      expect(component.form.address).toBe('Verified Railway Road');
+      expect(component.form.city).toBe('Delhi');
+      expect(component.form.pincode).toBe('110001');
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.gstins).toHaveLength(2);
+      expect(component.gstins[1].gstin).toBe('07ABCDE1234F1Z5');
     });
 
     it('shows a lookup error and clears loading state when the legacy lookup fails', () => {

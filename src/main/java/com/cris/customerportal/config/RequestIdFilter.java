@@ -14,6 +14,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Assigns a unique requestId to every HTTP request, places it in MDC so all log statements
@@ -21,12 +22,13 @@ import java.util.UUID;
  * and returns it as the X-Request-Id HTTP response header.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 1)
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RequestIdFilter.class);
     public static final String REQUEST_ID_MDC_KEY = "requestId";
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
+    private static final Pattern SAFE_REQUEST_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -35,22 +37,23 @@ public class RequestIdFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String requestId = request.getHeader(REQUEST_ID_HEADER);
-        if (requestId == null || requestId.trim().isEmpty()) {
+        if (requestId == null || !SAFE_REQUEST_ID.matcher(requestId).matches()) {
             requestId = UUID.randomUUID().toString();
         }
+        String previousRequestId = MDC.get(REQUEST_ID_MDC_KEY);
+        String previousClassName = MDC.get("className");
+        String previousMethodName = MDC.get("methodName");
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
+        MDC.put("className", getClass().getSimpleName());
+        MDC.put("methodName", "doFilterInternal");
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
         long start = System.currentTimeMillis();
         String method = request.getMethod();
         String uri = request.getRequestURI();
-        String queryString = request.getQueryString();
 
         if (log.isInfoEnabled()) {
-            String queryPart = (queryString != null && !queryString.isEmpty())
-                    ? "?" + DataMaskingUtil.maskSensitive(queryString)
-                    : "";
-            log.info("REQ  START: {} {}{} [requestId={}]", method, uri, queryPart, requestId);
+            log.info("REQ  START: {} {}", method, uri);
         }
 
         try {
@@ -58,9 +61,22 @@ public class RequestIdFilter extends OncePerRequestFilter {
         } finally {
             long duration = System.currentTimeMillis() - start;
             int status = response.getStatus();
-            log.info("RESP END  : {} {} -> status={} duration={}ms [requestId={}]",
-                    method, uri, status, duration, requestId);
-            MDC.remove(REQUEST_ID_MDC_KEY);
+            try {
+                log.info("RESP END  : {} {} -> status={} duration={}ms",
+                        method, uri, status, duration);
+            } finally {
+                restoreMdc(REQUEST_ID_MDC_KEY, previousRequestId);
+                restoreMdc("className", previousClassName);
+                restoreMdc("methodName", previousMethodName);
+            }
+        }
+    }
+
+    private void restoreMdc(String key, String previousValue) {
+        if (previousValue == null) {
+            MDC.remove(key);
+        } else {
+            MDC.put(key, previousValue);
         }
     }
 }

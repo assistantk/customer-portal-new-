@@ -1,11 +1,13 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize, timeout } from 'rxjs';
+import { finalize, Subscription, timeout } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
+import { AuthService } from '../../services/auth.service';
+import { getDivisionFormSelection } from '../../utils/division-codes';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -172,6 +174,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   lookupDone = false;
   lookupError = '';
   lastLookupRecord: any = null;
+  verifiedCustomerCode: string | null = null;
   codeConfirmed = false;
   codeChecking = false;
   addressStatus = '';
@@ -220,6 +223,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   // Timers
   private lookupTimer: any = null;
   private lookupRequestId = 0;
+  private divisionSelectionManuallyChanged = false;
+  private userDivisionSubscription?: Subscription;
 
   readonly INDIAN_STATES = INDIAN_STATES;
   readonly divisionsByZone = divisionsByZone;
@@ -230,7 +235,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private cdr: ChangeDetectorRef,
     private router?: Router,
-    private pdfGeneratorService?: PdfGeneratorService
+    private pdfGeneratorService?: PdfGeneratorService,
+    private authService?: AuthService
   ) { }
 
   openGlobalCodeForm(): void {
@@ -255,6 +261,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.router?.url.split('?')[0].endsWith('/delete-request')) {
       this.mode = 'delete';
     }
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+      this.applyLoginDivisionDefault();
+    });
   }
 
   ngOnDestroy(): void {
@@ -262,10 +271,13 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    this.userDivisionSubscription?.unsubscribe();
   }
 
   get zones(): string[] {
-    return Object.keys(divisionsByZone);
+    const zones = Object.keys(divisionsByZone);
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision && !zones.includes(loginDivision.zone) ? [...zones, loginDivision.zone] : zones;
   }
 
   get filteredZones(): string[] {
@@ -274,7 +286,31 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   get divisions(): string[] {
-    return this.form.zone ? (divisionsByZone[this.form.zone] || []) : [];
+    if (!this.form.zone) return [];
+    const divisions = divisionsByZone[this.form.zone] || [];
+    const loginDivision = this.loginDivisionSelection;
+    return loginDivision?.zone === this.form.zone && !divisions.includes(loginDivision.division)
+      ? [...divisions, loginDivision.division]
+      : divisions;
+  }
+
+  private get loginDivisionSelection(): { zone: string; division: string } | undefined {
+    return getDivisionFormSelection(this.authService?.currentUser?.divisionCode, divisionsByZone);
+  }
+
+  private applyLoginDivisionDefault(): void {
+    const selection = this.loginDivisionSelection;
+    if (
+      this.mode !== 'ownership'
+      && this.mode !== 'delete'
+      && !this.divisionSelectionManuallyChanged
+      && !this.form.operatingDivision
+      && selection
+    ) {
+      this.form.zone = selection.zone;
+      this.form.operatingDivision = selection.division;
+      this.cdr.markForCheck();
+    }
   }
 
   getGstinPanStatus(gstin: string, pan?: string): string | null {
@@ -288,6 +324,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   reset(): void {
     this.form = { ...blank };
+    this.verifiedCustomerCode = null;
+    this.divisionSelectionManuallyChanged = false;
     this.gstins = [{ ...blankGstin }];
     this.errors = {};
     this.notice = '';
@@ -315,6 +353,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection2Duplicate = false;
     this.ownSection2LookupError = '';
     this.ownSection2Source = null;
+    this.applyLoginDivisionDefault();
     this.cdr.markForCheck();
   }
 
@@ -329,6 +368,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     this.mode = newMode;
+    this.divisionSelectionManuallyChanged = false;
+    if (newMode !== 'ownership' && newMode !== 'delete') {
+      this.applyLoginDivisionDefault();
+    }
     this.ownershipLogoMissing = false;
     this.cdr.markForCheck();
   }
@@ -572,6 +615,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   /* ===== Old User: lookup by customer / handling agent code ===== */
   triggerOldLookup(code: string, type: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    if (this.verifiedCustomerCode !== code.trim().toUpperCase()) {
+      this.verifiedCustomerCode = null;
+    }
     this.form.customerCode = code;
     this.form.companyName = '';
     this.form.address = '';
@@ -580,6 +626,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.form.panNumber = '';
     this.form.operatingDivision = '';
     this.form.zone = '';
+    this.divisionSelectionManuallyChanged = false;
+    this.applyLoginDivisionDefault();
     this.form.email = '';
     this.form.mobile = '';
     this.gstins = [{ ...blankGstin }];
@@ -610,7 +658,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             if (requestId !== this.lookupRequestId) return;
             this.lastLookupRecord = customer;
             this.form.companyName = customer.companyName || '';
-            this.form.customerCode = code;
+            this.verifiedCustomerCode = code.trim().toUpperCase();
+            this.form.customerCode = this.verifiedCustomerCode;
             this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
             this.form.city = customer.city || '';
             this.form.pincode = customer.pincode || '';
@@ -637,6 +686,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           },
           error: (err: any) => {
             if (requestId !== this.lookupRequestId) return;
+            this.verifiedCustomerCode = null;
             console.error('Lookup error:', err);
             this.lookupDone = false;
             this.lookupError = err?.name === 'TimeoutError'
@@ -649,6 +699,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }, 800);
     } else {
       this.lookupLoading = false;
+      this.verifiedCustomerCode = null;
       this.gstins = [{ ...blankGstin }];
     }
   }
@@ -753,7 +804,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return !Object.keys(e).length;
     }
 
-    const requiredFields: (keyof CustomerPayload)[] = ['companyName', 'customerCode', 'address', 'city', 'panNumber'];
+    const requiredFields: (keyof CustomerPayload)[] = ['companyName', 'customerCode', 'address', 'panNumber'];
     if (this.mode === 'new') requiredFields.push('operatingDivision', 'zone');
     requiredFields.forEach(k => {
       if (!this.form[k]) e[k] = 'This field is required';
@@ -1034,7 +1085,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      this.customerService.updateOldCustomerJDBC({ ...this.form, codeType: this.codeType }, this.gstins).pipe(
+      const customerCode = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
+      this.customerService.updateOldCustomerJDBC(
+        { ...this.form, customerCode, codeType: this.codeType },
+        this.gstins
+      ).pipe(
         finalize(() => {
           this.loading = false;
           this.cdr.markForCheck();
@@ -1051,7 +1106,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             this.removedGstinIds = [];
 
             // Refresh from DB
-            const codeToRefresh = (this.form.customerCode || '').trim();
+            const codeToRefresh = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
             if (codeToRefresh) {
               const refresh$ = this.codeType === 'HANDLING_AGENT'
                 ? this.customerService.lookupHandlingAgentJDBC(codeToRefresh)
@@ -1221,16 +1276,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     const currentReqId = ++this.ocrRequestId;
 
-    // 1. Immediately clear all previously extracted OCR values across the 6 fields
-    this.form.companyName = '';
-    this.form.customerCode = '';
-    this.form.panNumber = '';
-    this.form.address = '';
-    this.form.city = '';
-    this.form.pincode = '';
-    this.addressStatus = '';
-    this.addressManuallyEdited = false;
-    this.ocrAutoFillApplied = false;
+    if (this.mode !== 'old') {
+      this.form.companyName = '';
+      this.form.customerCode = '';
+      this.form.panNumber = '';
+      this.form.address = '';
+      this.form.city = '';
+      this.form.pincode = '';
+      this.addressStatus = '';
+      this.addressManuallyEdited = false;
+      this.ocrAutoFillApplied = false;
+    }
 
     // Clear previous OCR validation errors and warnings
     delete this.errors['companyName'];
@@ -1248,7 +1304,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.gstins[index].gstin = '';
       this.gstins[index].state = '';
     }
-    if (index === 0 && this.gstins.length > 1) {
+    if (this.mode !== 'old' && index === 0 && this.gstins.length > 1) {
       this.gstins = [this.gstins[0]];
     }
 
@@ -1291,7 +1347,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
         this.handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
         this.errors[`gstin_${index}_gstin`] = message;
-        // Keep form fields empty as requested
         return;
       }
 
@@ -1309,56 +1364,58 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       delete this.errors[`gstin_${index}_gstin`];
       delete this.errors[`gstin_${index}_state`];
 
-      // 1. Company Name
-      const extractedCompany = businessName || tradeName || legalName;
-      if (extractedCompany) {
-        if (this.mode === 'new') {
-          this.handleNewCompanyNameChange(extractedCompany);
-        } else {
-          this.form.companyName = extractedCompany;
+      if (this.mode !== 'old') {
+        // 1. Company Name
+        const extractedCompany = businessName || tradeName || legalName;
+        if (extractedCompany) {
+          if (this.mode === 'new') {
+            this.handleNewCompanyNameChange(extractedCompany);
+          } else {
+            this.form.companyName = extractedCompany;
+          }
+          if (extractedCompany.length > 40 || companyNameTooLong) {
+            this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+          } else {
+            delete this.errors['companyName'];
+          }
         }
-        if (extractedCompany.length > 40 || companyNameTooLong) {
-          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+
+        // 2. PAN Number
+        if (panMismatch || (ocrPan && gstinDerivedPan && ocrPan !== gstinDerivedPan)) {
+          this.errors['panNumber'] = 'Extracted PAN does not match the GSTIN.';
+          this.form.panNumber = ocrPan || gstinDerivedPan;
+        } else if (!panRe.test(extractedPan)) {
+          const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
+          this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
+          this.errors['panNumber'] = 'PAN could not be derived because the extracted GSTIN is invalid.';
+          this.errors[`gstin_${index}_gstin`] = message;
+          return;
         } else {
-          delete this.errors['companyName'];
+          this.form.panNumber = extractedPan;
+          delete this.errors['panNumber'];
         }
-      }
 
-      // 2. PAN Number
-      if (panMismatch || (ocrPan && gstinDerivedPan && ocrPan !== gstinDerivedPan)) {
-        this.errors['panNumber'] = 'Extracted PAN does not match the GSTIN.';
-        this.form.panNumber = ocrPan || gstinDerivedPan;
-      } else if (!panRe.test(extractedPan)) {
-        const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
-        this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
-        this.errors['panNumber'] = 'PAN could not be derived because the extracted GSTIN is invalid.';
-        this.errors[`gstin_${index}_gstin`] = message;
-        return;
-      } else {
-        this.form.panNumber = extractedPan;
-        delete this.errors['panNumber'];
-      }
+        // 3. Address
+        const cleanedAddress = cleanAndShortenAddress(address);
+        if (cleanedAddress) {
+          this.form.address = cleanedAddress;
+          this.addressStatus = 'auto-filled';
+          delete this.errors['address'];
+        } else {
+          this.addressStatus = 'extraction-failed';
+        }
 
-      // 3. Address
-      const cleanedAddress = cleanAndShortenAddress(address);
-      if (cleanedAddress) {
-        this.form.address = cleanedAddress;
-        this.addressStatus = 'auto-filled';
-        delete this.errors['address'];
-      } else {
-        this.addressStatus = 'extraction-failed';
-      }
+        // 4. City Name
+        if (city) {
+          this.form.city = city;
+          delete this.errors['city'];
+        }
 
-      // 4. City Name
-      if (city) {
-        this.form.city = city;
-        delete this.errors['city'];
-      }
-
-      // 5. PIN Code
-      if (pincode) {
-        this.form.pincode = pincode;
-        delete this.errors['pincode'];
+        // 5. PIN Code
+        if (pincode) {
+          this.form.pincode = pincode;
+          delete this.errors['pincode'];
+        }
       }
 
       this.ocrAutoFillApplied = true;
@@ -1384,6 +1441,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   chooseZone(zone: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
     this.zoneSearchTerm = '';
@@ -1399,6 +1457,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   chooseDivision(div: string): void {
+    this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];

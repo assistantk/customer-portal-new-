@@ -3,6 +3,11 @@
 
     <!-- Override with LOG_PATH or logging.file.path; local dev defaults in application-dev.properties. -->
     <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="/switch/Application_Logs/FreightCodeLog"/>
+    <springProperty scope="context" name="CLASS_LOG_MAX_SIZE" source="logging.class-file.max-size" defaultValue="20MB"/>
+    <springProperty scope="context" name="CLASS_LOG_MAX_HISTORY" source="logging.class-file.max-history" defaultValue="30"/>
+    <springProperty scope="context" name="CLASS_LOG_TOTAL_SIZE_CAP" source="logging.class-file.total-size-cap" defaultValue="1GB"/>
+    <springProperty scope="context" name="CLASS_LOG_MAX_OPEN_FILES" source="logging.class-file.max-open-files" defaultValue="100"/>
+    <springProperty scope="context" name="CLASS_LOG_TIMEOUT" source="logging.class-file.timeout" defaultValue="30 minutes"/>
 
     <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
     <!-- APPENDERS                                                                           -->
@@ -49,6 +54,28 @@
         </encoder>
     </appender>
 
+    <!-- Each application logger gets a lazily-created, independently-rotated file. -->
+    <appender name="CLASS_FILES" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <timeout>${CLASS_LOG_TIMEOUT}</timeout>
+        <maxAppenderCount>${CLASS_LOG_MAX_OPEN_FILES}</maxAppenderCount>
+        <discriminator class="com.cris.customerportal.config.ClassNameDiscriminator"/>
+        <sift>
+            <appender name="CLASS-${classFile}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_PATH}/${classFile}.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_PATH}/archive/${classFile}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                    <maxFileSize>${CLASS_LOG_MAX_SIZE}</maxFileSize>
+                    <maxHistory>${CLASS_LOG_MAX_HISTORY}</maxHistory>
+                    <totalSizeCap>${CLASS_LOG_TOTAL_SIZE_CAP}</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %-5level | class=%X{className:-n/a} [%logger] | method=%X{methodName:-n/a} caller=%M | [%thread] | [requestId=%X{requestId:-no-rid}] | %msg%n%ex{full}</pattern>
+                    <charset>UTF-8</charset>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
+
     <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
     <!-- PROFILE: dev — DEBUG application logging; SQL bind values are never logged.        -->
     <!-- ─────────────────────────────────────────────────────────────────────────────────── -->
@@ -67,6 +94,7 @@
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE_ALL"/>
             <appender-ref ref="FILE_ERROR"/>
+            <appender-ref ref="CLASS_FILES"/>
         </root>
     </springProfile>
 
@@ -89,6 +117,7 @@
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE_ALL"/>
             <appender-ref ref="FILE_ERROR"/>
+            <appender-ref ref="CLASS_FILES"/>
         </root>
     </springProfile>
 
@@ -104,6 +133,7 @@
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE_ALL"/>
             <appender-ref ref="FILE_ERROR"/>
+            <appender-ref ref="CLASS_FILES"/>
         </root>
     </springProfile>
 

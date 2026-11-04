@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HandlingAgentCodeComponent } from './handling-agent-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 
 describe('HandlingAgentCodeComponent', () => {
   let component: HandlingAgentCodeComponent;
@@ -11,6 +11,8 @@ describe('HandlingAgentCodeComponent', () => {
   let notificationService: NotificationService;
   let routerMock: any;
   let cdrMock: ChangeDetectorRef;
+  let authUserSubject: BehaviorSubject<any>;
+  let authServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -28,12 +30,15 @@ describe('HandlingAgentCodeComponent', () => {
       detach: vi.fn(),
       reattach: vi.fn()
     } as unknown as ChangeDetectorRef;
+    authUserSubject = new BehaviorSubject<any>(null);
+    authServiceMock = { currentUser$: authUserSubject.asObservable(), currentUser: null };
 
     component = new HandlingAgentCodeComponent(
       customerServiceMock as CustomerService,
       notificationService,
       routerMock,
-      cdrMock
+      cdrMock,
+      authServiceMock
     );
   });
 
@@ -42,6 +47,25 @@ describe('HandlingAgentCodeComponent', () => {
     expect(component.form.panNumber).toBe('');
     expect(component.errors).toEqual({});
     expect(component.loading).toBe(false);
+  });
+
+  it('defaults the division from login and keeps manual changes local', () => {
+    const loginUser = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = loginUser;
+    authUserSubject.next(loginUser);
+
+    component.ngOnInit();
+
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.divisions).toContain('Tughlakabad / Delhi Area (TKD)');
+
+    component.chooseZone('Central Railway (CR)');
+    authUserSubject.next({ divisionCode: 'DLI' });
+    expect(component.form.zone).toBe('Central Railway (CR)');
+    expect(component.form.operatingDivision).toBe('');
+    expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
   });
 
   it('should generate code from company name', () => {
@@ -60,7 +84,7 @@ describe('HandlingAgentCodeComponent', () => {
     expect(component.errors['agentCompanyName']).toBeDefined();
     expect(component.errors['panNumber']).toBeDefined();
     expect(component.errors['address']).toBeDefined();
-    expect(component.errors['city']).toBeDefined();
+    expect(component.errors['city']).toBeUndefined();
     expect(component.errors['pincode']).toBeDefined();
     expect(component.errors['state']).toBeDefined();
     expect(component.errors['zone']).toBeDefined();
@@ -94,6 +118,25 @@ describe('HandlingAgentCodeComponent', () => {
     expect(Object.keys(component.errors).length).toBe(0);
   });
 
+  it('should allow submission validation when city is blank or whitespace', () => {
+    component.form = {
+      agentCompanyName: 'Super Logistics Private Limited',
+      panNumber: 'ABCDE1234F',
+      gstin: '',
+      state: 'Maharashtra',
+      address: 'Plot 42, Sector 18, Vashi',
+      city: '   ',
+      pincode: '400703',
+      zone: 'Central Railway (CR)',
+      operatingDivision: 'Mumbai (CSTM)',
+      email: '',
+      mobile: ''
+    };
+
+    expect(component.validate()).toBe(true);
+    expect(component.errors['city']).toBeUndefined();
+  });
+
   it('should validate PAN and GSTIN consistency', () => {
     component.form.panNumber = 'ABCDE1234F';
     component.form.gstin = '27XXXXX1234F1Z5'; // Mismatched PAN inside GSTIN
@@ -112,7 +155,7 @@ describe('HandlingAgentCodeComponent', () => {
       gstin: '27ABCDE1234F1Z5',
       state: 'Maharashtra',
       address: 'Plot 42, Sector 18, Vashi',
-      city: 'Navi Mumbai',
+      city: '',
       pincode: '400703',
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
@@ -121,7 +164,10 @@ describe('HandlingAgentCodeComponent', () => {
     };
 
     component.submit();
-    expect(customerServiceMock.registerCustomer).toHaveBeenCalled();
+    expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ city: '' }),
+      expect.any(Array)
+    );
     expect(component.notice).toContain('Handling Agent Code');
   });
 
