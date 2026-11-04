@@ -583,4 +583,51 @@ class RmsAuthOrchestratorTest {
         verify(mockClient, times(1)).generateOtp(any(RmsOtpGenerateRequest.class));
     }
 
+    @Test
+    void logout_invokesRmsLogoutUserWithCorrectFields() {
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "SR-DCM", "127.0.0.1");
+        orchestrator.verifyOtp(ctx, "78901", "127.0.0.1");
+
+        RmsLoginRequest req = ctx.getLoginRequest();
+        assertNotNull(req);
+        assertEquals("FRT_CODE", req.getF_ENTYSRVC());
+        assertEquals("SR-DCM", req.getF_ROLEID());
+
+        RmsApiResponse logoutAccepted = new RmsApiResponse();
+        logoutAccepted.setErrorNo("0");
+        logoutAccepted.setStatus("S");
+        logoutAccepted.setSrvcName("ATUSERLGOT");
+        logoutAccepted.setRmrk("SUCCESS");
+        when(mockClient.logoutUser(any(RmsLoginRequest.class))).thenReturn(logoutAccepted);
+
+        orchestrator.logout(req, "127.0.0.1");
+
+        verify(mockClient, times(1)).logoutUser(argThat(r ->
+                "SREEJU".equals(r.getF_USERID())
+                        && "TKD".equals(r.getF_LOCN())
+                        && "test@123".equals(r.getF_PSWD())
+                        && "SR-DCM".equals(r.getF_ROLEID())
+                        && "ATUSERLGOT".equals(r.getF_SRVCNAME())
+                        && "FRT_CODE".equals(r.getF_ENTYSRVC())
+                        && "1.1.1.1".equals(r.getF_CLNTID())
+        ));
+    }
+
+    @Test
+    void logout_whenRmsReturnsError_throwsRmsApiException() {
+        RmsLoginRequest req = new RmsLoginRequest();
+        req.setF_USERID("SREEJU");
+        req.setF_LOCN("TKD");
+        req.setF_PSWD("test@123");
+
+        RmsApiResponse logoutRejected = new RmsApiResponse();
+        logoutRejected.setErrorNo("99");
+        logoutRejected.setStatus("E");
+        logoutRejected.setMessage("Session not active");
+        when(mockClient.logoutUser(any(RmsLoginRequest.class))).thenReturn(logoutRejected);
+
+        assertThrows(RmsApiException.class, () -> orchestrator.logout(req, "127.0.0.1"));
+    }
+
 }
