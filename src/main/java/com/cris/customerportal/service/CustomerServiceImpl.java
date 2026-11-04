@@ -707,16 +707,17 @@ public class CustomerServiceImpl implements CustomerService {
 
   List<DbaEmailService.SqlRequest> statements = new ArrayList<>();
   boolean ownershipInsertSubmitted = false;
+  String ownershipSql = null;
   if (hasOwnership) {
-   String sql = generateOwnershipSql(ownershipCode, ownershipDesc);
-   logGeneratedOwnershipSql("MEMWGONOWNRSHIP", sql);
-   if (sql != null) {
-    ownershipInsertSubmitted = sql.startsWith("INSERT");
+   ownershipSql = generateOwnershipSql(ownershipCode, ownershipDesc);
+   logGeneratedOwnershipSql("MEMWGONOWNRSHIP", ownershipSql);
+   if (ownershipSql != null) {
+    ownershipInsertSubmitted = ownershipSql.startsWith("INSERT");
     statements.add(new DbaEmailService.SqlRequest(
-        sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
+        ownershipSql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRSHIP",
         ownershipCode.trim().toUpperCase(Locale.ROOT),
-        sql));
+        ownershipSql));
    }
   }
   if (ownershipInsertSubmitted) {
@@ -735,6 +736,15 @@ public class CustomerServiceImpl implements CustomerService {
    String sql = generateOwnershipPartySql(partyCode, partyDesc);
    logGeneratedOwnershipSql("MEMWGONOWNRPRTY", sql);
    if (sql != null) {
+    if (hasOwnership && ownershipSql == null && sql.startsWith("INSERT")) {
+     String unchangedOwnershipUpdate = generateOwnershipUpdateSql(ownershipCode, ownershipDesc);
+     statements.add(0, new DbaEmailService.SqlRequest(
+         "UPDATE",
+         "MEMWGONOWNRSHIP",
+         ownershipCode.trim().toUpperCase(Locale.ROOT),
+         unchangedOwnershipUpdate));
+     logGeneratedOwnershipSql("MEMWGONOWNRSHIP", unchangedOwnershipUpdate);
+    }
     statements.add(new DbaEmailService.SqlRequest(
         sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRPRTY",
@@ -765,8 +775,7 @@ public class CustomerServiceImpl implements CustomerService {
   Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
   if (existing != null) {
    if (Objects.equals(normalizeOracleValue(existing.get("ownershipDesc")), normalizeOracleValue(ownershipDesc))) return null;
-   return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
-       + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizedCode) + ";";
+   return generateOwnershipUpdateSql(normalizedCode, ownershipDesc);
   }
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
    throw invalidOwnershipCode();
@@ -775,6 +784,11 @@ public class CustomerServiceImpl implements CustomerService {
       + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
       + ",NULL,'Y',SYSDATE,NULL);";
+ }
+
+ private String generateOwnershipUpdateSql(String ownershipCode, String ownershipDesc) {
+  return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
+      + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizeOwnershipCode(ownershipCode)) + ";";
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {

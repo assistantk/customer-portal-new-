@@ -890,29 +890,99 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaEmailServiceSendsOneOrderedCombinedOwnershipInsertEmail() {
+    void submitOwnership_emailsOwnershipUpdateAndPartyInsertWhenOwnershipAlreadyMatches() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement partyLookup = mock(PreparedStatement.class);
+        PreparedStatement partyGlobalLookup = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        ResultSet partyGlobalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString()))
+            .thenReturn(ownershipLookup, partyLookup, partyGlobalLookup);
+        when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(partyLookup.executeQuery()).thenReturn(partyRs);
+        when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ALPS");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC"))
+            .thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
+        when(partyRs.next()).thenReturn(false);
+        when(partyGlobalRs.next()).thenReturn(true);
+        when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
 
-        emailService.sendDbaSqlEmail(List.of(
-            new DbaEmailService.SqlRequest(
-                "INSERT", "MEMWGONOWNRPRTY", "ALPS",
-                "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"),
-            new DbaEmailService.SqlRequest(
-                "INSERT", "MEMWGONOWNRSHIP", "ALPS",
-                "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);")
-        ));
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED",
+            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED");
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, times(1)).send(message.capture());
         String body = message.getValue().getText();
-        assertTrue(body.contains("Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY"));
-        assertTrue(body.indexOf("----------------------------------------1 INSERT")
-                < body.indexOf("----------------------------------------2 INSERT"));
-        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP")
-                < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
-        assertEquals(1, body.split("INSERT INTO MEMWGONOWNRSHIP", -1).length - 1);
+        assertTrue(body.contains("UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = "
+            + "'M/S ALPS MINING SERVICES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ALPS';"));
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"));
+        assertTrue(body.indexOf("----------------------------------------1 UPDATE")
+            < body.indexOf("----------------------------------------2 INSERT"));
+        assertTrue(body.indexOf("UPDATE MEMWGONOWNRSHIP")
+            < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
+        assertEquals(1, body.split("UPDATE MEMWGONOWNRSHIP", -1).length - 1);
         assertEquals(1, body.split("INSERT INTO MEMWGONOWNRPRTY", -1).length - 1);
+    }
+
+    @Test
+    void dbaEmailServiceSendsOneOrderedCombinedOwnershipInsertEmail() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
+        when(userLookupRepository.findUserContactDetails("SREEJU")).thenReturn(java.util.Optional.of(
+            new JdbcPortalUserLookupRepository.UserContactDetails(
+                "SREEJU", "krishnan.sreeju@gmail.com", "9910303868")));
+        DbaEmailService emailService =
+            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.getSession(true).setAttribute(
+            AuthController.AUTH_SESSION_KEY,
+            new AuthUserDto("SREEJU", "Sreeju", "USER", "Y", "stale@example.org", "9000000000"));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        try {
+            emailService.sendDbaSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "MEMWGONOWNRPRTY", "ALPS",
+                    "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"),
+                new DbaEmailService.SqlRequest(
+                    "INSERT", "MEMWGONOWNRSHIP", "ALPS",
+                    "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);")
+            ));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+
+        ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, times(1)).send(message.capture());
+        SimpleMailMessage sentMessage = message.getValue();
+        assertArrayEquals(new String[] { "dba@example.com" }, sentMessage.getTo());
+        assertEquals("Request for INSERT – MEMWGONOWNRSHIP, MEMWGONOWNRPRTY – ALPS", sentMessage.getSubject());
+        assertEquals("Dear DBA Team,\n\n"
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
+                + "Operation: INSERT\n"
+                + "Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\n"
+                + "Code: ALPS\n\n"
+                + "SQL QUERY:\n"
+                + "----------------------------------------1 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);\n\n"
+                + "----------------------------------------2 INSERT---------------------------\n\n"
+                + "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');\n\n"
+                + "UserID: SREEJU\n"
+                + "Email ID: krishnan.sreeju@gmail.com\n"
+                + "Phone Number: 9910303868",
+            sentMessage.getText());
+        verify(userLookupRepository).findUserContactDetails("SREEJU");
     }
 
     @Test
