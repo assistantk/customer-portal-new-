@@ -5,6 +5,7 @@ import com.cris.customerportal.dto.RmsApiResponse;
 import com.cris.customerportal.dto.RmsSelectDesignationRequest;
 import com.cris.customerportal.dto.RmsValidateUserRequest;
 import com.cris.customerportal.dto.RmsVerifyOtpRequest;
+import com.cris.customerportal.config.AuthInterceptor;
 import com.cris.customerportal.service.CaptchaService;
 import com.cris.customerportal.service.RmsApiClient;
 import com.cris.customerportal.service.RmsApiException;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.util.Arrays;
 import java.util.Map;
@@ -49,7 +51,7 @@ class RmsAuthControllerTest {
         when(mockClient.verifyOtp(any(com.cris.customerportal.dto.RmsOtpVerifyRequest.class)))
                 .thenReturn(credentialsAccepted);
         orchestrator = spy(new RmsAuthOrchestrator(mockClient, "FREIGHTCOD"));
-        controller = new AuthController(captchaService, orchestrator);
+        controller = new AuthController(captchaService, orchestrator, false);
 
         request = mock(HttpServletRequest.class);
         session = mock(HttpSession.class);
@@ -249,15 +251,16 @@ class RmsAuthControllerTest {
     void verifyOtp_validOtp_createsAuthenticatedSession() {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
         ctx.setSelectedDesignation("SR-DCM");
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
-
-        HttpSession newSession = mock(HttpSession.class);
-        when(request.getSession(true)).thenReturn(newSession);
+        when(session.getAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY)).thenReturn(null);
 
         RmsVerifyOtpRequest req = new RmsVerifyOtpRequest("78901");
-        doReturn(new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y", "sreeju@cris.org.in", "9910303868"))
+        AuthUserDto authenticatedUser = new AuthUserDto(
+                "SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y", "sreeju@cris.org.in", "9910303868");
+        doReturn(authenticatedUser)
                 .when(orchestrator).verifyOtp(eq(ctx), eq("78901"), anyString());
         ResponseEntity<?> response = controller.verifyOtp(req, request);
 
@@ -265,14 +268,49 @@ class RmsAuthControllerTest {
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertNotNull(body);
         assertTrue((Boolean) body.get("success"));
-        verify(newSession).setAttribute(eq(AuthController.AUTH_SESSION_KEY), any(AuthUserDto.class));
-        verify(newSession).setMaxInactiveInterval(3600);
+        verify(request).changeSessionId();
+        verify(session).setAttribute(AuthController.AUTH_SESSION_KEY, authenticatedUser);
+        verify(session).setMaxInactiveInterval(4 * 60 * 60);
+        verify(session, never()).invalidate();
+    }
+
+    @Test
+    void verifyOtp_sameUserCanAuthenticateAnIndependentSecondSession() {
+        AuthUserDto authenticatedUser = new AuthUserDto(
+                "SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y", "sreeju@cris.org.in", "9910303868");
+        doReturn(authenticatedUser).when(orchestrator)
+                .verifyOtp(any(RmsAuthSessionContext.class), eq("78901"), anyString());
+
+        HttpSession firstSession = mock(HttpSession.class);
+        HttpServletRequest firstRequest = mock(HttpServletRequest.class);
+        when(firstRequest.getSession(false)).thenReturn(firstSession);
+        RmsAuthSessionContext firstContext = otpPendingContext();
+        when(firstSession.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(firstContext);
+
+        HttpSession secondSession = mock(HttpSession.class);
+        HttpServletRequest secondRequest = mock(HttpServletRequest.class);
+        when(secondRequest.getSession(false)).thenReturn(secondSession);
+        RmsAuthSessionContext secondContext = otpPendingContext();
+        when(secondSession.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(secondContext);
+
+        ResponseEntity<?> firstResponse = controller.verifyOtp(new RmsVerifyOtpRequest("78901"), firstRequest);
+        ResponseEntity<?> secondResponse = controller.verifyOtp(new RmsVerifyOtpRequest("78901"), secondRequest);
+
+        assertEquals(HttpStatus.OK, firstResponse.getStatusCode());
+        assertEquals(HttpStatus.OK, secondResponse.getStatusCode());
+        verify(firstRequest).changeSessionId();
+        verify(secondRequest).changeSessionId();
+        verify(firstSession).setAttribute(AuthController.AUTH_SESSION_KEY, authenticatedUser);
+        verify(secondSession).setAttribute(AuthController.AUTH_SESSION_KEY, authenticatedUser);
+        verify(firstSession, never()).invalidate();
+        verify(secondSession, never()).invalidate();
     }
 
     @Test
     void verifyOtp_invalidOtp_returnsUnauthorized() {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
         ctx.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
         ctx.setSelectedDesignation("SR-DCM");
         when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
@@ -286,6 +324,31 @@ class RmsAuthControllerTest {
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertNotNull(body);
         assertFalse((Boolean) body.get("success"));
+    }
+
+    @Test
+    void verifyOtp_withoutSelectedOtpPendingFlow_isRejected() {
+        RmsAuthSessionContext ctx = new RmsAuthSessionContext();
+        ctx.setUserId("SREEJU");
+        ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
+        ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        when(session.getAttribute(AuthController.RMS_SESSION_CONTEXT_KEY)).thenReturn(ctx);
+
+        ResponseEntity<?> response = controller.verifyOtp(new RmsVerifyOtpRequest("78901"), request);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Session expired or invalid flow. Please start over.",
+                ((Map<?, ?>) response.getBody()).get("message"));
+        verify(orchestrator, never()).verifyOtp(any(), anyString(), anyString());
+    }
+
+    private RmsAuthSessionContext otpPendingContext() {
+        RmsAuthSessionContext context = new RmsAuthSessionContext();
+        context.setUserId("SREEJU");
+        context.setDesignations(Arrays.asList("SR-DCM", "DCM"));
+        context.setStep(RmsAuthSessionContext.Step.OTP_PENDING);
+        context.setSelectedDesignation("SR-DCM");
+        return context;
     }
 
     @Test
@@ -329,6 +392,8 @@ class RmsAuthControllerTest {
         logoutReq.setF_LOCN("TKD");
         logoutReq.setF_PSWD("password");
         logoutReq.setF_ROLEID("SR-DCM");
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY))
+                .thenReturn(new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y"));
         when(session.getAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY)).thenReturn(logoutReq);
         doNothing().when(orchestrator).logout(eq(logoutReq), anyString());
 
@@ -341,16 +406,15 @@ class RmsAuthControllerTest {
         assertEquals("Logged out successfully.", body.get("message"));
 
         verify(orchestrator).logout(eq(logoutReq), anyString());
-        verify(session).removeAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY);
-        verify(session).removeAttribute(AuthController.AUTH_SESSION_KEY);
-        verify(session).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
         verify(session).invalidate();
     }
 
     @Test
-    void logout_whenRmsOrchestratorFails_doesNotInvalidateSessionAndReturnsBadGateway() {
+    void logout_whenRmsOrchestratorFails_stillInvalidatesSessionAndReturnsBadGateway() {
         com.cris.customerportal.dto.RmsLoginRequest logoutReq = new com.cris.customerportal.dto.RmsLoginRequest();
         logoutReq.setF_USERID("SREEJU");
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY))
+                .thenReturn(new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y"));
         when(session.getAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY)).thenReturn(logoutReq);
         doThrow(new RmsApiException("RMS logout rejected by host"))
                 .when(orchestrator).logout(eq(logoutReq), anyString());
@@ -363,6 +427,30 @@ class RmsAuthControllerTest {
         assertFalse((Boolean) body.get("success"));
         assertTrue(body.get("message").toString().contains("RMS logout rejected by host"));
 
-        verify(session, never()).invalidate();
+        verify(session).invalidate();
     }
+
+    @Test
+    void logout_invalidatesOnlyTheRequestingDeviceSession() throws Exception {
+        HttpSession firstSession = mock(HttpSession.class);
+        HttpSession secondSession = mock(HttpSession.class);
+        HttpServletRequest firstRequest = mock(HttpServletRequest.class);
+        HttpServletRequest secondRequest = mock(HttpServletRequest.class);
+        HttpServletResponse secondResponse = mock(HttpServletResponse.class);
+        AuthUserDto user = new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y");
+        when(firstRequest.getSession(false)).thenReturn(firstSession);
+        when(firstSession.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(secondRequest.getMethod()).thenReturn("GET");
+        when(secondRequest.getSession(false)).thenReturn(secondSession);
+        when(secondSession.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(secondRequest.getRequestURI()).thenReturn("/api/customers/lookup");
+
+        ResponseEntity<?> response = controller.logout(firstRequest);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(firstSession).invalidate();
+        assertTrue(new AuthInterceptor().preHandle(secondRequest, secondResponse, new Object()));
+        verify(secondSession, never()).invalidate();
+    }
+
 }

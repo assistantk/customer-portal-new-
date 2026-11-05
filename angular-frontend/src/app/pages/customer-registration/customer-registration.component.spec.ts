@@ -89,6 +89,20 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     component.ngOnDestroy();
   });
 
+  it('uppercases entered customer codes, GSTINs, and PAN in form state', () => {
+    vi.useFakeTimers();
+    component.triggerOldLookup('ab12', 'GLOBAL');
+    component.handleGstinChange(0, { gstin: '27abcde1234f1z5' });
+    component.handlePanChange('abcde1234f');
+
+    expect(component.form.customerCode).toBe('AB12');
+    expect(component.gstins[0].gstin).toBe('27ABCDE1234F1Z5');
+    expect(component.form.panNumber).toBe('ABCDE1234F');
+
+    component.ngOnDestroy();
+    vi.useRealTimers();
+  });
+
   describe('New Entry Flow (mode: new)', () => {
     beforeEach(() => {
       component.mode = 'new';

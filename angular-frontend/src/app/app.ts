@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
+import { SessionLifecycleService } from './services/session-lifecycle.service';
 
 @Component({
   selector: 'app-root',
@@ -6,6 +7,14 @@ import { Component } from '@angular/core';
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnDestroy {
   title = 'Freight Code Generator';
+
+  constructor(private sessionLifecycle: SessionLifecycleService) {
+    this.sessionLifecycle.start();
+  }
+
+  ngOnDestroy(): void {
+    this.sessionLifecycle.stop();
+  }
 }

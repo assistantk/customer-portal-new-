@@ -13,33 +13,36 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // Allow CORS pre-flight OPTIONS requests
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
 
         HttpSession session = request.getSession(false);
-        AuthUserDto user = session != null ? (AuthUserDto) session.getAttribute(AuthController.AUTH_SESSION_KEY) : null;
-
+        AuthUserDto user = session != null
+                ? (AuthUserDto) session.getAttribute(AuthController.AUTH_SESSION_KEY)
+                : null;
         if (user == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"success\":false,\"message\":\"Authentication required. Please log in.\"}");
+            writeUnauthorized(response);
             return false;
         }
 
-        // Direct deletion remains admin-only; DBA requests follow the authenticated-user policy
-        // used by the Old User lookup and update endpoints.
         String requestUri = request.getRequestURI();
-        if (requestUri != null && requestUri.contains("/global-delete")) {
-            if (!"ADMIN".equalsIgnoreCase(user.getUserRole())) {
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"success\":false,\"message\":\"Access denied. Administrator privileges required.\"}");
-                return false;
-            }
+        if (requestUri != null && requestUri.contains("/global-delete")
+                && !"ADMIN".equalsIgnoreCase(user.getUserRole())) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write(
+                    "{\"success\":false,\"message\":\"Access denied. Administrator privileges required.\"}");
+            return false;
         }
 
         return true;
+    }
+
+    private void writeUnauthorized(HttpServletResponse response) throws Exception {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(
+                "{\"success\":false,\"code\":\"SESSION_EXPIRED\",\"message\":\"Authentication required. Please log in.\"}");
     }
 }

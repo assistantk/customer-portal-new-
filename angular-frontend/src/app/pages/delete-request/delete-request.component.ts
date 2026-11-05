@@ -85,7 +85,7 @@ export class DeleteRequestComponent {
 
   onCodeChange(event?: Event): void {
     if (event) {
-      this.code = (event.target as HTMLInputElement).value;
+      this.code = (event.target as HTMLInputElement).value.toUpperCase();
     }
     this.clearVerification();
   }
@@ -119,7 +119,7 @@ export class DeleteRequestComponent {
           this.verificationMessage = 'This code is not present in the records, so it cannot be deleted.';
           return;
         }
-        const verifiedCode = result.code || code;
+        const verifiedCode = (result.code || code).toUpperCase();
         const verifiedName = result.companyName || '';
         this.verifiedRecord = {
           codeType,

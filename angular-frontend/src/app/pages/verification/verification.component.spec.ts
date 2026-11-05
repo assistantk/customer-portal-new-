@@ -3,6 +3,7 @@ import { ChangeDetectorRef } from '@angular/core';
 import { VerificationComponent } from './verification.component';
 import { CustomerService } from '../../services/customer.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
+import { of } from 'rxjs';
 
 describe('VerificationComponent - PDF Generation Integration', () => {
   let component: VerificationComponent;
@@ -14,7 +15,11 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     mockCustomerService = {
       lookupCustomer: vi.fn(),
       lookupGSTIN: vi.fn(),
-      lookupGlobalCode: vi.fn()
+      lookupGlobalCode: vi.fn(),
+      lookupOldCustomerJDBC: vi.fn(),
+      lookupCustomerByGstinJDBC: vi.fn(),
+      searchHandlingAgentsJDBC: vi.fn(),
+      searchOwnershipCodesJDBC: vi.fn()
     };
     mockPdfGenerator = {
       generateVerificationPdf: vi.fn(),
@@ -34,7 +39,7 @@ describe('VerificationComponent - PDF Generation Integration', () => {
   });
 
   it('correctly passes recordDate from creationDate to pdfGeneratorService on preview', () => {
-    component.verificationType = 'code';
+    component.verificationType = 'customer';
     component.verifiedSearchValue = 'TISCO';
     component.customers = [{
       customerCode: 'TISCO',
@@ -53,7 +58,7 @@ describe('VerificationComponent - PDF Generation Integration', () => {
   });
 
   it('correctly passes recordDate and formatted filename on download', () => {
-    component.verificationType = 'code';
+    component.verificationType = 'customer';
     component.verifiedSearchValue = 'TISCO';
     component.customers = [{
       customerCode: 'TISCO',
@@ -85,5 +90,39 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     expect(calledData.recordDate).toBeNull();
     expect(filename).toBe('GST_Verification_27AAACT2727Q1ZT.pdf');
   });
-});
 
+  it('uppercases GSTIN input and displays all distinct associated handling agent codes', () => {
+    component.verificationType = 'gstin';
+    component.code = '07abcde1234f1z5';
+    mockCustomerService.lookupCustomerByGstinJDBC.mockReturnValue(of([{
+      customerCode: 'SAEB',
+      handlingAgentCodes: ['HA01', 'HA01', 'HA02']
+    }]));
+
+    component.verifyCode();
+
+    expect(mockCustomerService.lookupCustomerByGstinJDBC).toHaveBeenCalledWith('07ABCDE1234F1Z5');
+    expect(component.getHandlingAgentCodes(component.customers?.[0])).toEqual(['HA01', 'HA02']);
+  });
+
+  it('returns an empty handling agent list when the GSTIN has no association', () => {
+    expect(component.getHandlingAgentCodes({ handlingAgentCodes: [] })).toEqual([]);
+  });
+
+  it('searches ownership code records by normalized code or company-name term', () => {
+    component.verificationType = 'ownership';
+    component.code = 'alps mining';
+    mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([{
+      ownershipCode: 'ALPS',
+      companyName: 'M/S ALPS MINING SERVICES PRIVATE LIMITED'
+    }]));
+
+    component.verifyCode();
+
+    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('ALPS MINING');
+    expect(component.customers).toEqual([{
+      ownershipCode: 'ALPS',
+      companyName: 'M/S ALPS MINING SERVICES PRIVATE LIMITED'
+    }]);
+  });
+});

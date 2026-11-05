@@ -350,7 +350,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (result) => {
         if (result?.success !== false) {
-          const assignedCode = result?.customerCode || payload.customerCode;
+          const assignedCode = (result?.customerCode || payload.customerCode).toUpperCase();
           this.reset();
           this.notice = `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`;
           this.notificationService.success(

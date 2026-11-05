@@ -114,6 +114,12 @@ public class CustomerController {
         return resp;
     }
 
+    @GetMapping("/agent-search")
+    public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchAgents(@RequestParam String query) {
+        LOGGER.info("Handling agent search request");
+        return service.searchHandlingAgents(query);
+    }
+
     @GetMapping("/generate-code")
     public Map<String, String> generateCode(@RequestParam String base) {
         LOGGER.info("Generate code request: base={}", base);
@@ -241,6 +247,7 @@ public class CustomerController {
                 body.put("success", true);
                 body.put("found", false);
             }
+
             return ResponseEntity.ok(body);
         } catch (Exception e) {
             String safeMsg = sanitizeErrorMessage("", e, "Unable to verify ownership code. Please try again later.");
@@ -249,6 +256,12 @@ public class CustomerController {
             body.put("message", safeMsg);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
         }
+    }
+
+    @GetMapping("/ownership-search")
+    public java.util.List<java.util.Map<String, String>> searchOwnership(@RequestParam String query) {
+        LOGGER.info("Ownership code search request");
+        return service.searchOwnershipCodes(query);
     }
 
     @PostMapping("/ownership-save")

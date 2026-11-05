@@ -208,11 +208,11 @@ public class CustomerServiceImpl implements CustomerService {
         + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE, MAVIMPLREMK, "
         + "NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE "
         + "FROM MEMGLBLCUST WHERE " + glblGstCol + " LIKE ?";
+  List<com.cris.customerportal.dto.OldCustomerResponse> responses = new ArrayList<>();
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, "%" + gstin + "%");
    try (ResultSet rs = ps.executeQuery()) {
-    java.util.List<com.cris.customerportal.dto.OldCustomerResponse> responses = new java.util.ArrayList<>();
     while (rs.next()) {
      com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
      response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
@@ -227,16 +227,115 @@ public class CustomerServiceImpl implements CustomerService {
      
      responses.add(response);
     }
-    
-    if (responses.isEmpty()) {
-     throw new ResourceNotFoundException("No record found for this GSTIN.");
-    }
-    return responses;
    }
   } catch (SQLException e) {
     log.error("CustomerServiceImpl.lookupOldCustomerByGstin: SQLState={} ErrorCode={} stackTrace={}",
             e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
    throw new RuntimeException("Database error occurred while fetching customer by GSTIN", e);
+  }
+  List<String> handlingAgentCodes = findHandlingAgentCodesByGstin(gstin);
+  if (responses.isEmpty()) {
+   if (handlingAgentCodes.isEmpty()) {
+    throw new ResourceNotFoundException("No record found for this GSTIN.");
+   }
+   com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+   response.setGstinNumbers(gstin);
+   responses.add(response);
+  }
+  responses.forEach(response -> response.setHandlingAgentCodes(handlingAgentCodes));
+  return responses;
+ }
+
+ private List<String> findHandlingAgentCodesByGstin(String gstin) {
+  String normalizedGstinColumn = "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(NVL("
+      + hndgGstCol + ", '')), '[', ''), ']', ''), '\"', ''), ' ', '')";
+  String sql = "SELECT DISTINCT " + hndgCodeCol + " FROM MEMGLBLHNDGAGNT "
+      + "WHERE INSTR(',' || " + normalizedGstinColumn + " || ',', ',' || ? || ',') > 0 "
+      + "AND " + hndgCodeCol + " IS NOT NULL "
+      + "ORDER BY " + hndgCodeCol;
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, gstin == null ? "" : gstin.trim().toUpperCase(Locale.ROOT));
+   try (ResultSet rs = ps.executeQuery()) {
+    Set<String> codes = new LinkedHashSet<>();
+    while (rs.next()) {
+     String code = rs.getString(1);
+     if (code != null && !code.trim().isEmpty()) codes.add(code.trim());
+    }
+    return new ArrayList<>(codes);
+   }
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.findHandlingAgentCodesByGstin: SQLState={} ErrorCode={} stackTrace={}",
+       e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
+   throw new RuntimeException("Database error while looking up handling agent codes by GSTIN", e);
+  }
+ }
+
+ public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search) {
+  String term = search == null ? "" : search.trim().toUpperCase(Locale.ROOT);
+  if (term.isEmpty()) return Collections.emptyList();
+  initDbColumns();
+  String sql = "SELECT " + hndgCodeCol + " AS MAVHNDAGNTCODE, "
+      + hndgNameCol + " AS MAVHNDAGNTNAME, "
+      + hndgAddrCol + " AS MAVHNDAGNTADDRTEXT, "
+      + hndgCityCol + " AS MAVHNDAGNTCITYNAME, "
+      + hndgGstCol + " AS MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MAVIMPLREMK, "
+      + hndgDateCol + " AS MAVVERIFICATIONDATE "
+      + "FROM MEMGLBLHNDGAGNT WHERE INSTR(UPPER(NVL(" + hndgCodeCol + ", '')), ?) > 0 "
+      + "OR INSTR(UPPER(NVL(" + hndgNameCol + ", '')), ?) > 0 "
+      + "ORDER BY " + hndgCodeCol;
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, term);
+   ps.setString(2, term);
+   try (ResultSet rs = ps.executeQuery()) {
+    List<com.cris.customerportal.dto.GlobalAgentResponse> responses = new ArrayList<>();
+    while (rs.next()) {
+     com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
+     response.setCode(rs.getString("MAVHNDAGNTCODE"));
+     response.setCompanyName(rs.getString("MAVHNDAGNTNAME"));
+     response.setAddress(rs.getString("MAVHNDAGNTADDRTEXT"));
+     response.setCity(rs.getString("MAVHNDAGNTCITYNAME"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+     response.setDivision(rs.getString("MAVIMPLREMK"));
+     response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
+     responses.add(response);
+    }
+    return responses;
+   }
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.searchHandlingAgents: SQLState={} ErrorCode={} stackTrace={}",
+       e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
+   throw new RuntimeException("Database error while searching handling agent codes", e);
+  }
+ }
+
+ public List<Map<String, String>> searchOwnershipCodes(String search) {
+  String term = search == null ? "" : search.trim().toUpperCase(Locale.ROOT);
+  if (term.isEmpty()) return Collections.emptyList();
+  String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP "
+      + "WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0 "
+      + "OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0 "
+      + "ORDER BY MAVWGONOWNRSHIPCODE";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, term);
+   ps.setString(2, term);
+   try (ResultSet rs = ps.executeQuery()) {
+    List<Map<String, String>> responses = new ArrayList<>();
+    while (rs.next()) {
+     Map<String, String> response = new LinkedHashMap<>();
+     response.put("ownershipCode", rs.getString("MAVWGONOWNRSHIPCODE"));
+     response.put("companyName", rs.getString("MAVWGONOWNRSHIPDESC"));
+     responses.add(response);
+    }
+    return responses;
+   }
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.searchOwnershipCodes: SQLState={} ErrorCode={} stackTrace={}",
+       e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
+   throw new RuntimeException("Database error while searching ownership codes", e);
   }
  }
 

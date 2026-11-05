@@ -109,6 +109,126 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void gstinLookupReturnsDistinctHandlingAgentCodesFromTheirStoredGstinAssociation() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement customerLookup = mock(PreparedStatement.class);
+        PreparedStatement agentLookup = mock(PreparedStatement.class);
+        ResultSet customerRs = mock(ResultSet.class);
+        ResultSet agentRs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(customerLookup, agentLookup);
+        when(customerLookup.executeQuery()).thenReturn(customerRs);
+        when(agentLookup.executeQuery()).thenReturn(agentRs);
+        when(customerRs.next()).thenReturn(true, false);
+        when(agentRs.next()).thenReturn(true, true, false);
+        when(customerRs.getString("MAVGLBLCUSTCODE")).thenReturn("SAEB");
+        when(customerRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S SAMPLE COMPANY");
+        when(customerRs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
+        when(agentRs.getString(1)).thenReturn("HA01", "HA01");
+
+        List<com.cris.customerportal.dto.OldCustomerResponse> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .lookupOldCustomerByGstin("07abcde1234f1z5");
+
+        assertEquals(1, results.size());
+        assertEquals(List.of("HA01"), results.get(0).getHandlingAgentCodes());
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("FROM MEMGLBLHNDGAGNT")
+                    && sql.contains("INSTR(',' ||")
+                    && sql.contains("MAVCUSTGSTNUMB")
+                    && sql.contains("SELECT DISTINCT MAVHNDGAGNTCODE")));
+        verify(agentLookup).setString(1, "07ABCDE1234F1Z5");
+    }
+
+    @Test
+    void gstinLookupReturnsAgentAssociationEvenWhenNoGlobalCustomerMatches() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement customerLookup = mock(PreparedStatement.class);
+        PreparedStatement agentLookup = mock(PreparedStatement.class);
+        ResultSet customerRs = mock(ResultSet.class);
+        ResultSet agentRs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(customerLookup, agentLookup);
+        when(customerLookup.executeQuery()).thenReturn(customerRs);
+        when(agentLookup.executeQuery()).thenReturn(agentRs);
+        when(customerRs.next()).thenReturn(false);
+        when(agentRs.next()).thenReturn(true, false);
+        when(agentRs.getString(1)).thenReturn("HA01");
+
+        List<com.cris.customerportal.dto.OldCustomerResponse> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .lookupOldCustomerByGstin("07ABCDE1234F1Z5");
+
+        assertEquals(1, results.size());
+        assertNull(results.get(0).getCustomerCode());
+        assertEquals("07ABCDE1234F1Z5", results.get(0).getGstinNumbers());
+        assertEquals(List.of("HA01"), results.get(0).getHandlingAgentCodes());
+    }
+
+    @Test
+    void ownershipSearchReturnsOnlyOwnershipCodeAndCompanyNameFromOwnershipMaster() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement search = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(search);
+        when(search.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ALPS");
+        when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
+
+        List<Map<String, String>> results =
+                service(dataSource, mock(JavaMailSender.class)).searchOwnershipCodes("alps");
+
+        assertEquals(1, results.size());
+        assertEquals(Map.of(
+                "ownershipCode", "ALPS",
+                "companyName", "M/S ALPS MINING SERVICES PRIVATE LIMITED"), results.get(0));
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("FROM MEMWGONOWNRSHIP")
+                    && sql.contains("MAVWGONOWNRSHIPCODE")
+                    && sql.contains("MAVWGONOWNRSHIPDESC")));
+        verify(search).setString(1, "ALPS");
+        verify(search).setString(2, "ALPS");
+    }
+
+    @Test
+    void handlingAgentSearchMatchesCodeOrCompanyNameUsingMasterColumns() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement search = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(search);
+        when(search.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVHNDAGNTCODE")).thenReturn("HA01");
+        when(rs.getString("MAVHNDAGNTNAME")).thenReturn("M/S SAMPLE AGENT");
+        when(rs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("SAMPLE ROAD");
+        when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
+
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
+                service(dataSource, mock(JavaMailSender.class)).searchHandlingAgents("sample");
+
+        assertEquals(1, results.size());
+        assertEquals("HA01", results.get(0).getCode());
+        assertEquals("M/S SAMPLE AGENT", results.get(0).getCompanyName());
+        assertEquals("SAMPLE ROAD", results.get(0).getAddress());
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("FROM MEMGLBLHNDGAGNT")
+                    && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTCODE")
+                    && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTNAME")));
+        verify(search).setString(1, "SAMPLE");
+        verify(search).setString(2, "SAMPLE");
+    }
+
+    @Test
     void registerNewGlobalCustomer_emailsExecutableInsertWithoutExecutingIt() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);

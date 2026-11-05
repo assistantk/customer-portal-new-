@@ -120,6 +120,7 @@
               placeholder="Select Division"
               formControlName="divisionCode"
               list="railway-divisions-list"
+              (input)="uppercaseDivisionCode($event)"
               [readonly]="loading"
               style="text-transform: uppercase;"
             />

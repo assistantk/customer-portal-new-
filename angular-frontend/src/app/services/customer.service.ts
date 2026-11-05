@@ -98,6 +98,22 @@ export class CustomerService {
     });
   }
 
+  searchHandlingAgentsJDBC(query: string): Observable<any[]> {
+    const trimmed = (query || '').trim().toUpperCase();
+    return this.http.get<any[]>(`${this.API}/customers/agent-search`, {
+      params: { query: trimmed },
+      withCredentials: true
+    });
+  }
+
+  searchOwnershipCodesJDBC(query: string): Observable<any[]> {
+    const trimmed = (query || '').trim().toUpperCase();
+    return this.http.get<any[]>(`${this.API}/customers/ownership-search`, {
+      params: { query: trimmed },
+      withCredentials: true
+    });
+  }
+
   verifyDeleteRequest(codeType: DeleteRequestCodeType, code: string): Observable<DeleteRequestVerification> {
     return this.http.post<DeleteRequestVerification>(
       `${this.API}/customers/delete-requests/verify`,

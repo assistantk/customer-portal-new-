@@ -175,7 +175,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
               } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
                 this.form.address = resp.data.address || '';
-                this.form.panNumber = resp.data.panNumber || '';
+                this.form.panNumber = (resp.data.panNumber || '').toUpperCase();
                 this.form.city = resp.data.city || '';
                 this.form.pincode = resp.data.pincode || '';
                 this.ownSection1Found = true;

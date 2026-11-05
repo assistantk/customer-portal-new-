@@ -430,6 +430,21 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
+  uppercaseDivisionCode(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const selectionStart = input.selectionStart;
+    const selectionEnd = input.selectionEnd;
+    const uppercaseValue = input.value.toUpperCase();
+
+    if (input.value !== uppercaseValue) {
+      input.value = uppercaseValue;
+      this.loginForm.get('divisionCode')?.setValue(uppercaseValue, { emitEvent: false });
+      if (selectionStart !== null && selectionEnd !== null) {
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
+  }
+
   restartLogin(): void {
     this.authService.setRmsTempUser(null);
     this.authService.setCurrentUser(null);
