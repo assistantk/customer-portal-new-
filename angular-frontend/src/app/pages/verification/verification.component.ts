@@ -1,7 +1,7 @@
 import { PdfGeneratorService, VerificationPdfData } from '../../services/pdf-generator.service';
-import { Component, OnInit, ChangeDetectorRef } from "@angular/core";
-import { FormBuilder, FormGroup } from "@angular/forms";
-import { finalize } from "rxjs";
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from "@angular/core";
+import { Router, NavigationEnd } from "@angular/router";
+import { finalize, filter, Subscription } from "rxjs";
 import { CustomerService } from "../../services/customer.service";
 
 @Component({
@@ -10,7 +10,7 @@ import { CustomerService } from "../../services/customer.service";
   templateUrl: "./verification.component.html",
   styleUrls: ["./verification.component.css"]
 })
-export class VerificationComponent implements OnInit {
+export class VerificationComponent implements OnInit, OnDestroy {
   verificationType: "customer" | "gstin" = "customer";
   code = "";
   loading = false;
@@ -18,14 +18,29 @@ export class VerificationComponent implements OnInit {
   error = "";
   verifiedSearchValue = "";
   private lookupRequestId = 0;
+  private routerEventsSubscription?: Subscription;
 
   constructor(
     private customerService: CustomerService,
     private cdr: ChangeDetectorRef,
-    private pdfGeneratorService?: PdfGeneratorService
+    private pdfGeneratorService?: PdfGeneratorService,
+    private router?: Router
   ) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.reset();
+    if (this.router?.events) {
+      this.routerEventsSubscription = this.router.events
+        .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+        .subscribe(() => {
+          this.reset();
+        });
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.routerEventsSubscription?.unsubscribe();
+  }
 
   setVerificationType(type: "customer" | "gstin"): void {
     this.lookupRequestId++;

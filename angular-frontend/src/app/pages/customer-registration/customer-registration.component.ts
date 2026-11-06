@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
-import { Router } from '@angular/router';
-import { finalize, Subscription, timeout } from 'rxjs';
+import { Router, NavigationEnd } from '@angular/router';
+import { finalize, filter, Subscription, timeout } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
@@ -9,6 +9,7 @@ import { PdfGeneratorService } from '../../services/pdf-generator.service';
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -227,6 +228,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private lookupRequestId = 0;
   private divisionSelectionManuallyChanged = false;
   private userDivisionSubscription?: Subscription;
+  private zoneDivisionSubscription?: Subscription;
+  private routerEventsSubscription?: Subscription;
+  private lastRouteUrl = '';
 
   readonly INDIAN_STATES = INDIAN_STATES;
   readonly divisionsByZone = divisionsByZone;
@@ -238,7 +242,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private router?: Router,
     private pdfGeneratorService?: PdfGeneratorService,
-    private authService?: AuthService
+    private authService?: AuthService,
+    private zoneDivisionService?: ZoneDivisionService
   ) { }
 
   openGlobalCodeForm(): void {
@@ -260,12 +265,42 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    if (this.router?.url.split('?')[0].endsWith('/delete-request')) {
+    this.lastRouteUrl = this.router?.url ? this.router.url.split('?')[0] : '';
+    if (this.lastRouteUrl.endsWith('/delete-request')) {
       this.mode = 'delete';
     }
+
+    this.resetFieldsPreservingZoneDivision();
+
     this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
       this.applyLoginDivisionDefault();
     });
+
+    this.zoneDivisionSubscription = this.zoneDivisionService?.selection$.subscribe((sel) => {
+      if (sel.manuallyChanged || (!this.form.zone && !this.form.operatingDivision)) {
+        if (sel.zone) this.form.zone = sel.zone;
+        if (sel.division) this.form.operatingDivision = sel.division;
+        this.divisionSelectionManuallyChanged = sel.manuallyChanged;
+        this.cdr.markForCheck();
+      }
+    });
+
+    if (this.router?.events) {
+      this.routerEventsSubscription = this.router.events
+        .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+        .subscribe((event) => {
+          const cleanUrl = (event.urlAfterRedirects || event.url || '').split('?')[0];
+          if (cleanUrl !== this.lastRouteUrl) {
+            this.lastRouteUrl = cleanUrl;
+            if (cleanUrl.endsWith('/delete-request')) {
+              this.mode = 'delete';
+            } else if (this.mode === 'delete') {
+              this.mode = 'new';
+            }
+            this.resetFieldsPreservingZoneDivision();
+          }
+        });
+    }
   }
 
   ngOnDestroy(): void {
@@ -274,6 +309,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
     if (this.codeTimer) clearTimeout(this.codeTimer);
     this.userDivisionSubscription?.unsubscribe();
+    this.zoneDivisionSubscription?.unsubscribe();
+    this.routerEventsSubscription?.unsubscribe();
   }
 
   get zones(): string[] {
@@ -301,6 +338,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   private applyLoginDivisionDefault(): void {
+    const shared = this.zoneDivisionService?.currentSelection;
+    if (shared && shared.manuallyChanged) {
+      this.form.zone = shared.zone;
+      this.form.operatingDivision = shared.division;
+      this.divisionSelectionManuallyChanged = true;
+      this.cdr.markForCheck();
+      return;
+    }
     const selection = this.loginDivisionSelection;
     if (
       this.mode !== 'ownership'
@@ -311,6 +356,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     ) {
       this.form.zone = selection.zone;
       this.form.operatingDivision = selection.division;
+      this.zoneDivisionService?.setDefaultIfUnset(selection.zone, selection.division);
       this.cdr.markForCheck();
     }
   }
@@ -325,18 +371,39 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   reset(): void {
-    this.form = { ...blank };
+    this.resetFieldsPreservingZoneDivision();
+  }
+
+  private resetFieldsPreservingZoneDivision(): void {
+    const shared = this.zoneDivisionService?.currentSelection;
+    const currentZone = shared?.zone || this.form.zone || '';
+    const currentDivision = shared?.division || this.form.operatingDivision || '';
+    const manuallyChanged = shared?.manuallyChanged ?? this.divisionSelectionManuallyChanged;
+
+    this.form = {
+      ...blank,
+      zone: currentZone,
+      operatingDivision: currentDivision
+    };
+    this.divisionSelectionManuallyChanged = manuallyChanged;
+
+    if (!currentZone && !currentDivision) {
+      this.applyLoginDivisionDefault();
+    }
+
     this.verifiedCustomerCode = null;
-    this.divisionSelectionManuallyChanged = false;
     this.gstins = [{ ...blankGstin }];
     this.errors = {};
     this.notice = '';
     this.loading = false;
     this.lookupDone = false;
+    this.lookupLoading = false;
     this.lookupError = '';
+    this.lastLookupRecord = null;
     this.codeConfirmed = false;
     this.codeChecking = false;
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    if (this.lookupTimer) clearTimeout(this.lookupTimer);
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
     this.addressManuallyEdited = false;
@@ -345,6 +412,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.zoneOpen = false;
     this.zoneSearchTerm = '';
     this.divisionOpen = false;
+
     this.ownSection1Loading = false;
     this.ownSection1Found = null;
     this.ownSection1Duplicate = false;
@@ -355,7 +423,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection2Duplicate = false;
     this.ownSection2LookupError = '';
     this.ownSection2Source = null;
-    this.applyLoginDivisionDefault();
+    if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
+    if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
+
+    // Delete request fields
+    this.deleteCodeType = '';
+    this.deleteLogoMissing = false;
+    this.deleteCode = '';
+    this.deleteCompanyName = '';
+    this.verifiedDeleteRecord = null;
+    this.deleteVerificationMessage = '';
+    this.deleteErrorMessage = '';
+    this.deleteSuccessMessage = '';
+    this.deleteVerifying = false;
+    this.deleteSubmitting = false;
+
     this.cdr.markForCheck();
   }
 
@@ -370,10 +452,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     this.mode = newMode;
-    this.divisionSelectionManuallyChanged = false;
-    if (newMode !== 'ownership' && newMode !== 'delete') {
-      this.applyLoginDivisionDefault();
-    }
+    this.resetFieldsPreservingZoneDivision();
     this.ownershipLogoMissing = false;
     this.cdr.markForCheck();
   }
@@ -1482,9 +1561,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
+    this.zoneDivisionService?.setSelection(zone, '', true);
     this.zoneSearchTerm = '';
     this.zoneOpen = false;
     delete this.errors['zone'];
+    delete this.errors['operatingDivision'];
+    this.cdr.markForCheck();
   }
 
   // Division select
@@ -1497,7 +1579,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   chooseDivision(div: string): void {
     this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
+    this.zoneDivisionService?.setSelection(this.form.zone || '', div, true);
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];
+    this.cdr.markForCheck();
   }
 }

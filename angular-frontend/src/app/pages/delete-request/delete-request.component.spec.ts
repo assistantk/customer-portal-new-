@@ -1,5 +1,7 @@
+import '@angular/compiler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { of, Subject, throwError } from 'rxjs';
+import { NavigationEnd } from '@angular/router';
 import { CustomerService } from '../../services/customer.service';
 import { DeleteRequestComponent } from './delete-request.component';
 
@@ -203,5 +205,28 @@ describe('DeleteRequestComponent', () => {
     expect(component.submitting).toBe(false);
     expect(component.errorMessage).toBe('Email delivery failed');
     expect(component.verifiedRecord).not.toBeNull();
+  });
+
+  it('resets code, companyName, and verified fields on navigation event', () => {
+    const routerEvents = new Subject<any>();
+    const comp = new DeleteRequestComponent(
+      customerService as unknown as CustomerService,
+      { events: routerEvents.asObservable() } as any
+    );
+    comp.ngOnInit();
+
+    comp.codeType = 'GLOBAL_CUSTOMER';
+    comp.code = 'AEIP';
+    comp.companyName = 'Example Company';
+    comp.verificationMessage = 'Found';
+
+    routerEvents.next(new NavigationEnd(1, '/delete-request', '/delete-request'));
+
+    expect(comp.code).toBe('');
+    expect(comp.companyName).toBe('');
+    expect(comp.verificationMessage).toBe('');
+    expect(comp.codeType).toBe('');
+
+    comp.ngOnDestroy();
   });
 });

@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 import { BehaviorSubject, of, throwError, Subject } from 'rxjs';
 
 describe('CustomerRegistrationComponent - Submission and Loading State', () => {
@@ -966,6 +969,78 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('HANDLING_AGENT');
       expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
+    });
+
+    it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+      const routerEvents = new Subject<any>();
+      const zoneDivisionService = new ZoneDivisionService();
+      zoneDivisionService.setSelection('Northern Railway (NR)', 'Delhi (DLI)', true);
+
+      const navRouter = {
+        navigate: vi.fn(),
+        events: routerEvents.asObservable()
+      } as any;
+
+      const testComponent = new CustomerRegistrationComponent(
+        customerServiceMock,
+        panOcrServiceMock,
+        notificationService,
+        cdrMock,
+        navRouter,
+        undefined,
+        authServiceMock,
+        zoneDivisionService
+      );
+      testComponent.ngOnInit();
+
+      testComponent.form.companyName = 'Delhi Logistics Pvt Ltd';
+      testComponent.form.panNumber = 'ABCDE1234F';
+      testComponent.form.address = 'Connaught Place';
+      testComponent.form.city = 'New Delhi';
+      testComponent.form.pincode = '110001';
+      testComponent.form.email = 'delhi@logistics.com';
+      testComponent.form.mobile = '9876543210';
+
+      expect(testComponent.form.companyName).toBe('Delhi Logistics Pvt Ltd');
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      // Simulate navigation event
+      routerEvents.next(new NavigationEnd(1, '/registration', '/registration?reset=true'));
+
+      // Normal text fields should be cleared
+      expect(testComponent.form.companyName).toBe('');
+      expect(testComponent.form.panNumber).toBe('');
+      expect(testComponent.form.address).toBe('');
+      expect(testComponent.form.city).toBe('');
+      expect(testComponent.form.pincode).toBe('');
+      expect(testComponent.form.email).toBe('');
+      expect(testComponent.form.mobile).toBe('');
+
+      // Zone and Division MUST be preserved
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      testComponent.ngOnDestroy();
+    });
+
+    it('preserves zone and division when switching modes between new, old, and ownership', () => {
+      component.mode = 'new';
+      component.form.zone = 'Western Railway (WR)';
+      component.form.operatingDivision = 'Mumbai Central (BCT)';
+      component.form.companyName = 'Western Traders';
+      component.form.address = 'Marine Drive';
+
+      // Switch mode to old
+      component.switchMode('old');
+
+      // Text fields cleared
+      expect(component.form.companyName).toBe('');
+      expect(component.form.address).toBe('');
+
+      // Zone and Division preserved
+      expect(component.form.zone).toBe('Western Railway (WR)');
+      expect(component.form.operatingDivision).toBe('Mumbai Central (BCT)');
     });
   });
 });

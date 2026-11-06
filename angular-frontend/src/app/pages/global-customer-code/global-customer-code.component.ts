@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
-import { Router } from '@angular/router';
-import { finalize, Subscription } from 'rxjs';
+import { Router, NavigationEnd } from '@angular/router';
+import { finalize, filter, Subscription } from 'rxjs';
 import { CustomerService, CustomerPayload } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
@@ -8,6 +8,7 @@ import { INDIAN_STATES, divisionsByZone } from '../customer-registration/custome
 import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 
 export interface GlobalCodeForm {
   customerCode: string;
@@ -69,19 +70,41 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   private codeRequestId = 0;
   private divisionSelectionManuallyChanged = false;
   private userDivisionSubscription?: Subscription;
+  private zoneDivisionSubscription?: Subscription;
+  private routerEventsSubscription?: Subscription;
 
   constructor(
     private customerService: CustomerService,
     private notificationService: NotificationService,
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private authService?: AuthService
+    private authService?: AuthService,
+    private zoneDivisionService?: ZoneDivisionService
   ) { }
 
   ngOnInit(): void {
+    this.resetFieldsPreservingZoneDivision();
+
     this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
       this.applyLoginDivisionDefault();
     });
+
+    this.zoneDivisionSubscription = this.zoneDivisionService?.selection$.subscribe((sel) => {
+      if (sel.manuallyChanged || (!this.form.zone && !this.form.operatingDivision)) {
+        if (sel.zone) this.form.zone = sel.zone;
+        if (sel.division) this.form.operatingDivision = sel.division;
+        this.divisionSelectionManuallyChanged = sel.manuallyChanged;
+        this.cdr.markForCheck();
+      }
+    });
+
+    if (this.router?.events) {
+      this.routerEventsSubscription = this.router.events
+        .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+        .subscribe(() => {
+          this.resetFieldsPreservingZoneDivision();
+        });
+    }
   }
 
   ngOnDestroy(): void {
@@ -89,6 +112,8 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
       clearTimeout(this.codeTimer);
     }
     this.userDivisionSubscription?.unsubscribe();
+    this.zoneDivisionSubscription?.unsubscribe();
+    this.routerEventsSubscription?.unsubscribe();
   }
 
   get zones(): string[] {
@@ -116,10 +141,19 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   }
 
   private applyLoginDivisionDefault(): void {
+    const shared = this.zoneDivisionService?.currentSelection;
+    if (shared && shared.manuallyChanged) {
+      this.form.zone = shared.zone;
+      this.form.operatingDivision = shared.division;
+      this.divisionSelectionManuallyChanged = true;
+      this.cdr.markForCheck();
+      return;
+    }
     const selection = this.loginDivisionSelection;
     if (!this.divisionSelectionManuallyChanged && !this.form.operatingDivision && selection) {
       this.form.zone = selection.zone;
       this.form.operatingDivision = selection.division;
+      this.zoneDivisionService?.setDefaultIfUnset(selection.zone, selection.division);
       this.cdr.markForCheck();
     }
   }
@@ -197,6 +231,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
+    this.zoneDivisionService?.setSelection(zone, '', true);
     this.zoneOpen = false;
     this.zoneSearchTerm = '';
     delete this.errors['zone'];
@@ -215,6 +250,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   chooseDivision(div: string): void {
     this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
+    this.zoneDivisionService?.setSelection(this.form.zone, div, true);
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];
     this.cdr.markForCheck();
@@ -227,9 +263,26 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
 
   /* ===== Reset Form ===== */
   reset(): void {
-    this.form = { ...blankForm };
-    this.divisionSelectionManuallyChanged = false;
-    this.applyLoginDivisionDefault();
+    this.resetFieldsPreservingZoneDivision();
+  }
+
+  private resetFieldsPreservingZoneDivision(): void {
+    const shared = this.zoneDivisionService?.currentSelection;
+    const currentZone = shared?.zone || this.form.zone || '';
+    const currentDivision = shared?.division || this.form.operatingDivision || '';
+    const manuallyChanged = shared?.manuallyChanged ?? this.divisionSelectionManuallyChanged;
+
+    this.form = {
+      ...blankForm,
+      zone: currentZone,
+      operatingDivision: currentDivision
+    };
+    this.divisionSelectionManuallyChanged = manuallyChanged;
+
+    if (!currentZone && !currentDivision) {
+      this.applyLoginDivisionDefault();
+    }
+
     this.errors = {};
     this.notice = '';
     this.loading = false;

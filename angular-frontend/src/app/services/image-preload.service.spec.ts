@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { NavigationEnd, Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
