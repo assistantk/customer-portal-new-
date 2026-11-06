@@ -148,6 +148,29 @@ describe('HandlingAgentCodeComponent', () => {
     expect(component.errors['gstin']).toBeUndefined();
   });
 
+  it('allows users to type multiple characters, words, and spaces continuously in GST input without restriction', () => {
+    component.handleGstinChange('FIRST WORD SECOND WORD 12345');
+    expect(component.form.gstin).toBe('FIRST WORD SECOND WORD 12345');
+    expect(component.errors['gstin']).toBeUndefined();
+
+    // Supports trailing spaces without stripping them while typing
+    component.handleGstinChange('TEST WORD ');
+    expect(component.form.gstin).toBe('TEST WORD ');
+
+    // Validates only on blur or submit
+    component.handleGstinBlur();
+    expect(component.errors['gstin']).toBe('Enter a valid 15-character GSTIN.');
+
+    // Clears error as soon as user types again
+    component.handleGstinChange('27ABCDE1234F1Z5');
+    expect(component.errors['gstin']).toBeUndefined();
+
+    // Validates correctly on blur with valid GSTIN matching PAN
+    component.form.panNumber = 'ABCDE1234F';
+    component.handleGstinBlur();
+    expect(component.errors['gstin']).toBeUndefined();
+  });
+
   it('should submit registration successfully', () => {
     component.form = {
       agentCompanyName: 'Super Logistics Private Limited',

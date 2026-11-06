@@ -788,6 +788,33 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.address).toBe('123 MAIN ST,APT 4B,NEW DELHI');
     });
 
+    it('allows typing multiple words and spaces continuously in the GST input field without restriction', () => {
+      component.gstins = [{ gstin: '', state: '' }];
+
+      // 1. User can type continuous characters and multiple words with spaces
+      component.handleGstinChange(0, { gstin: 'FIRST WORD SECOND WORD 12345' });
+      expect(component.gstins[0].gstin).toBe('FIRST WORD SECOND WORD 12345');
+      // No validation error during typing
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+
+      // 2. Spaces and partial editing are retained without being stripped
+      component.handleGstinChange(0, { gstin: '27 ABCDE ' });
+      expect(component.gstins[0].gstin).toBe('27 ABCDE ');
+
+      // 3. Validation occurs on blur
+      component.handleGstinBlur(0);
+      expect(component.errors['gstin_0_gstin']).toBe('Enter a valid 15-character GSTIN.');
+
+      // 4. Typing again clears the validation error
+      component.handleGstinChange(0, { gstin: '27ABCDE1234F1Z5' });
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+
+      // 5. Validating on blur with matching PAN passes
+      component.form.panNumber = 'ABCDE1234F';
+      component.handleGstinBlur(0);
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+    });
+
     it('allows address that exceeds 100 characters with comma spaces but fits within 100 characters when normalized', () => {
       component.mode = 'old';
       component.form.companyName = 'Test Corporation';

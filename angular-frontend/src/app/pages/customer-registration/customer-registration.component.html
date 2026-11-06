@@ -15,7 +15,7 @@
                     </div>
 
                     <div *ngIf="!gstinCollapsed" class="header-gstin-body">
-                        <div *ngFor="let g of gstins; let i = index" class="header-gstin-item">
+                        <div *ngFor="let g of gstins; let i = index; trackBy: trackByGstin" class="header-gstin-item">
                             <div class="header-gstin-item-head">
                                 <h4>GSTIN {{ i + 1 }}</h4>
                                 <button *ngIf="i > 0" type="button" class="remove-btn" (click)="removeGstin(i)">
@@ -29,10 +29,12 @@
                                     <input
                                         [id]="'gstin-' + i"
                                         name="gstin"
-                                        [value]="g.gstin"
-                                        maxlength="15"
+                                        type="text"
+                                        [(ngModel)]="g.gstin"
+                                        [ngModelOptions]="{ standalone: true }"
                                         [placeholder]="g.scanning ? 'Extracting GSTIN...' : 'ENTER GSTIN NUMBER'"
-                                        (input)="handleGstinChange(i, { gstin: $any($event.target).value })"
+                                        (input)="handleGstinChange(i, { gstin: g.gstin })"
+                                        (blur)="handleGstinBlur(i)"
                                         style="text-transform: uppercase;"
                                     />
                                     <button

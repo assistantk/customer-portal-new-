@@ -71,9 +71,9 @@
                             id="gstin"
                             name="gstin"
                             type="text"
-                            maxlength="15"
-                            [value]="form.gstin"
-                            (input)="handleGstinChange($any($event.target).value)"
+                            [(ngModel)]="form.gstin"
+                            (input)="handleGstinChange(form.gstin)"
+                            (blur)="handleGstinBlur()"
                             placeholder="Enter GSTIN number"
                             style="text-transform: uppercase;"
                         />
