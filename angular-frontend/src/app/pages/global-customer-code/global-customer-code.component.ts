@@ -76,7 +76,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     private router: Router,
     private cdr: ChangeDetectorRef,
     private authService?: AuthService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
