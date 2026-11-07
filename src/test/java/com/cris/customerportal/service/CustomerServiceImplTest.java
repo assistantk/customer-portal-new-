@@ -1656,6 +1656,95 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void registerNewEntryJDBC_rejectsMismatchedPanAndGstin() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "22XYZAB9999K1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("does not match PAN number"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsInvalidGstinFormat() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "INVALIDGSTIN"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("valid 15-character GSTIN numbers"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsInvalidPanFormat() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "INVALIDPAN",
+                "gstinNumbers", "22ABCDE1234F1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("valid PAN number"));
+    }
+
+    @Test
+    void updateOldCustomerJDBC_rejectsMismatchedPanAndGstinWhenGstinChanged() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
+        when(lookupRs.getString(anyString())).thenAnswer(inv -> originalRecord.get(inv.getArgument(0)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S OLD COMPANY",
+                "address", "OLD ROAD,MARKET AREA",
+                "city", "PATNA",
+                "pincode", "800001",
+                "panNumber", "AAAAA1111A",
+                "gstinNumbers", "27XYZAB9999K1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("does not match PAN number"));
+    }
+
+    @Test
     void updateOldCustomerJDBC_normalizesAddressWithCommaSpacesBeforeSqlGenerationAndEmail() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);

@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.io.IOException;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
@@ -369,23 +370,33 @@ public class CustomerServiceImpl implements CustomerService {
   if (pincode != null && !pincode.trim().isEmpty() && !pincode.trim().matches("^[1-9][0-9]{5}$")) {
    throw new IllegalArgumentException("Invalid pincode");
   }
-  if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+  String rawPan = formData.get("panNumber");
+  if (rawPan == null || !rawPan.replaceAll("\\s+", "").toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
    throw new IllegalArgumentException("Enter a valid PAN number.");
   }
+  String pan = rawPan.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+
+  String rawGstins = formData.get("gstinNumbers");
+  if (rawGstins == null || rawGstins.trim().isEmpty()) {
+   throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
+  }
   List<String> gstinNumbers = new ArrayList<>();
-  for (String g : formData.get("gstinNumbers").split(",")) {
-   String trimmed = g.trim();
+  for (String g : rawGstins.split(",")) {
+   String trimmed = g.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
    if (!trimmed.isEmpty()) gstinNumbers.add(trimmed);
   }
-  boolean anyInvalidGstin = false;
-  for (String g : gstinNumbers) {
-   if (!g.toUpperCase(Locale.ROOT).matches("^[A-Z0-9]{15}$")) {
-    anyInvalidGstin = true;
-    break;
-   }
-  }
-  if (gstinNumbers.isEmpty() || anyInvalidGstin) {
+  if (gstinNumbers.isEmpty()) {
    throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
+  }
+  Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$");
+  for (String g : gstinNumbers) {
+   if (!gstinPattern.matcher(g).matches()) {
+    throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + g);
+   }
+   String gstinPan = g.substring(2, 12);
+   if (!gstinPan.equals(pan)) {
+    throw new IllegalArgumentException("GSTIN " + g + " does not match PAN number " + pan);
+   }
   }
   String email = formData.get("email");
   if (email != null && !email.trim().isEmpty() && !email.trim().matches("^\\S+@\\S+\\.\\S+$")) {
@@ -534,8 +545,46 @@ public class CustomerServiceImpl implements CustomerService {
   }
   requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
-  requested.put(panColumn, normalizeNullableValue(formData.get("panNumber")));
-  requested.put(gstColumn, normalizeNullableValue(formData.get("gstinNumbers")));
+
+  String rawPan = formData.get("panNumber");
+  String panVal = normalizeNullableValue(rawPan);
+  if (panVal != null) {
+   panVal = panVal.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if (!panVal.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+    throw new IllegalArgumentException("Enter a valid PAN number.");
+   }
+  }
+  requested.put(panColumn, panVal);
+
+  String rawGst = formData.get("gstinNumbers");
+  String gstVal = normalizeNullableValue(rawGst);
+  boolean gstinChanged = gstVal != null && !Objects.equals(
+      normalizeUpdateComparisonValue(gstColumn, oldCustomer.getGstinNumbers()),
+      normalizeUpdateComparisonValue(gstColumn, gstVal)
+  );
+  if (gstVal != null && !gstVal.isEmpty()) {
+   Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$");
+   List<String> cleanGstins = new ArrayList<>();
+   for (String g : gstVal.split(",")) {
+    String trimmed = g.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+    if (trimmed.isEmpty()) continue;
+    if (!gstinPattern.matcher(trimmed).matches()) {
+     throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + trimmed);
+    }
+    if (gstinChanged) {
+     String comparePan = panVal != null ? panVal : (oldCustomer.getPanNumber() != null ? oldCustomer.getPanNumber().replaceAll("\\s+", "").toUpperCase(Locale.ROOT) : null);
+     if (comparePan != null && comparePan.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+      String gstinPan = trimmed.substring(2, 12);
+      if (!gstinPan.equals(comparePan)) {
+       throw new IllegalArgumentException("GSTIN " + trimmed + " does not match PAN number " + comparePan);
+      }
+     }
+    }
+    cleanGstins.add(trimmed);
+   }
+   gstVal = String.join(",", cleanGstins);
+  }
+  requested.put(gstColumn, gstVal);
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
    requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));

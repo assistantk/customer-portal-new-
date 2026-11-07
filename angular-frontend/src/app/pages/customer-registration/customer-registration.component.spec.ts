@@ -1057,7 +1057,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       await component.handleGstinFileChange(0, fakeEvent);
 
-      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR', expect.anything());
       expect(component.form.companyName).toBe('RELIANCE INDUSTRIES LIMITED');
       expect(component.form.panNumber).toBe('AAACR7157R');
       expect(component.gstins[0].verificationState).toBe('verified');
@@ -1205,6 +1205,149 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.dismissCrossCheck();
       expect(component.activeCrossCheckIndex).toBeNull();
       expect(component.activeCrossCheck).toBeNull();
+    });
+  });
+
+  describe('Form Data Isolation and Section Navigation', () => {
+    it('clears all unsaved form values and dynamic GSTINs when switching modes', () => {
+      authServiceMock.currentUser = { divisionCode: 'TKD' };
+      authUserSubject.next(authServiceMock.currentUser);
+      component.ngOnInit();
+
+      component.switchMode('new');
+      component.form.companyName = 'Acme Steel Works';
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.address = '123 Industrial Area, Block B';
+      component.form.customerCode = 'ACME';
+      component.form.state = 'Maharashtra';
+      component.addGstin();
+      component.gstins[0].gstin = '27ABCDE1234F1Z5';
+      component.gstins[0].state = 'Maharashtra';
+      component.errors['companyName'] = 'Sample error';
+
+      // Switch to 'old' mode
+      component.switchMode('old');
+
+      // Old mode form should be completely clean
+      expect(component.form.companyName).toBe('');
+      expect(component.form.panNumber).toBe('');
+      expect(component.form.address).toBe('');
+      expect(component.form.customerCode).toBe('');
+      expect(component.gstins.length).toBe(1);
+      expect(component.gstins[0].gstin).toBe('');
+      expect(component.errors).toEqual({});
+
+      // Entering data in 'old' mode
+      component.form.customerCode = 'OLD1';
+      component.form.companyName = 'Old Corporation';
+
+      // Switch back to 'new' mode
+      component.switchMode('new');
+      expect(component.form.companyName).toBe('');
+      expect(component.form.customerCode).toBe('');
+      // Login division default is reapplied
+      expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    });
+
+    it('cancels pending async timers and clears lookup state on mode switch', () => {
+      component.switchMode('old');
+      component.lookupLoading = true;
+      component.lookupError = 'Previous lookup error';
+      component.verifiedCustomerCode = 'TEST';
+
+      component.switchMode('ownership');
+
+      expect(component.lookupLoading).toBe(false);
+      expect(component.lookupError).toBe('');
+      expect(component.verifiedCustomerCode).toBeNull();
+    });
+  });
+
+  describe('Submit Request Validation and Enablement (isFormValid)', () => {
+    it('isFormValid returns false by default for an empty form', () => {
+      component.switchMode('new');
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects company name that is whitespace or > 40 chars', () => {
+      component.switchMode('new');
+      component.form.companyName = '   ';
+      expect(component.isFormValid()).toBe(false);
+
+      component.form.companyName = 'A'.repeat(41);
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects invalid PAN format or length', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Valid Company';
+      component.form.address = 'Valid Address 123';
+      component.form.customerCode = 'VALI';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27ABCDE1234F1Z5',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'cert.pdf', { type: 'application/pdf' })
+      }];
+
+      // 9 chars
+      component.form.panNumber = 'ABCDE1234';
+      expect(component.isFormValid()).toBe(false);
+
+      // 11 chars
+      component.form.panNumber = 'ABCDE1234FA';
+      expect(component.isFormValid()).toBe(false);
+
+      // invalid format
+      component.form.panNumber = '12345ABCDE';
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects GSTIN if length != 15 or does not match PAN', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Valid Company';
+      component.form.address = 'Valid Address 123';
+      component.form.customerCode = 'VALI';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.form.panNumber = 'ABCDE1234F';
+
+      // GSTIN length 14
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27ABCDE1234F1Z',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'cert.pdf', { type: 'application/pdf' })
+      }];
+      expect(component.isFormValid()).toBe(false);
+
+      // GSTIN with different PAN: 27XYZWE1234F1Z5 vs ABCDE1234F
+      component.gstins[0].gstin = '27XYZWE1234F1Z5';
+      expect(component.isFormValid()).toBe(false);
+
+      // Correct matching GSTIN
+      component.gstins[0].gstin = '27ABCDE1234F1Z5';
+      expect(component.isFormValid()).toBe(true);
+    });
+
+    it('isFormValid returns true when all mandatory fields and validations pass', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Tata Steel Limited';
+      component.form.address = 'Bombay House, 24 Homi Mody Street';
+      component.form.customerCode = 'TATA';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.form.panNumber = 'AAACT2727Q';
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27AAACT2727Q1ZW',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'gst_cert.pdf', { type: 'application/pdf' })
+      }];
+
+      expect(component.isFormValid()).toBe(true);
     });
   });
 });

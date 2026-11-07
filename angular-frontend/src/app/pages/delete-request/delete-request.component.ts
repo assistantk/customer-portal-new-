@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
-import { finalize } from 'rxjs';
+import { Component, OnDestroy } from '@angular/core';
+import { finalize, Subscription } from 'rxjs';
 import { CustomerService, DeleteRequestCodeType } from '../../services/customer.service';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 
@@ -9,7 +9,7 @@ import { IMAGE_ASSETS } from '../../config/image-assets';
   templateUrl: './delete-request.component.html',
   styleUrls: ['./delete-request.component.css']
 })
-export class DeleteRequestComponent {
+export class DeleteRequestComponent implements OnDestroy {
   readonly imageAssets = IMAGE_ASSETS;
   codeType: DeleteRequestCodeType | '' = '';
   code = '';
@@ -21,8 +21,16 @@ export class DeleteRequestComponent {
   verifying = false;
   submitting = false;
   logoLoadFailed = false;
+  private activeSub = new Subscription();
 
   constructor(private customerService: CustomerService) {}
+
+  ngOnDestroy(): void {
+    this.codeType = '';
+    this.code = '';
+    this.clearVerification();
+    this.activeSub.unsubscribe();
+  }
 
   get pageTitle(): string {
     if (this.codeType === 'GLOBAL_CUSTOMER') {
@@ -111,28 +119,30 @@ export class DeleteRequestComponent {
 
     this.clearVerification();
     this.verifying = true;
-    this.customerService.verifyDeleteRequest(codeType, code).pipe(
-      finalize(() => this.verifying = false)
-    ).subscribe({
-      next: (result) => {
-        if (!result.found) {
-          this.verificationMessage = 'This code is not present in the records, so it cannot be deleted.';
-          return;
+    this.activeSub.add(
+      this.customerService.verifyDeleteRequest(codeType, code).pipe(
+        finalize(() => this.verifying = false)
+      ).subscribe({
+        next: (result) => {
+          if (!result.found) {
+            this.verificationMessage = 'This code is not present in the records, so it cannot be deleted.';
+            return;
+          }
+          const verifiedCode = result.code || code;
+          const verifiedName = result.companyName || '';
+          this.verifiedRecord = {
+            codeType,
+            code: verifiedCode,
+            companyName: verifiedName
+          };
+          this.code = verifiedCode;
+          this.verificationMessage = 'Code found. Please enter the company name to confirm the deletion.';
+        },
+        error: () => {
+          this.errorMessage = 'Unable to verify the code at this time. Please try again later.';
         }
-        const verifiedCode = result.code || code;
-        const verifiedName = result.companyName || '';
-        this.verifiedRecord = {
-          codeType,
-          code: verifiedCode,
-          companyName: verifiedName
-        };
-        this.code = verifiedCode;
-        this.verificationMessage = 'Code found. Please enter the company name to confirm the deletion.';
-      },
-      error: () => {
-        this.errorMessage = 'Unable to verify the code at this time. Please try again later.';
-      }
-    });
+      })
+    );
   }
 
   sendRequest(): void {
@@ -155,23 +165,25 @@ export class DeleteRequestComponent {
     this.errorMessage = '';
     this.successMessage = '';
     this.submitting = true;
-    this.customerService.submitDeleteRequest(
-      this.verifiedRecord!.codeType,
-      this.verifiedRecord!.code,
-      this.companyName
-    ).pipe(
-      finalize(() => this.submitting = false)
-    ).subscribe({
-      next: (result) => {
-        this.successMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
-        this.verifiedRecord = null;
-        this.companyName = '';
-        this.verificationMessage = '';
-      },
-      error: (error) => {
-        this.errorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
-      }
-    });
+    this.activeSub.add(
+      this.customerService.submitDeleteRequest(
+        this.verifiedRecord!.codeType,
+        this.verifiedRecord!.code,
+        this.companyName
+      ).pipe(
+        finalize(() => this.submitting = false)
+      ).subscribe({
+        next: (result) => {
+          this.successMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
+          this.verifiedRecord = null;
+          this.companyName = '';
+          this.verificationMessage = '';
+        },
+        error: (error) => {
+          this.errorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
+        }
+      })
+    );
   }
 
   private isCurrentVerification(): boolean {
