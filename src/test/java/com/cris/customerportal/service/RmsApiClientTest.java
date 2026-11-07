@@ -69,8 +69,78 @@ class RmsApiClientTest {
             assertEquals("TKD", sent.path("F_LOCN").asText());
             assertEquals("S", sent.path("F_OPTN").asText());
             assertEquals("ATVLDTUSER", sent.path("F_SRVCNAME").asText());
+            assertEquals("FRT_CODE", sent.path("F_ENTYSRVC").asText());
             assertTrue(response.isCredentialValidationSuccessful("DYNAMIC"));
             assertEquals(java.util.Collections.singletonList("SR-DCM"), response.extractRoleIds());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void logoutUserPostsAll17FieldsAsJsonToAtuserlgot() throws IOException {
+        AtomicReference<String> requestMethod = new AtomicReference<>();
+        AtomicReference<String> requestContentType = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/RMS/ATUSERLGOT", exchange -> {
+            requestMethod.set(exchange.getRequestMethod());
+            requestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = ("{\"F_ERORNO\":\"0\",\"F_USERID\":\"DYNAMIC\","
+                    + "\"F_SRVCNAME\":\"ATUSERLGOT\",\"F_STATUS\":\"S\",\"F_RMRK\":\"LOGGED OUT\"}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            RmsApiClient client = new RmsApiClient(
+                    new RestTemplateBuilder(),
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/RMS",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/RMS",
+                    "/ATVLDTUSER",
+                    "/ATUSERLGOT",
+                    "/RTGNRTOTP",
+                    "/RTVRFYOTP",
+                    5000,
+                    10000);
+            RmsLoginRequest request = new RmsLoginRequest();
+            request.setF_LOCN("TKD");
+            request.setF_USERID("DYNAMIC");
+            request.setF_PSWD("runtime-password");
+            request.setF_APLYDATE("04-11-2026");
+            request.setF_ROLEID("SR-DCM");
+            request.setF_SRVCNAME("ATUSERLGOT");
+            request.setF_ENTYSRVC("FRT_CODE");
+
+            RmsApiResponse response = client.logoutUser(request);
+            JsonNode sent = new ObjectMapper().readTree(requestBody.get());
+
+            assertEquals("POST", requestMethod.get());
+            assertNotNull(requestContentType.get());
+            assertTrue(requestContentType.get().startsWith("application/json"));
+            assertEquals("DYNAMIC", sent.path("F_USERID").asText());
+            assertEquals("runtime-password", sent.path("F_PSWD").asText());
+            assertEquals("TKD", sent.path("F_LOCN").asText());
+            assertEquals("S", sent.path("F_OPTN").asText());
+            assertEquals("SR-DCM", sent.path("F_ROLEID").asText());
+            assertEquals("9.87", sent.path("F_VRSN").asText());
+            assertEquals("N", sent.path("F_FLAG").asText());
+            assertEquals("R", sent.path("F_VALDFLAG").asText());
+            assertEquals("R", sent.path("F_RMSTMSFLAG").asText());
+            assertEquals("", sent.path("F_CLNTID").asText());
+            assertEquals("Y", sent.path("F_COMMITFLAG").asText());
+            assertEquals("R", sent.path("F_FUNCDESC").asText());
+            assertEquals("ATUSERLGOT", sent.path("F_SRVCNAME").asText());
+            assertEquals("1", sent.path("F_SESNNUMB").asText());
+            assertEquals("W", sent.path("F_FLINFLAG").asText());
+            assertEquals("FRT_CODE", sent.path("F_ENTYSRVC").asText());
+            assertEquals("04-11-2026", sent.path("F_APLYDATE").asText());
+            assertTrue(response.isSuccess());
         } finally {
             server.stop(0);
         }

@@ -7,6 +7,7 @@ import com.cris.customerportal.dto.RmsValidateUserRequest;
 import com.cris.customerportal.dto.RmsVerifyOtpRequest;
 import com.cris.customerportal.service.CaptchaService;
 import com.cris.customerportal.service.RmsApiClient;
+import com.cris.customerportal.service.RmsApiException;
 import com.cris.customerportal.service.RmsAuthOrchestrator;
 import com.cris.customerportal.service.RmsAuthSessionContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -319,5 +320,49 @@ class RmsAuthControllerTest {
         assertEquals("TKD", data.get("divisionCode"));
         assertEquals("SR-DCM", data.get("selectedDesignation"));
         assertNotNull(data.get("resendCooldownSeconds"));
+    }
+
+    @Test
+    void logout_withRmsSessionContext_callsOrchestratorAndInvalidatesSession() {
+        com.cris.customerportal.dto.RmsLoginRequest logoutReq = new com.cris.customerportal.dto.RmsLoginRequest();
+        logoutReq.setF_USERID("SREEJU");
+        logoutReq.setF_LOCN("TKD");
+        logoutReq.setF_PSWD("password");
+        logoutReq.setF_ROLEID("SR-DCM");
+        when(session.getAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY)).thenReturn(logoutReq);
+        doNothing().when(orchestrator).logout(eq(logoutReq), anyString());
+
+        ResponseEntity<?> response = controller.logout(request);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertNotNull(body);
+        assertTrue((Boolean) body.get("success"));
+        assertEquals("Logged out successfully.", body.get("message"));
+
+        verify(orchestrator).logout(eq(logoutReq), anyString());
+        verify(session).removeAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY);
+        verify(session).removeAttribute(AuthController.AUTH_SESSION_KEY);
+        verify(session).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
+        verify(session).invalidate();
+    }
+
+    @Test
+    void logout_whenRmsOrchestratorFails_doesNotInvalidateSessionAndReturnsBadGateway() {
+        com.cris.customerportal.dto.RmsLoginRequest logoutReq = new com.cris.customerportal.dto.RmsLoginRequest();
+        logoutReq.setF_USERID("SREEJU");
+        when(session.getAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY)).thenReturn(logoutReq);
+        doThrow(new RmsApiException("RMS logout rejected by host"))
+                .when(orchestrator).logout(eq(logoutReq), anyString());
+
+        ResponseEntity<?> response = controller.logout(request);
+
+        assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+        assertTrue(body.get("message").toString().contains("RMS logout rejected by host"));
+
+        verify(session, never()).invalidate();
     }
 }
