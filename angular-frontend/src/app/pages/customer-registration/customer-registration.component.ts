@@ -500,7 +500,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Please enter a code.';
       return;
     }
-
+//the issue fix and backend pull request and verify the comment and logicaly the error of verify and the some the some of executed error
     this.clearDeleteVerification();
     this.deleteVerifying = true;
     this.customerService.verifyDeleteRequest(codeType, code).pipe(
@@ -1297,6 +1297,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
+  trackByGstin(index: number, item: GstinEntry): any {
+    return item.gstinId || index;
+  }
+
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {
     const oldGstin = this.gstins[index]?.gstin;
     this.gstins[index] = { ...this.gstins[index], ...updates };
@@ -1313,19 +1317,26 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }
       const status = this.getGstinPanStatus(currentGstin, this.form.panNumber);
       const field = `gstin_${index}_gstin`;
-      if (status === 'GSTIN does not match the PAN number.') {
-        this.errors[field] = 'GSTIN does not match the PAN number.';
-      } else if (status?.startsWith('Enter')) {
-        this.errors[field] = status;
-      } else if (
-        ['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(this.errors[field]) ||
-        this.errors[field]?.includes('GSTIN could not be extracted') ||
-        this.errors[field]?.includes('GSTIN could not be detected') ||
-        this.errors[field]?.includes('valid 15-character GSTIN could not be extracted') ||
-        this.errors[field]?.includes('extracted GSTIN contains an invalid PAN')
-      ) {
-        delete this.errors[field];
-      }
+      delete this.errors[field];
+    }
+  }
+
+  handleGstinBlur(index: number): void {
+    const g = this.gstins[index];
+    if (!g) return;
+    const field = `gstin_${index}_gstin`;
+    const rawGstin = (g.gstin || '').trim();
+    if (!rawGstin) {
+      delete this.errors[field];
+      return;
+    }
+    const status = this.getGstinPanStatus(rawGstin, this.form.panNumber);
+    if (status === 'GSTIN does not match the PAN number.') {
+      this.errors[field] = 'GSTIN does not match the PAN number.';
+    } else if (status?.startsWith('Enter')) {
+      this.errors[field] = status;
+    } else {
+      delete this.errors[field];
     }
   }
 
@@ -1357,7 +1368,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (status === 'GSTIN does not match the PAN number.') {
         this.errors[field] = 'GSTIN does not match the PAN number.';
       } else if (status?.startsWith('Enter')) {
-        this.errors[field] = status;
+        if (this.errors[field]) {
+          this.errors[field] = status;
+        }
       } else if (['GSTIN does not match the PAN number.', 'Enter a valid 15-character GSTIN.'].includes(this.errors[field])) {
         delete this.errors[field];
       }

@@ -176,8 +176,25 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
   }
 
   handleGstinChange(gstin: string): void {
-    this.form.gstin = (gstin || '').toUpperCase().trim();
+    this.form.gstin = gstin ?? '';
     delete this.errors['gstin'];
+  }
+
+  handleGstinBlur(): void {
+    const gstin = (this.form.gstin || '').trim();
+    if (!gstin) {
+      delete this.errors['gstin'];
+      return;
+    }
+    const gstinNorm = gstin.toUpperCase();
+    const pan = this.form.panNumber ? this.form.panNumber.trim().toUpperCase() : '';
+    if (!gstinRe.test(gstinNorm)) {
+      this.errors['gstin'] = 'Enter a valid 15-character GSTIN.';
+    } else if (pan && panRe.test(pan) && gstinNorm.slice(2, 12) !== pan) {
+      this.errors['gstin'] = 'GSTIN does not match the PAN number.';
+    } else {
+      delete this.errors['gstin'];
+    }
   }
 
   handleAddressInput(addr: string): void {
