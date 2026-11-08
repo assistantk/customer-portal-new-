@@ -7,6 +7,10 @@ export interface MasterData {
   cities: Record<string, string[]>;
 }
 
+import type { GstVerificationResponse, GstCrossCheckResult } from './gst-verification.service';
+
+export type GstVerificationUiState = 'idle' | 'verifying' | 'verified' | 'discrepancy' | 'cancelled' | 'suspended' | 'notfound' | 'invalid' | 'unavailable' | 'error';
+
 export interface GstinEntry {
   gstinId?: any;
   state: string;
@@ -22,6 +26,9 @@ export interface GstinEntry {
   addressStatus?: string;
   hasFile?: boolean;
   activeFlag?: string;
+  verificationState?: GstVerificationUiState;
+  verificationData?: GstVerificationResponse | null;
+  crossCheckResult?: GstCrossCheckResult | null;
 }
 
 export interface CustomerPayload {

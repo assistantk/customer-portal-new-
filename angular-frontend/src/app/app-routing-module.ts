@@ -11,14 +11,13 @@ import { AccessDeniedComponent } from './pages/access-denied/access-denied.compo
 import { AuthGuard, NonAuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  { path: '', redirectTo: 'login', pathMatch: 'full' },
-  { path: 'login', component: LoginComponent, canActivate: [NonAuthGuard] },
+  { path: '', redirectTo: 'registration', pathMatch: 'full' },
+  { path: 'login', component: LoginComponent },
   { path: 'access-denied', component: AccessDeniedComponent },
   { path: 'signup', redirectTo: 'register' },
   {
     path: '',
     component: LayoutComponent,
-    canActivate: [AuthGuard],
     children: [
       { path: '', redirectTo: 'registration', pathMatch: 'full' },
       { path: 'registration', component: CustomerRegistrationComponent },
@@ -35,7 +34,7 @@ const routes: Routes = [
       { path: 'verify', component: VerificationComponent }
     ]
   },
-  { path: '**', redirectTo: 'login' }
+  { path: '**', redirectTo: 'registration' }
 ];
 
 @NgModule({

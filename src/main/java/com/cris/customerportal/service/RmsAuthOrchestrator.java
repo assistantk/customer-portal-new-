@@ -92,6 +92,7 @@ public class RmsAuthOrchestrator {
         req.setF_PSWD(password);
         req.setF_LOCN(divisionCode.trim().toUpperCase(Locale.ROOT));
         req.setF_APLYDATE(applyDate);
+        req.setF_ENTYSRVC("FRT_CODE");
 
         RmsApiResponse response = rmsApiClient.validateUser(req);
 
@@ -118,6 +119,7 @@ public class RmsAuthOrchestrator {
         ctx.setMobileNo(response.getMobileNo());
         ctx.setDesignations(rawDesignations);
         ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
+        ctx.setLoginRequest(req);
 
         LOGGER.info("ATVLDTUSER accepted; designation count={}", rawDesignations.size());
         return ctx;
@@ -319,6 +321,9 @@ public class RmsAuthOrchestrator {
         LOGGER.info("RMS OTP verification accepted");
 
         String confirmedRole = ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION;
+        if (ctx.getLoginRequest() != null) {
+            ctx.getLoginRequest().setF_ROLEID(confirmedRole);
+        }
         otpResendAllowedAt.remove(userKey);
 
         LOGGER.info("Authentication complete for role={}", confirmedRole);
@@ -337,6 +342,34 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
     // Test helper accessors (package-private)
     // ─────────────────────────────────────────────────
+
+    public void logout(RmsLoginRequest request, String clientIp) {
+        if (request == null) {
+            throw new IllegalArgumentException("Logout request cannot be null.");
+        }
+        LOGGER.info("RMS logout initiated");
+        request.setF_SRVCNAME("ATUSERLGOT");
+        request.setF_ENTYSRVC("FRT_CODE");
+        request.setF_APLYDATE(LocalDate.now().format(APPLY_DATE_FMT));
+        if (request.getF_CLNTID() == null || request.getF_CLNTID().trim().isEmpty()) {
+            request.setF_CLNTID(configuredClientId != null ? configuredClientId : (clientIp != null ? clientIp : "1.1.1.1"));
+        }
+
+        RmsApiResponse response = rmsApiClient.logoutUser(request);
+        if (!response.isSuccess()) {
+            LOGGER.warn("RMS logout rejected: serviceName={} errorNo={} status={}",
+                    response.getSrvcName(), response.getErrorNo(), response.getStatus());
+            String errorMsg = response.getMessage();
+            if (errorMsg == null || errorMsg.trim().isEmpty()) {
+                errorMsg = response.getErrorNo();
+            }
+            if (errorMsg == null || errorMsg.trim().isEmpty()) {
+                errorMsg = "RMS logout rejected.";
+            }
+            throw new RmsApiException(errorMsg);
+        }
+        LOGGER.info("RMS logout successfully confirmed by ATUSERLGOT");
+    }
 
     void clearCooldownForTesting(String userId) {
         otpResendAllowedAt.remove(normalizeUserId(userId));

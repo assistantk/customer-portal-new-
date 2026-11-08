@@ -2,6 +2,7 @@ package com.cris.customerportal.controller;
 
 import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.AuthUserDto;
+import com.cris.customerportal.dto.RmsLoginRequest;
 import com.cris.customerportal.dto.RmsSelectDesignationRequest;
 import com.cris.customerportal.dto.RmsValidateUserRequest;
 import com.cris.customerportal.dto.RmsVerifyOtpRequest;
@@ -38,6 +39,7 @@ public class AuthController {
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
     public static final String AUTH_SESSION_KEY = "AUTHENTICATED_USER";
     public static final String RMS_SESSION_CONTEXT_KEY = "RMS_AUTH_CONTEXT";
+    public static final String RMS_LOGOUT_CONTEXT_KEY = "RMS_LOGOUT_CONTEXT";
 
     private final CaptchaService captchaService;
     private final RmsAuthOrchestrator rmsAuthOrchestrator;
@@ -417,6 +419,9 @@ public class AuthController {
             // Create new fully-authenticated session
             HttpSession newSession = request.getSession(true);
             newSession.setAttribute(AUTH_SESSION_KEY, authenticatedUser);
+            if (ctx.getLoginRequest() != null) {
+                newSession.setAttribute(RMS_LOGOUT_CONTEXT_KEY, ctx.getLoginRequest());
+            }
             newSession.setMaxInactiveInterval(3600); // 1 hour session
 
             LOGGER.info("User successfully verified OTP. Status: {}. Authenticated session established.",
@@ -478,10 +483,40 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request) {
+        LOGGER.info("Logout request received");
         HttpSession session = request.getSession(false);
-        if (session != null) {
-            session.invalidate();
+        if (session == null) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", true);
+            body.put("message", "Logged out successfully.");
+            return ResponseEntity.ok(body);
         }
+
+        RmsLoginRequest logoutReq = (RmsLoginRequest) session.getAttribute(RMS_LOGOUT_CONTEXT_KEY);
+        if (logoutReq != null && rmsAuthOrchestrator != null) {
+            try {
+                String clientIp = extractClientIp(request);
+                rmsAuthOrchestrator.logout(logoutReq, clientIp);
+            } catch (RmsApiException ex) {
+                LOGGER.error("RMS logout failed: {}", ex.getMessage());
+                Map<String, Object> body = new HashMap<>();
+                body.put("success", false);
+                body.put("message", "Failed to terminate session on RMS: " + ex.getMessage());
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+            } catch (Exception ex) {
+                LOGGER.error("Unexpected error during RMS logout: {}", ex.getMessage(), ex);
+                Map<String, Object> body = new HashMap<>();
+                body.put("success", false);
+                body.put("message", "An unexpected error occurred during logout.");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+            }
+        }
+
+        session.removeAttribute(RMS_LOGOUT_CONTEXT_KEY);
+        session.removeAttribute(AUTH_SESSION_KEY);
+        session.removeAttribute(RMS_SESSION_CONTEXT_KEY);
+        session.invalidate();
+
         Map<String, Object> body = new HashMap<>();
         body.put("success", true);
         body.put("message", "Logged out successfully.");

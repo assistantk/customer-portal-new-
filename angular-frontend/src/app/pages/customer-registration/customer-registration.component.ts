@@ -1,8 +1,9 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
-import { Router, NavigationEnd } from '@angular/router';
-import { finalize, filter, Subscription, timeout } from 'rxjs';
-import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
+import { Router } from '@angular/router';
+import { finalize, Subscription, timeout } from 'rxjs';
+import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, GstVerificationUiState } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
+import { GstVerificationService, GstVerificationResponse, GstCrossCheckResult } from '../../services/gst-verification.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
@@ -38,7 +39,10 @@ const blankGstin: GstinEntry = {
   existingFileName: '',
   scanning: false,
   scanStatus: 'idle',
-  scanError: ''
+  scanError: '',
+  verificationState: 'idle',
+  verificationData: null,
+  crossCheckResult: null
 };
 
 export const INDIAN_STATES: string[] = [
@@ -232,6 +236,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private routerEventsSubscription?: Subscription;
   private lastRouteUrl = '';
 
+  // GSTIN verification & cross-check state
+  ocrDataMap = new Map<number, Partial<ExtractedGstinDetails>>();
+  activeCrossCheckIndex: number | null = null;
+  activeCrossCheck: GstCrossCheckResult | null = null;
+  companyNameManuallyEdited = false;
+  panManuallyEdited = false;
+
+  // Moveable & Expandable GSTIN card state
+  gstinCardPos = { x: 0, y: 0 };
+  isDraggingGstinCard = false;
+  gstinCardExpanded = false;
+  private dragStartPointer = { x: 0, y: 0 };
+  private dragCardInitialPos = { x: 0, y: 0 };
+
   readonly INDIAN_STATES = INDIAN_STATES;
   readonly divisionsByZone = divisionsByZone;
 
@@ -243,7 +261,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private router?: Router,
     private pdfGeneratorService?: PdfGeneratorService,
     private authService?: AuthService,
-    private zoneDivisionService?: ZoneDivisionService
+    private gstVerificationService?: GstVerificationService
   ) { }
 
   openGlobalCodeForm(): void {
@@ -301,6 +319,75 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           }
         });
     }
+  }
+
+  // Moveable GSTIN Card handlers
+  onGstinDragStart(event: MouseEvent | TouchEvent): void {
+    const target = event.target as HTMLElement;
+    // Don't drag if user clicked interactive buttons or inputs inside the header
+    if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('a')) {
+      return;
+    }
+    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+
+    this.isDraggingGstinCard = true;
+    this.dragStartPointer = { x: clientX, y: clientY };
+    this.dragCardInitialPos = { ...this.gstinCardPos };
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  @HostListener('window:touchmove', ['$event'])
+  onGstinDragMove(event: MouseEvent | TouchEvent): void {
+    if (!this.isDraggingGstinCard) return;
+
+    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+
+    const deltaX = clientX - this.dragStartPointer.x;
+    const deltaY = clientY - this.dragStartPointer.y;
+
+    this.gstinCardPos = {
+      x: this.dragCardInitialPos.x + deltaX,
+      y: this.dragCardInitialPos.y + deltaY
+    };
+    this.cdr.markForCheck();
+  }
+
+  @HostListener('window:mouseup')
+  @HostListener('window:touchend')
+  onGstinDragEnd(): void {
+    if (this.isDraggingGstinCard) {
+      this.isDraggingGstinCard = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  resetGstinCardPosition(event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.gstinCardPos = { x: 0, y: 0 };
+    this.cdr.markForCheck();
+  }
+
+  toggleGstinCollapse(event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.gstinCollapsed = !this.gstinCollapsed;
+    this.cdr.markForCheck();
+  }
+
+  toggleGstinExpand(event?: Event): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.gstinCardExpanded = !this.gstinCardExpanded;
+    if (this.gstinCardExpanded && this.gstinCollapsed) {
+      this.gstinCollapsed = false;
+    }
+    this.cdr.markForCheck();
   }
 
   ngOnDestroy(): void {
@@ -814,7 +901,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   /* ===== New User: generate code from company name ===== */
-  handleNewCompanyNameChange(newName: string): void {
+  handleNewCompanyNameChange(newName: string, isManual = true): void {
+    if (isManual) {
+      this.companyNameManuallyEdited = true;
+    }
     const requestId = ++this.codeRequestId;
     this.form.companyName = newName;
     this.codeConfirmed = false;
@@ -1277,6 +1367,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.removedGstinIds.push(removed.gstinId);
     }
     this.gstins.splice(index, 1);
+    this.ocrDataMap.delete(index);
+    if (this.activeCrossCheckIndex === index) {
+      this.dismissCrossCheck();
+    } else if (this.activeCrossCheckIndex !== null && this.activeCrossCheckIndex > index) {
+      this.activeCrossCheckIndex--;
+    }
   }
 
   trackByGstin(index: number, item: GstinEntry): any {
@@ -1284,10 +1380,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {
-    if (this.gstins[index]) {
-      Object.assign(this.gstins[index], updates);
-    }
+    const oldGstin = this.gstins[index]?.gstin;
+    this.gstins[index] = { ...this.gstins[index], ...updates };
     if (Object.prototype.hasOwnProperty.call(updates, 'gstin')) {
+      const currentGstin = updates.gstin || '';
+      if (oldGstin !== currentGstin) {
+        this.gstins[index].verificationState = 'idle';
+        this.gstins[index].verificationData = null;
+        this.gstins[index].crossCheckResult = null;
+        this.ocrDataMap.delete(index);
+        if (this.activeCrossCheckIndex === index) {
+          this.dismissCrossCheck();
+        }
+      }
+      const status = this.getGstinPanStatus(currentGstin, this.form.panNumber);
       const field = `gstin_${index}_gstin`;
       delete this.errors[field];
     }
@@ -1322,7 +1428,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
-  handlePanChange(value: string): void {
+  handlePanChange(value: string, isManual = true): void {
+    if (isManual) {
+      this.panManuallyEdited = true;
+    }
     this.form.panNumber = value;
     const normalizedPan = normalizeDocumentNumber(value);
     if (value && !panRe.test(normalizedPan)) {
@@ -1344,6 +1453,175 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         delete this.errors[field];
       }
     });
+  }
+
+  verifyGstinAtIndex(index: number, isAutoTriggered = false): void {
+    const entry = this.gstins[index];
+    if (!entry) return;
+
+    const gstin = normalizeDocumentNumber(entry.gstin);
+    if (!gstinRe.test(gstin)) {
+      if (!isAutoTriggered) {
+        this.errors[`gstin_${index}_gstin`] = 'Enter a valid 15-character GSTIN.';
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    if (!this.gstVerificationService) {
+      return;
+    }
+
+    entry.verificationState = 'verifying';
+    this.cdr.markForCheck();
+
+    this.gstVerificationService.verifyGstin(gstin).subscribe({
+      next: (res: GstVerificationResponse) => {
+        if (!this.gstins[index]) return;
+
+        entry.verificationData = res;
+
+        let uiState: GstVerificationUiState = 'verified';
+
+        if (res.verificationStatus === 'CANCELLED') {
+          uiState = 'cancelled';
+        } else if (res.verificationStatus === 'SUSPENDED') {
+          uiState = 'suspended';
+        } else if (res.verificationStatus === 'NOT_FOUND') {
+          uiState = 'notfound';
+        } else if (res.verificationStatus === 'INVALID_GSTIN') {
+          uiState = 'invalid';
+        } else if (res.verificationStatus === 'SERVICE_UNAVAILABLE' || res.verificationStatus === 'ERROR') {
+          uiState = 'unavailable';
+        } else if (res.verificationStatus === 'VERIFIED') {
+          const ocrData = this.ocrDataMap.get(index);
+          if (ocrData) {
+            const crossCheck = this.gstVerificationService!.compareOcrAndVerified(ocrData, res);
+            entry.crossCheckResult = crossCheck;
+            uiState = crossCheck.hasDiscrepancies ? 'discrepancy' : 'verified';
+          } else {
+            uiState = 'verified';
+          }
+        }
+
+        entry.verificationState = uiState;
+
+        // Populate/correct form fields with verified data
+        if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
+          this.applyVerifiedDataToForm(index, res, isAutoTriggered);
+        }
+
+        // If activeCrossCheckIndex was already this index, or if discrepancies were found, make available
+        if (entry.crossCheckResult && (this.activeCrossCheckIndex === index || (!isAutoTriggered && entry.crossCheckResult.hasDiscrepancies))) {
+          this.activeCrossCheck = entry.crossCheckResult;
+          this.activeCrossCheckIndex = index;
+        }
+
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        if (!this.gstins[index]) return;
+        entry.verificationState = 'unavailable';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  applyVerifiedDataToForm(index: number, verified: GstVerificationResponse, isAutoTriggered: boolean): void {
+    if (this.mode === 'delete') return;
+
+    const entry = this.gstins[index];
+    if (verified.state && (!entry.state || isAutoTriggered)) {
+      this.handleGstinStateChange(index, verified.state);
+    }
+
+    const verifiedCompany = verified.businessName || verified.legalName || verified.tradeName;
+
+    if (this.mode === 'new') {
+      // 1. Company Name
+      if (verifiedCompany && (!this.companyNameManuallyEdited || !this.form.companyName)) {
+        this.handleNewCompanyNameChange(verifiedCompany, false);
+        if (verifiedCompany.length > 40) {
+          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+        } else {
+          delete this.errors['companyName'];
+        }
+      }
+
+      // 2. PAN Number
+      if (verified.pan && (!this.panManuallyEdited || !this.form.panNumber)) {
+        this.handlePanChange(verified.pan, false);
+      }
+
+      // 3. Address
+      if (verified.address && (!this.addressManuallyEdited || !this.form.address)) {
+        const cleaned = cleanAndShortenAddress(verified.address);
+        if (cleaned) {
+          this.form.address = cleaned;
+          this.addressStatus = 'auto-filled';
+          delete this.errors['address'];
+        }
+      }
+
+      // 4. City
+      if (verified.city && !this.form.city) {
+        this.form.city = verified.city;
+        delete this.errors['city'];
+      }
+
+      // 5. Pincode
+      if (verified.pincode && !this.form.pincode) {
+        this.form.pincode = verified.pincode;
+        delete this.errors['pincode'];
+      }
+    } else if (this.mode === 'old') {
+      if (verifiedCompany && !this.form.companyName) {
+        this.form.companyName = verifiedCompany;
+        if (verifiedCompany.length > 40) {
+          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+        }
+      }
+      if (verified.pan && !this.form.panNumber) {
+        this.handlePanChange(verified.pan, false);
+      }
+      if (verified.address && !this.form.address) {
+        const cleaned = cleanAndShortenAddress(verified.address);
+        if (cleaned) {
+          this.form.address = cleaned;
+          this.addressStatus = 'auto-filled';
+        }
+      }
+      if (verified.city && !this.form.city) {
+        this.form.city = verified.city;
+      }
+      if (verified.pincode && !this.form.pincode) {
+        this.form.pincode = verified.pincode;
+      }
+    }
+  }
+
+  toggleCrossCheckView(index: number): void {
+    if (this.activeCrossCheckIndex === index) {
+      this.dismissCrossCheck();
+    } else {
+      this.activeCrossCheckIndex = index;
+      const entry = this.gstins[index];
+      if (entry?.crossCheckResult) {
+        this.activeCrossCheck = entry.crossCheckResult;
+      } else if (entry?.verificationData) {
+        const ocrData = this.ocrDataMap.get(index) || {};
+        this.activeCrossCheck = this.gstVerificationService?.compareOcrAndVerified(ocrData, entry.verificationData) || null;
+      } else {
+        this.activeCrossCheck = null;
+      }
+    }
+    this.cdr.markForCheck();
+  }
+
+  dismissCrossCheck(): void {
+    this.activeCrossCheck = null;
+    this.activeCrossCheckIndex = null;
+    this.cdr.markForCheck();
   }
 
   get normalizedAddressLength(): number {
@@ -1536,6 +1814,25 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }
 
       this.ocrAutoFillApplied = true;
+
+      // Save raw OCR extracted snapshot for cross-verification against authorized registry
+      const ocrSnapshot: Partial<ExtractedGstinDetails> = {
+        gstin: normalizedGstin,
+        legalName: legalName || undefined,
+        tradeName: tradeName || undefined,
+        businessName: businessName || undefined,
+        pan: extractedPan || undefined,
+        address: address || undefined,
+        city: city || undefined,
+        pincode: pincode || undefined,
+        stateName: derivedState || undefined
+      };
+      this.ocrDataMap.set(index, ocrSnapshot);
+
+      // Automatically initiate GSTIN verification against authorized registry
+      if (gstinRe.test(normalizedGstin)) {
+        this.verifyGstinAtIndex(index, true);
+      }
     } catch (err) {
       if (currentReqId !== this.ocrRequestId) return;
       console.error('GSTIN OCR scan failed:', err);

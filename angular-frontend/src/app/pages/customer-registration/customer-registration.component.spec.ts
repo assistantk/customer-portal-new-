@@ -17,6 +17,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   let cdrMock: ChangeDetectorRef;
   let authUserSubject: BehaviorSubject<any>;
   let authServiceMock: any;
+  let gstVerificationServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -1041,6 +1042,244 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       // Zone and Division preserved
       expect(component.form.zone).toBe('Western Railway (WR)');
       expect(component.form.operatingDivision).toBe('Mumbai Central (BCT)');
+    });
+  });
+
+  describe('GSTIN Verification and Automatic Data Fetching', () => {
+    beforeEach(() => {
+      gstVerificationServiceMock = {
+        verifyGstin: vi.fn().mockImplementation((gstin: string) => of({
+          success: true,
+          gstin,
+          legalName: 'RELIANCE INDUSTRIES LIMITED',
+          tradeName: 'RELIANCE',
+          businessName: 'RELIANCE INDUSTRIES LIMITED',
+          pan: gstin.substring(2, 12),
+          status: 'Active',
+          registrationDate: '01/07/2017',
+          constitutionOfBusiness: 'Public Limited Company',
+          taxpayerType: 'Regular',
+          address: '3RD FLOOR, MAKER CHAMBER IV, 222 NARIMAN POINT, MUMBAI, 400021',
+          city: 'MUMBAI',
+          state: 'Maharashtra',
+          pincode: '400021',
+          verificationStatus: 'VERIFIED'
+        })),
+        compareOcrAndVerified: vi.fn().mockImplementation((ocr, verified) => {
+          const comparisons = [
+            {
+              field: 'gstin',
+              label: 'GSTIN',
+              ocrValue: ocr.gstin || '',
+              verifiedValue: verified.gstin || '',
+              status: ocr.gstin === verified.gstin ? 'match' : 'mismatch',
+              autoCorrected: false
+            },
+            {
+              field: 'companyName',
+              label: 'Legal / Trade Name',
+              ocrValue: ocr.businessName || ocr.tradeName || ocr.legalName || '',
+              verifiedValue: verified.businessName || verified.legalName || verified.tradeName || '',
+              status: (ocr.legalName === verified.legalName) ? 'match' : 'mismatch',
+              autoCorrected: true
+            }
+          ];
+          const hasDiscrepancies = comparisons.some((c: any) => c.status === 'mismatch');
+          return {
+            gstin: verified.gstin,
+            verificationStatus: verified.verificationStatus,
+            registrationStatus: verified.status || 'Active',
+            hasDiscrepancies,
+            discrepancyCount: hasDiscrepancies ? 1 : 0,
+            matchCount: hasDiscrepancies ? 1 : 2,
+            comparisons,
+            verifiedData: verified,
+            ocrData: ocr
+          };
+        })
+      };
+
+      component = new CustomerRegistrationComponent(
+        customerServiceMock as CustomerService,
+        panOcrServiceMock as PanOcrService,
+        notificationService,
+        cdrMock,
+        undefined,
+        undefined,
+        authServiceMock,
+        gstVerificationServiceMock
+      );
+    });
+
+    it('should automatically initiate GSTIN verification after successful OCR and populate form fields', async () => {
+      component.mode = 'new';
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '27AAACR7157R1ZR',
+        stateName: 'Maharashtra',
+        address: 'MAKER CHAMBERS IV, NARIMAN POINT',
+        city: 'MUMBAI',
+        pincode: '400021',
+        tradeName: 'RELIANCE',
+        legalName: 'RELIANCE INDUSTRIES LIMITED',
+        businessName: 'RELIANCE INDUSTRIES LIMITED',
+        pan: 'AAACR7157R',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'gst-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
+      expect(component.form.companyName).toBe('RELIANCE INDUSTRIES LIMITED');
+      expect(component.form.panNumber).toBe('AAACR7157R');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      expect(component.gstins[0].verificationData?.status).toBe('Active');
+    });
+
+    it('should detect discrepancies between OCR data and GST registry, flagging discrepancy state', async () => {
+      component.mode = 'new';
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '27AAACR7157R1ZR',
+        stateName: 'Maharashtra',
+        address: 'TAMPERED ADDRESS STREET 99',
+        city: 'MUMBAI',
+        pincode: '400021',
+        tradeName: 'ALTERED TRADERS',
+        legalName: 'ALTERED LEGAL NAME PRIVATE LIMITED',
+        businessName: 'ALTERED BUSINESS',
+        pan: 'AAACR7157R',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'tampered-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      expect(component.gstins[0].verificationState).toBe('discrepancy');
+      expect(component.gstins[0].crossCheckResult?.hasDiscrepancies).toBe(true);
+      expect(component.activeCrossCheck).toBeDefined();
+    });
+
+    it('should allow manual GSTIN verification via verifyGstinAtIndex', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      expect(component.form.companyName).toBe('RELIANCE INDUSTRIES LIMITED');
+      expect(component.form.panNumber).toBe('AAACR7157R');
+    });
+
+    it('should reject manual verification if GSTIN format is invalid', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = 'INVALID_GST';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).not.toHaveBeenCalled();
+      expect(component.errors['gstin_0_gstin']).toBe('Enter a valid 15-character GSTIN.');
+    });
+
+    it('should flag cancelled GSTINs and set verificationState to cancelled', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27CANCL1234F1Z5',
+        legalName: 'CANCELLED BUSINESS PVT LTD',
+        status: 'Cancelled',
+        verificationStatus: 'CANCELLED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27CANCL1234F1Z5';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('cancelled');
+    });
+
+    it('should flag suspended GSTINs and set verificationState to suspended', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27SUSPN1234F1Z5',
+        legalName: 'SUSPENDED BUSINESS PVT LTD',
+        status: 'Suspended',
+        verificationStatus: 'SUSPENDED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27SUSPN1234F1Z5';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('suspended');
+    });
+
+    it('should enforce 40-character limit with a warning message without silent truncation', () => {
+      const longName = 'RELIANCE INDUSTRIAL INFRASTRUCTURE TRANSPORT LOGISTICS SERVICE LIMITED';
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27AAACR7157R1ZR',
+        legalName: longName,
+        businessName: longName,
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe(longName);
+      expect(component.errors['companyName']).toContain('Company name exceeds the maximum allowed length of 40 characters');
+    });
+
+    it('should preserve user manual edits when auto-filling verified data', () => {
+      component.mode = 'new';
+      component.handleNewCompanyNameChange('My Manually Entered Company', true);
+
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe('My Manually Entered Company');
+    });
+
+    it('should gracefully handle verification service failure without breaking form submission', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: false,
+        gstin: '27AAACR7157R1ZR',
+        verificationStatus: 'SERVICE_UNAVAILABLE',
+        message: 'GST verification service unreachable.'
+      }));
+
+      component.mode = 'new';
+      component.form.companyName = 'Existing Preserved Company';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('unavailable');
+      expect(component.form.companyName).toBe('Existing Preserved Company');
+    });
+
+    it('should toggle and dismiss cross-check inspection panel', () => {
+      component.gstins[0].verificationData = {
+        success: true,
+        gstin: '27AAACR7157R1ZR',
+        legalName: 'TEST CORP',
+        verificationStatus: 'VERIFIED'
+      };
+
+      component.toggleCrossCheckView(0);
+      expect(component.activeCrossCheckIndex).toBe(0);
+
+      component.dismissCrossCheck();
+      expect(component.activeCrossCheckIndex).toBeNull();
+      expect(component.activeCrossCheck).toBeNull();
     });
   });
 });
