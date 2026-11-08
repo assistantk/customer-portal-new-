@@ -22,8 +22,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private authService: AuthService,
+    private notificationService: NotificationService,
     private zoneDivisionService?: ZoneDivisionService
-    private notificationService: NotificationService
   ) {}
 
   ngOnInit(): void {
