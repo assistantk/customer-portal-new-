@@ -196,6 +196,7 @@
                         [value]="mode === 'ownership' ? (form.ownershipCode || '') : form.customerCode"
                         [placeholder]="mode === 'ownership' ? 'Enter ownership code' : (codeType === 'HANDLING_AGENT' ? 'Enter handling agent code' : 'Enter customer code')"
                         (input)="mode === 'ownership' ? handleOwnershipCodeChange($any($event.target).value) : handleOldCodeChange($any($event.target).value)"
+                        (blur)="onFieldBlur(mode === 'ownership' ? 'ownershipCode' : 'customerCode')"
                         style="text-transform: uppercase;"
                         maxlength="4"
                     />
@@ -252,7 +253,7 @@
                 <label for="companyName">{{ codeType === 'HANDLING_AGENT' ? 'Agent / Company Name' : 'Company Name' }} <b>*</b></label>
                 <div class="control" [class.invalid]="errors['companyName']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                    <input id="companyName" name="companyName" [(ngModel)]="form.companyName" [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40" [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'" />
+                    <input id="companyName" name="companyName" [(ngModel)]="form.companyName" (input)="handleCompanyNameInput(form.companyName)" (blur)="onFieldBlur('companyName')" [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40" [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'" />
                 </div>
                 <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
             </div>
@@ -262,7 +263,7 @@
                 <label for="ownershipAddress">Ownership Address <b>*</b></label>
                 <div class="control" [class.invalid]="errors['ownershipAddress']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                    <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress" placeholder="Enter ownership address" />
+                    <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress" (input)="errors['ownershipAddress'] = ''" (blur)="onFieldBlur('ownershipAddress')" placeholder="Enter ownership address" />
                 </div>
                 <small *ngIf="errors['ownershipAddress']" class="error">{{ errors['ownershipAddress'] }}</small>
             </div>
@@ -279,6 +280,7 @@
                         [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40"
                         [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'"
                         (input)="handleNewCompanyNameChange($any($event.target).value)"
+                        (blur)="onFieldBlur('companyName')"
                     />
                 </div>
                 <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
@@ -296,6 +298,7 @@
                         maxlength="10"
                         placeholder="Enter 10-character PAN No."
                         (input)="handlePanChange($any($event.target).value)"
+                        (blur)="onFieldBlur('panNumber')"
                         style="text-transform: uppercase;"
                     />
                 </div>
@@ -354,7 +357,7 @@
                 <label for="pincode">Pincode (Optional)</label>
                 <div class="control" [class.invalid]="errors['pincode']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    <input id="pincode" name="pincode" [(ngModel)]="form.pincode" inputmode="numeric" maxlength="6" placeholder="Enter pincode" />
+                    <input id="pincode" name="pincode" [(ngModel)]="form.pincode" (input)="handlePincodeChange(form.pincode)" (blur)="onFieldBlur('pincode')" inputmode="numeric" maxlength="6" placeholder="Enter pincode" />
                 </div>
                 <small *ngIf="errors['pincode']" class="error">{{ errors['pincode'] }}</small>
             </div>
@@ -454,6 +457,7 @@
                             [value]="form.ownershipPartyCode || ''"
                             placeholder="ENTER OWNERSHIP CODE"
                             (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
+                            (blur)="onFieldBlur('ownershipPartyCode')"
                             style="text-transform: uppercase;"
                         />
                         <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -468,7 +472,6 @@
                     </small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Existing ownership record found - changes will be sent as an UPDATE request.</small>
                     <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Global Customer record found - a new ownership INSERT request can be submitted.</small>
-                    <small *ngIf="ownSection2LookupError" class="error">{{ ownSection2LookupError }}</small>
                 </div>
 
                 <!-- Ownership Party Address -->
@@ -480,6 +483,8 @@
                             id="ownershipPartyAddress"
                             name="ownershipPartyAddress"
                             [(ngModel)]="form.ownershipPartyAddress"
+                            (input)="errors['ownershipPartyAddress'] = ''"
+                            (blur)="onFieldBlur('ownershipPartyAddress')"
                             placeholder="Enter ownership address"
                         />
                     </div>
@@ -508,7 +513,7 @@
                 <button type="button" class="reset" (click)="reset()">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset
                 </button>
-                <button type="submit" class="submit" [disabled]="loading" (click)="submit($event)">
+                <button type="submit" class="submit" [disabled]="loading || !isFormValid" (click)="submit($event)">
                     <svg *ngIf="loading" width="14" height="14" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <svg *ngIf="!loading" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     {{ loading ? 'Submitting...' : 'Submit Request' }}
