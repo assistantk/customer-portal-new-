@@ -280,4 +280,110 @@ describe('OwnershipCodeComponent', () => {
 
     testComponent.ngOnDestroy();
   });
+
+  describe('Submit Request conditional button disabling and validation', () => {
+    function setupValidForm() {
+      component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+      component.ownSection1Loading = false;
+      component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
+      component.ownSection2Loading = false;
+      component.form = {
+        ownershipCode: 'OWN1',
+        ownershipAddress: 'Valid Ownership Address',
+        panNumber: 'ABCDE1234F',
+        address: '123 Valid Street',
+        city: 'Mumbai',
+        pincode: '400001',
+        state: 'Maharashtra',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Mumbai (CSTM)',
+        email: 'test@example.com',
+        mobile: '9876543210',
+        ownershipPartyCode: 'PRT1',
+        ownershipPartyAddress: 'Valid Party Address'
+      };
+    }
+
+    it('keeps Submit Request disabled by default when screen is opened', () => {
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('rejects whitespace-only values for mandatory fields', () => {
+      setupValidForm();
+      expect(component.isFormValid).toBe(true);
+
+      component.form.ownershipAddress = '    ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.ownershipAddress = 'Valid Ownership Address';
+      component.form.ownershipPartyAddress = '   ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.ownershipPartyAddress = 'Valid Party Address';
+      component.form.panNumber = '          ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.pincode = '      ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.pincode = '400001';
+      component.form.state = '   ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.state = 'Maharashtra';
+      component.form.zone = '   ';
+      expect(component.isFormValid).toBe(false);
+
+      component.form.zone = 'Central Railway (CR)';
+      component.form.operatingDivision = '   ';
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('enables Submit Request when all required fields are correctly filled', () => {
+      setupValidForm();
+      expect(component.isFormValid).toBe(true);
+    });
+
+    it('immediately disables Submit Request if a previously valid field becomes invalid', () => {
+      setupValidForm();
+      expect(component.isFormValid).toBe(true);
+
+      component.handlePanChange('INVALIDPAN');
+      expect(component.isFormValid).toBe(false);
+
+      component.handlePanChange('ABCDE1234F');
+      expect(component.isFormValid).toBe(true);
+
+      component.handlePincodeChange('123');
+      expect(component.isFormValid).toBe(false);
+
+      component.handlePincodeChange('400001');
+      expect(component.isFormValid).toBe(true);
+
+      component.handleEmailChange('invalid-email');
+      expect(component.isFormValid).toBe(false);
+
+      component.handleEmailChange('valid@example.com');
+      expect(component.isFormValid).toBe(true);
+
+      component.handleMobileChange('12345');
+      expect(component.isFormValid).toBe(false);
+
+      component.handleMobileChange('9876543210');
+      expect(component.isFormValid).toBe(true);
+    });
+
+    it('prevents form submission via Enter key or direct call when invalid', () => {
+      const mockEvent = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      } as unknown as Event;
+
+      component.submit(mockEvent);
+
+      expect(mockEvent.preventDefault).toHaveBeenCalled();
+      expect(customerServiceMock.submitOwnershipJDBC).not.toHaveBeenCalled();
+    });
+  });
 });

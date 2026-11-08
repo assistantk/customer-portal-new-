@@ -255,4 +255,90 @@ describe('HandlingAgentCodeComponent', () => {
 
     testComponent.ngOnDestroy();
   });
+
+  describe('Submit Request Button & Conditional Validation', () => {
+    it('keeps Submit Request disabled by default on initial open', () => {
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('remains disabled when mandatory fields contain whitespace only', () => {
+      component.form = {
+        agentCompanyName: '   ',
+        panNumber: '   ',
+        gstin: '',
+        address: '   ',
+        city: '',
+        pincode: '   ',
+        state: '   ',
+        zone: '   ',
+        operatingDivision: '   ',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = '   ';
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('enables Submit Request when all mandatory fields are valid', () => {
+      component.form = {
+        agentCompanyName: 'Fast Track Logistics',
+        panNumber: 'ABCDE1234F',
+        gstin: '',
+        address: '456 Express Highway',
+        city: '',
+        pincode: '411001',
+        state: 'Maharashtra',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Pune (PUNE)',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = 'FAST';
+      expect(component.isFormValid).toBe(true);
+    });
+
+    it('immediately disables button when a valid required field is invalidated', () => {
+      component.form = {
+        agentCompanyName: 'Fast Track Logistics',
+        panNumber: 'ABCDE1234F',
+        gstin: '',
+        address: '456 Express Highway',
+        city: '',
+        pincode: '411001',
+        state: 'Maharashtra',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Pune (PUNE)',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = 'FAST';
+      expect(component.isFormValid).toBe(true);
+
+      // Invalidate company name
+      component.handleNameChange('');
+      expect(component.isFormValid).toBe(false);
+
+      // Restore company name, enter mismatched GSTIN
+      component.handleNameChange('Fast Track Logistics');
+      component.generatedCode = 'FAST';
+      component.codeChecking = false;
+      expect(component.isFormValid).toBe(true);
+
+      component.handleGstinChange('27AAAAA0000A1Z5'); // PAN mismatch
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('prevents form submission via Enter key or direct submit() when invalid', () => {
+      component.form.agentCompanyName = '';
+      const event = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      } as any;
+
+      component.submit(event);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(customerServiceMock.registerCustomer).not.toHaveBeenCalled();
+      expect(component.notice).toContain('Validation Error');
+    });
+  });
 });

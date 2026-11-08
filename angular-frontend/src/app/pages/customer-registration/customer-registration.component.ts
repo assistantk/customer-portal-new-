@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
-import { Router } from '@angular/router';
-import { finalize, Subscription, timeout } from 'rxjs';
+import { Router, NavigationEnd } from '@angular/router';
+import { finalize, filter, Subscription, timeout } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, GstVerificationUiState } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { GstVerificationService, GstVerificationResponse, GstCrossCheckResult } from '../../services/gst-verification.service';
@@ -175,6 +175,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   form: CustomerPayload = { ...blank };
   gstins: GstinEntry[] = [{ ...blankGstin }];
   errors: Record<string, string> = {};
+  touchedFields: Record<string, boolean> = {};
   notice = '';
   loading = false;
   lookupLoading = false;
@@ -261,6 +262,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     private router?: Router,
     private pdfGeneratorService?: PdfGeneratorService,
     private authService?: AuthService,
+    private zoneDivisionService?: ZoneDivisionService,
     private gstVerificationService?: GstVerificationService
   ) { }
 
@@ -481,6 +483,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.verifiedCustomerCode = null;
     this.gstins = [{ ...blankGstin }];
     this.errors = {};
+    this.touchedFields = {};
     this.notice = '';
     this.loading = false;
     this.lookupDone = false;
@@ -663,6 +666,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
+    this.touchedFields['ownershipCode'] = true;
+    delete this.errors['ownershipCode'];
     this.form.ownershipAddress = '';
     this.form.address = '';
     this.form.panNumber = '';
@@ -731,6 +736,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   handleOwnershipPartyCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipPartyCode = upperCode;
+    this.touchedFields['ownershipPartyCode'] = true;
+    delete this.errors['ownershipPartyCode'];
     this.form.ownershipPartyAddress = '';
     this.ownSection2Found = null;
     this.ownSection2Duplicate = false;
@@ -907,6 +914,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
     const requestId = ++this.codeRequestId;
     this.form.companyName = newName;
+    this.touchedFields['companyName'] = true;
     this.codeConfirmed = false;
     this.lookupError = '';
     delete this.errors['customerCode'];
@@ -1045,6 +1053,260 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return !Object.keys(e).length;
   }
 
+  get isFormValid(): boolean {
+    if (this.mode === 'ownership') {
+      const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
+      if (!code1 || !/^[A-Z0-9]{4}$/.test(code1)) return false;
+      if (this.ownSection1Loading || !this.ownSection1Source || this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') return false;
+
+      const addr1 = (this.form.ownershipAddress || '').trim();
+      if (!addr1) return false;
+
+      const code2 = (this.form.ownershipPartyCode || '').trim().toUpperCase();
+      if (!code2 || !/^[A-Z0-9]{4}$/.test(code2)) return false;
+      if (this.ownSection2Loading || !this.ownSection2Source || this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') return false;
+
+      const addr2 = (this.form.ownershipPartyAddress || '').trim();
+      if (!addr2) return false;
+
+      return true;
+    }
+
+    if (this.mode === 'new') {
+      const name = (this.form.companyName || '').trim();
+      if (!name || name.length > 40) return false;
+
+      const code = (this.form.customerCode || '').trim().toUpperCase();
+      if (!code || this.codeChecking || !/^[A-Z]{4}$/.test(code)) return false;
+
+      const pan = normalizeDocumentNumber(this.form.panNumber);
+      if (!pan || !panRe.test(pan)) return false;
+
+      const zone = (this.form.zone || '').trim();
+      if (!zone) return false;
+
+      const div = (this.form.operatingDivision || '').trim();
+      if (!div) return false;
+
+      const addr = (this.form.address || '').trim();
+      if (!addr || addr.length > 100) return false;
+
+      const pin = (this.form.pincode || '').trim();
+      if (pin && !/^[1-9][0-9]{5}$/.test(pin)) return false;
+
+      const email = (this.form.email || '').trim();
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) return false;
+
+      const mobile = (this.form.mobile || '').trim();
+      if (mobile && !mobileRe.test(mobile)) return false;
+
+      if (!this.gstins || this.gstins.length === 0) return false;
+
+      const stateSet = new Set<string>();
+      const gstinSet = new Set<string>();
+      for (const g of this.gstins) {
+        if (!g.state?.trim()) return false;
+        if (stateSet.has(g.state.trim())) return false;
+        stateSet.add(g.state.trim());
+
+        const gstin = normalizeDocumentNumber(g.gstin);
+        if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
+        if (gstin.slice(2, 12) !== pan) return false;
+        if (gstinSet.has(gstin)) return false;
+        gstinSet.add(gstin);
+
+        if (!g.file && !g.existingFileName) return false;
+        if (g.file && this.checkFile(g.file)) return false;
+      }
+
+      return true;
+    }
+
+    if (this.mode === 'old') {
+      const code = (this.form.customerCode || '').trim().toUpperCase();
+      if (!code || !/^[A-Z0-9]{4}$/.test(code)) return false;
+      if (this.lookupLoading || !!this.lookupError) return false;
+      if (this.verifiedCustomerCode && this.verifiedCustomerCode !== code) return false;
+
+      const name = (this.form.companyName || '').trim();
+      if (!name || name.length > 40) return false;
+
+      const pan = normalizeDocumentNumber(this.form.panNumber);
+      if (!pan || !panRe.test(pan)) return false;
+
+      const addr = (this.form.address || '').trim();
+      if (!addr || addr.length > 100) return false;
+
+      const pin = (this.form.pincode || '').trim();
+      if (pin && !/^[1-9][0-9]{5}$/.test(pin)) return false;
+
+      const email = (this.form.email || '').trim();
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) return false;
+
+      const mobile = (this.form.mobile || '').trim();
+      if (mobile && !mobileRe.test(mobile)) return false;
+
+      const stateSet = new Set<string>();
+      const gstinSet = new Set<string>();
+      for (const g of this.gstins) {
+        if (this.gstins.length === 1 && !g.gstin?.trim() && !g.file && !g.state) {
+          continue;
+        }
+        const gstin = normalizeDocumentNumber(g.gstin);
+        if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
+        if (gstin.slice(2, 12) !== pan) return false;
+        if (gstinSet.has(gstin)) return false;
+        gstinSet.add(gstin);
+
+        if (g.state) {
+          if (stateSet.has(g.state)) return false;
+          stateSet.add(g.state);
+        }
+        if (g.file && this.checkFile(g.file)) return false;
+      }
+
+      return true;
+    }
+
+    if (this.mode === 'delete') {
+      return Boolean(this.deleteCodeType && this.deleteCode.trim());
+    }
+
+    return false;
+  }
+
+  markAllTouched(): void {
+    const fields = [
+      'companyName',
+      'customerCode',
+      'panNumber',
+      'address',
+      'pincode',
+      'zone',
+      'operatingDivision',
+      'ownershipCode',
+      'ownershipAddress',
+      'ownershipPartyCode',
+      'ownershipPartyAddress'
+    ];
+    fields.forEach(f => this.touchedFields[f] = true);
+    this.gstins.forEach((_, i) => {
+      this.touchedFields[`gstin_${i}_gstin`] = true;
+      this.touchedFields[`gstin_${i}_state`] = true;
+      this.touchedFields[`gstin_${i}_file`] = true;
+    });
+  }
+
+  onFieldBlur(field: string): void {
+    this.touchedFields[field] = true;
+    this.validateField(field);
+    this.cdr.markForCheck();
+  }
+
+  validateField(field: string): void {
+    if (!this.touchedFields[field]) return;
+
+    if (field === 'companyName') {
+      const name = (this.form.companyName || '').trim();
+      if (!name) {
+        this.errors['companyName'] = 'This field is required';
+      } else if (name.length > 40) {
+        this.errors['companyName'] = 'Company name cannot exceed 40 characters.';
+      } else {
+        delete this.errors['companyName'];
+      }
+    } else if (field === 'panNumber') {
+      const pan = normalizeDocumentNumber(this.form.panNumber);
+      if (!pan) {
+        this.errors['panNumber'] = 'This field is required';
+      } else if (!panRe.test(pan)) {
+        this.errors['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
+      } else {
+        delete this.errors['panNumber'];
+      }
+    } else if (field === 'address') {
+      const addr = (this.form.address || '').trim();
+      if (!addr) {
+        this.errors['address'] = 'This field is required';
+      } else if (addr.length > 100) {
+        this.errors['address'] = 'Address cannot exceed 100 characters.';
+      } else {
+        delete this.errors['address'];
+      }
+    } else if (field === 'pincode') {
+      const pin = (this.form.pincode || '').trim();
+      if (pin && !/^[1-9][0-9]{5}$/.test(pin)) {
+        this.errors['pincode'] = 'Invalid pincode';
+      } else {
+        delete this.errors['pincode'];
+      }
+    } else if (field === 'zone') {
+      if (!this.form.zone?.trim()) {
+        this.errors['zone'] = 'This field is required';
+      } else {
+        delete this.errors['zone'];
+      }
+    } else if (field === 'operatingDivision') {
+      if (!this.form.operatingDivision?.trim()) {
+        this.errors['operatingDivision'] = 'This field is required';
+      } else {
+        delete this.errors['operatingDivision'];
+      }
+    } else if (field === 'ownershipCode') {
+      const code = (this.form.ownershipCode || '').trim();
+      if (!code) {
+        this.errors['ownershipCode'] = 'Ownership Code is required';
+      } else if (!/^[A-Z0-9]{4}$/.test(code)) {
+        this.errors['ownershipCode'] = 'Enter a valid four-character Global Customer Code.';
+      } else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') {
+        this.errors['ownershipCode'] = this.ownSection1LookupError;
+      } else if (this.ownSection1Loading || !this.ownSection1Source) {
+        this.errors['ownershipCode'] = 'Wait for ownership code lookup to complete.';
+      } else {
+        delete this.errors['ownershipCode'];
+      }
+    } else if (field === 'ownershipAddress') {
+      if (!this.form.ownershipAddress?.trim()) {
+        this.errors['ownershipAddress'] = 'Ownership Address is required';
+      } else {
+        delete this.errors['ownershipAddress'];
+      }
+    } else if (field === 'ownershipPartyCode') {
+      const code = (this.form.ownershipPartyCode || '').trim();
+      if (!code) {
+        this.errors['ownershipPartyCode'] = 'Ownership Code is required';
+      } else if (!/^[A-Z0-9]{4}$/.test(code)) {
+        this.errors['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
+      } else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') {
+        this.errors['ownershipPartyCode'] = this.ownSection2LookupError;
+      } else if (this.ownSection2Loading || !this.ownSection2Source) {
+        this.errors['ownershipPartyCode'] = 'Wait for ownership code lookup to complete.';
+      } else {
+        delete this.errors['ownershipPartyCode'];
+      }
+    } else if (field === 'ownershipPartyAddress') {
+      if (!this.form.ownershipPartyAddress?.trim()) {
+        this.errors['ownershipPartyAddress'] = 'Ownership Address is required';
+      } else {
+        delete this.errors['ownershipPartyAddress'];
+      }
+    }
+  }
+
+  handleCompanyNameInput(name: string): void {
+    this.form.companyName = name;
+    this.touchedFields['companyName'] = true;
+    this.validateField('companyName');
+    this.cdr.markForCheck();
+  }
+
+  handlePincodeChange(pin: string): void {
+    this.form.pincode = (pin || '').trim();
+    this.touchedFields['pincode'] = true;
+    this.validateField('pincode');
+    this.cdr.markForCheck();
+  }
+
   private isSuccessfulResponse(result: any): boolean {
     if (!result) return false;
     if (result.success === false) return false;
@@ -1166,8 +1428,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return;
     }
     this.notice = '';
+    this.markAllTouched();
 
-    if (!this.validate()) {
+    if (!this.isFormValid || !this.validate()) {
       const errorKeys = Object.keys(this.errors);
       const firstErrorMsg = this.errors[errorKeys[0]] || 'Please check required fields.';
       this.notice = `Validation Error: ${firstErrorMsg}`;
@@ -1433,6 +1696,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.panManuallyEdited = true;
     }
     this.form.panNumber = value;
+    this.touchedFields['panNumber'] = true;
     const normalizedPan = normalizeDocumentNumber(value);
     if (value && !panRe.test(normalizedPan)) {
       this.errors['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
@@ -1858,6 +2122,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.divisionSelectionManuallyChanged = true;
     this.form.zone = zone;
     this.form.operatingDivision = '';
+    this.touchedFields['zone'] = true;
+    this.touchedFields['operatingDivision'] = true;
     this.zoneDivisionService?.setSelection(zone, '', true);
     this.zoneSearchTerm = '';
     this.zoneOpen = false;
@@ -1876,6 +2142,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   chooseDivision(div: string): void {
     this.divisionSelectionManuallyChanged = true;
     this.form.operatingDivision = div;
+    this.touchedFields['operatingDivision'] = true;
     this.zoneDivisionService?.setSelection(this.form.zone || '', div, true);
     this.divisionOpen = false;
     delete this.errors['operatingDivision'];

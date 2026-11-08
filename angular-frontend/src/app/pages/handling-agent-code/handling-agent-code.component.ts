@@ -58,6 +58,7 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
   loading = false;
   generatedCode = '';
   codeChecking = false;
+  touchedFields: Record<string, boolean> = {};
 
   // Dropdown states
   zoneOpen = false;
@@ -163,16 +164,27 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
   handleNameChange(name: string): void {
     const requestId = ++this.codeRequestId;
     this.form.agentCompanyName = name;
-    delete this.errors['agentCompanyName'];
+    this.touchedFields['agentCompanyName'] = true;
     this.notice = '';
 
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    if (!name.trim()) {
+      this.errors['agentCompanyName'] = 'Agent / Company name is required';
+      this.generatedCode = '';
+      this.codeChecking = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
     if (name.length > 40) {
       this.errors['agentCompanyName'] = 'Agent / Company name cannot exceed 40 characters.';
       this.generatedCode = '';
       this.codeChecking = false;
+      this.cdr.markForCheck();
       return;
     }
+
+    delete this.errors['agentCompanyName'];
 
     const initialCode = generateCustomerCode(name);
 
@@ -202,38 +214,218 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
       this.generatedCode = '';
       this.codeChecking = false;
     }
+    this.cdr.markForCheck();
   }
 
   handlePanChange(pan: string): void {
     this.form.panNumber = (pan || '').toUpperCase().trim();
-    delete this.errors['panNumber'];
+    this.touchedFields['panNumber'] = true;
+    this.validateField('panNumber');
+    if (this.touchedFields['gstin'] && this.form.gstin?.trim()) {
+      this.validateField('gstin');
+    }
+    this.cdr.markForCheck();
   }
 
   handleGstinChange(gstin: string): void {
     this.form.gstin = gstin ?? '';
     delete this.errors['gstin'];
+    this.cdr.markForCheck();
   }
 
   handleGstinBlur(): void {
-    const gstin = (this.form.gstin || '').trim();
-    if (!gstin) {
-      delete this.errors['gstin'];
-      return;
-    }
-    const gstinNorm = gstin.toUpperCase();
-    const pan = this.form.panNumber ? this.form.panNumber.trim().toUpperCase() : '';
-    if (!gstinRe.test(gstinNorm)) {
-      this.errors['gstin'] = 'Enter a valid 15-character GSTIN.';
-    } else if (pan && panRe.test(pan) && gstinNorm.slice(2, 12) !== pan) {
-      this.errors['gstin'] = 'GSTIN does not match the PAN number.';
-    } else {
-      delete this.errors['gstin'];
-    }
+    this.touchedFields['gstin'] = true;
+    this.validateField('gstin');
+    this.cdr.markForCheck();
   }
 
   handleAddressInput(addr: string): void {
     this.form.address = addr;
-    delete this.errors['address'];
+    this.touchedFields['address'] = true;
+    this.validateField('address');
+    this.cdr.markForCheck();
+  }
+
+  handleStateChange(state: string): void {
+    this.form.state = state;
+    this.touchedFields['state'] = true;
+    this.validateField('state');
+    this.cdr.markForCheck();
+  }
+
+  handlePincodeChange(pin: string): void {
+    this.form.pincode = (pin || '').trim();
+    this.touchedFields['pincode'] = true;
+    this.validateField('pincode');
+    this.cdr.markForCheck();
+  }
+
+  handleEmailChange(email: string): void {
+    this.form.email = email;
+    this.touchedFields['email'] = true;
+    this.validateField('email');
+    this.cdr.markForCheck();
+  }
+
+  handleMobileChange(mobile: string): void {
+    this.form.mobile = (mobile || '').trim();
+    this.touchedFields['mobile'] = true;
+    this.validateField('mobile');
+    this.cdr.markForCheck();
+  }
+
+  onFieldBlur(field: string): void {
+    this.touchedFields[field] = true;
+    this.validateField(field);
+    this.cdr.markForCheck();
+  }
+
+  validateField(field: string): void {
+    if (!this.touchedFields[field]) return;
+
+    if (field === 'agentCompanyName') {
+      const val = (this.form.agentCompanyName || '').trim();
+      if (!val) {
+        this.errors['agentCompanyName'] = 'Agent / Company name is required';
+      } else if (this.form.agentCompanyName.length > 40) {
+        this.errors['agentCompanyName'] = 'Agent / Company name cannot exceed 40 characters.';
+      } else {
+        delete this.errors['agentCompanyName'];
+      }
+    } else if (field === 'panNumber') {
+      const pan = (this.form.panNumber || '').trim().toUpperCase();
+      if (!pan) {
+        this.errors['panNumber'] = 'PAN Number is required';
+      } else if (!panRe.test(pan)) {
+        this.errors['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
+      } else {
+        delete this.errors['panNumber'];
+      }
+    } else if (field === 'gstin') {
+      const gstin = (this.form.gstin || '').trim();
+      if (!gstin) {
+        delete this.errors['gstin'];
+      } else {
+        const gstinNorm = gstin.toUpperCase();
+        const pan = this.form.panNumber ? this.form.panNumber.trim().toUpperCase() : '';
+        if (!gstinRe.test(gstinNorm)) {
+          this.errors['gstin'] = 'Enter a valid 15-character GSTIN.';
+        } else if (pan && panRe.test(pan) && gstinNorm.slice(2, 12) !== pan) {
+          this.errors['gstin'] = 'GSTIN does not match the PAN number.';
+        } else {
+          delete this.errors['gstin'];
+        }
+      }
+    } else if (field === 'state') {
+      if (!this.form.state?.trim()) {
+        this.errors['state'] = 'State is required';
+      } else {
+        delete this.errors['state'];
+      }
+    } else if (field === 'address') {
+      const addr = (this.form.address || '').trim();
+      if (!addr) {
+        this.errors['address'] = 'Address is required';
+      } else if (this.form.address.length > 100) {
+        this.errors['address'] = 'Address cannot exceed 100 characters.';
+      } else {
+        delete this.errors['address'];
+      }
+    } else if (field === 'pincode') {
+      const pin = (this.form.pincode || '').trim();
+      if (!pin) {
+        this.errors['pincode'] = 'Pincode is required';
+      } else if (!pincodeRe.test(pin)) {
+        this.errors['pincode'] = 'Enter a valid 6-digit pincode';
+      } else {
+        delete this.errors['pincode'];
+      }
+    } else if (field === 'zone') {
+      if (!this.form.zone?.trim()) {
+        this.errors['zone'] = 'Zone is required';
+      } else {
+        delete this.errors['zone'];
+      }
+    } else if (field === 'operatingDivision') {
+      if (!this.form.operatingDivision?.trim()) {
+        this.errors['operatingDivision'] = 'SR.DCM/ is required';
+      } else {
+        delete this.errors['operatingDivision'];
+      }
+    } else if (field === 'email') {
+      const email = (this.form.email || '').trim();
+      if (email && !emailRe.test(email)) {
+        this.errors['email'] = 'Enter a valid email address';
+      } else {
+        delete this.errors['email'];
+      }
+    } else if (field === 'mobile') {
+      const mobile = (this.form.mobile || '').trim();
+      if (mobile && !mobileRe.test(mobile)) {
+        this.errors['mobile'] = 'Enter a valid 10-digit mobile number';
+      } else {
+        delete this.errors['mobile'];
+      }
+    }
+  }
+
+  get isFormValid(): boolean {
+    const name = (this.form.agentCompanyName || '').trim();
+    if (!name || this.form.agentCompanyName.length > 40) return false;
+
+    const code = (this.generatedCode || generateCustomerCode(this.form.agentCompanyName) || '').trim();
+    if (!code || this.codeChecking) return false;
+
+    const pan = (this.form.panNumber || '').trim().toUpperCase();
+    if (!pan || !panRe.test(pan)) return false;
+
+    if (this.form.gstin?.trim()) {
+      const gstinNorm = this.form.gstin.trim().toUpperCase();
+      if (!gstinRe.test(gstinNorm)) return false;
+      if (pan && panRe.test(pan) && gstinNorm.slice(2, 12) !== pan) return false;
+    }
+
+    const state = (this.form.state || '').trim();
+    if (!state) return false;
+
+    const address = (this.form.address || '').trim();
+    if (!address || this.form.address.length > 100) return false;
+
+    const pin = (this.form.pincode || '').trim();
+    if (!pin || !pincodeRe.test(pin)) return false;
+
+    const zone = (this.form.zone || '').trim();
+    if (!zone) return false;
+
+    const division = (this.form.operatingDivision || '').trim();
+    if (!division) return false;
+
+    const email = (this.form.email || '').trim();
+    if (email && !emailRe.test(email)) return false;
+
+    const mobile = (this.form.mobile || '').trim();
+    if (mobile && !mobileRe.test(mobile)) return false;
+
+    return true;
+  }
+
+  markAllTouched(): void {
+    const fields = [
+      'agentCompanyName',
+      'panNumber',
+      'gstin',
+      'state',
+      'address',
+      'pincode',
+      'zone',
+      'operatingDivision',
+      'email',
+      'mobile'
+    ];
+    fields.forEach(f => {
+      this.touchedFields[f] = true;
+      this.validateField(f);
+    });
   }
 
   /* ===== Zone & Division Selectors ===== */
@@ -251,8 +443,10 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     this.zoneDivisionService?.setSelection(zone, '', true);
     this.zoneOpen = false;
     this.zoneSearchTerm = '';
-    delete this.errors['zone'];
-    delete this.errors['operatingDivision'];
+    this.touchedFields['zone'] = true;
+    this.validateField('zone');
+    this.touchedFields['operatingDivision'] = true;
+    this.validateField('operatingDivision');
     this.cdr.markForCheck();
   }
 
@@ -269,7 +463,8 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     this.form.operatingDivision = div;
     this.zoneDivisionService?.setSelection(this.form.zone, div, true);
     this.divisionOpen = false;
-    delete this.errors['operatingDivision'];
+    this.touchedFields['operatingDivision'] = true;
+    this.validateField('operatingDivision');
     this.cdr.markForCheck();
   }
 
@@ -301,6 +496,7 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     }
 
     this.errors = {};
+    this.touchedFields = {};
     this.notice = '';
     this.loading = false;
     this.generatedCode = '';
@@ -314,65 +510,8 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
 
   /* ===== Validation ===== */
   validate(): boolean {
-    const e: Record<string, string> = {};
-
-    if (!this.form.agentCompanyName?.trim()) {
-      e['agentCompanyName'] = 'Agent / Company name is required';
-    } else if (this.form.agentCompanyName.length > 40) {
-      e['agentCompanyName'] = 'Agent / Company name cannot exceed 40 characters.';
-    }
-
-    const pan = (this.form.panNumber || '').trim().toUpperCase();
-    if (!pan) {
-      e['panNumber'] = 'PAN Number is required';
-    } else if (!panRe.test(pan)) {
-      e['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
-    }
-
-    if (this.form.gstin?.trim()) {
-      const gstinNorm = this.form.gstin.trim().toUpperCase();
-      if (!gstinRe.test(gstinNorm)) {
-        e['gstin'] = 'Enter a valid 15-character GSTIN.';
-      } else if (pan && panRe.test(pan) && gstinNorm.slice(2, 12) !== pan) {
-        e['gstin'] = 'GSTIN does not match the PAN number.';
-      }
-    }
-
-    if (!this.form.address?.trim()) {
-      e['address'] = 'Address is required';
-    } else if (this.form.address.length > 100) {
-      e['address'] = 'Address cannot exceed 100 characters.';
-    }
-
-    const pin = (this.form.pincode || '').trim();
-    if (!pin) {
-      e['pincode'] = 'Pincode is required';
-    } else if (!pincodeRe.test(pin)) {
-      e['pincode'] = 'Enter a valid 6-digit pincode';
-    }
-
-    if (!this.form.state?.trim()) {
-      e['state'] = 'State is required';
-    }
-
-    if (!this.form.zone?.trim()) {
-      e['zone'] = 'Zone is required';
-    }
-
-    if (!this.form.operatingDivision?.trim()) {
-      e['operatingDivision'] = 'SR.DCM/ is required';
-    }
-
-    if (this.form.email?.trim() && !emailRe.test(this.form.email.trim())) {
-      e['email'] = 'Enter a valid email address';
-    }
-
-    if (this.form.mobile?.trim() && !mobileRe.test(this.form.mobile.trim())) {
-      e['mobile'] = 'Enter a valid 10-digit mobile number';
-    }
-
-    this.errors = e;
-    return Object.keys(e).length === 0;
+    this.markAllTouched();
+    return this.isFormValid && Object.keys(this.errors).length === 0;
   }
 
   /* ===== Submission ===== */
@@ -385,7 +524,8 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     if (this.loading) return;
     this.notice = '';
 
-    if (!this.validate()) {
+    if (!this.isFormValid || !this.validate()) {
+      this.markAllTouched();
       const errorKeys = Object.keys(this.errors);
       const firstError = this.errors[errorKeys[0]] || 'Please check required fields.';
       this.notice = `Validation Error: ${firstError}`;
