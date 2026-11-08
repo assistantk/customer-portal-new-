@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { OwnershipCodeComponent } from './ownership-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import { ZoneDivisionService } from '../../services/zone-division.service';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 
 describe('OwnershipCodeComponent', () => {
   let component: OwnershipCodeComponent;
@@ -230,5 +233,51 @@ describe('OwnershipCodeComponent', () => {
   it('should navigate to /registration when navigateToHome is called', () => {
     component.navigateToHome();
     expect(routerMock.navigate).toHaveBeenCalledWith(['/registration']);
+  });
+
+  it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+    const routerEvents = new Subject<any>();
+    const zoneDivisionService = new ZoneDivisionService();
+    zoneDivisionService.setSelection('Central Railway (CR)', 'Mumbai (CSTM)', true);
+
+    const testComponent = new OwnershipCodeComponent(
+      customerServiceMock as CustomerService,
+      notificationService,
+      { navigate: vi.fn(), events: routerEvents.asObservable() } as any,
+      cdrMock,
+      authServiceMock,
+      zoneDivisionService
+    );
+    testComponent.ngOnInit();
+
+    testComponent.form.ownershipCode = 'OWN9';
+    testComponent.form.ownershipAddress = '999 Industrial Area';
+    testComponent.form.panNumber = 'ABCDE1234F';
+    testComponent.form.ownershipPartyCode = 'PRT9';
+    testComponent.form.ownershipPartyAddress = 'Party Address 999';
+    testComponent.form.city = 'Nagpur';
+    testComponent.form.pincode = '440001';
+
+    expect(testComponent.form.ownershipCode).toBe('OWN9');
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    // Simulate navigation event
+    routerEvents.next(new NavigationEnd(1, '/registration/ownership', '/registration/ownership'));
+
+    // Text fields must be cleared
+    expect(testComponent.form.ownershipCode).toBe('');
+    expect(testComponent.form.ownershipAddress).toBe('');
+    expect(testComponent.form.panNumber).toBe('');
+    expect(testComponent.form.ownershipPartyCode).toBe('');
+    expect(testComponent.form.ownershipPartyAddress).toBe('');
+    expect(testComponent.form.city).toBe('');
+    expect(testComponent.form.pincode).toBe('');
+
+    // Zone and Division MUST be preserved
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    testComponent.ngOnDestroy();
   });
 });

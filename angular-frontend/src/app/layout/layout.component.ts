@@ -4,6 +4,7 @@ import { Subscription } from 'rxjs';
 import { AuthService, AuthUserData } from '../services/auth.service';
 import { NotificationService } from '../services/notification.service';
 import { IMAGE_ASSETS } from '../config/image-assets';
+import { ZoneDivisionService } from '../services/zone-division.service';
 
 @Component({
   selector: 'app-layout',
@@ -21,6 +22,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private authService: AuthService,
+    private zoneDivisionService?: ZoneDivisionService
     private notificationService: NotificationService
   ) {}
 

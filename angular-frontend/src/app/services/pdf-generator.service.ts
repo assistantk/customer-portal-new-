@@ -39,6 +39,7 @@ export interface SignatureBlockDetails {
   signerIdentity: string;
   designationDivisionOrg: string;
   designationDivision: string;
+  divisionCode?: string;
   formattedTimestamp: string;
   signatureImageBase64: string;
 }
@@ -185,6 +186,7 @@ export class PdfGeneratorService {
       signerIdentity,
       designationDivisionOrg,
       designationDivision,
+      divisionCode: division,
       formattedTimestamp,
       signatureImageBase64: ''
     };

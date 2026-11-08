@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
-import { finalize } from 'rxjs';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Router, NavigationEnd } from '@angular/router';
+import { finalize, filter, Subscription } from 'rxjs';
 import { CustomerService, DeleteRequestCodeType } from '../../services/customer.service';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 
@@ -9,7 +10,7 @@ import { IMAGE_ASSETS } from '../../config/image-assets';
   templateUrl: './delete-request.component.html',
   styleUrls: ['./delete-request.component.css']
 })
-export class DeleteRequestComponent {
+export class DeleteRequestComponent implements OnInit, OnDestroy {
   readonly imageAssets = IMAGE_ASSETS;
   codeType: DeleteRequestCodeType | '' = '';
   code = '';
@@ -21,8 +22,40 @@ export class DeleteRequestComponent {
   verifying = false;
   submitting = false;
   logoLoadFailed = false;
+  private routerEventsSubscription?: Subscription;
 
-  constructor(private customerService: CustomerService) {}
+  constructor(
+    private customerService: CustomerService,
+    private router?: Router
+  ) {}
+
+  ngOnInit(): void {
+    this.reset();
+    if (this.router?.events) {
+      this.routerEventsSubscription = this.router.events
+        .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+        .subscribe(() => {
+          this.reset();
+        });
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.routerEventsSubscription?.unsubscribe();
+  }
+
+  reset(): void {
+    this.codeType = '';
+    this.code = '';
+    this.companyName = '';
+    this.verifiedRecord = null;
+    this.verificationMessage = '';
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.verifying = false;
+    this.submitting = false;
+    this.logoLoadFailed = false;
+  }
 
   get pageTitle(): string {
     if (this.codeType === 'GLOBAL_CUSTOMER') {

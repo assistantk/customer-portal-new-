@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { GlobalCustomerCodeComponent } from './global-customer-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { BehaviorSubject, of } from 'rxjs';
+import { ZoneDivisionService } from '../../services/zone-division.service';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 
 describe('GlobalCustomerCodeComponent', () => {
   let component: GlobalCustomerCodeComponent;
@@ -183,5 +186,51 @@ describe('GlobalCustomerCodeComponent', () => {
   it('should navigate to /registration when navigateToHome is called', () => {
     component.navigateToHome();
     expect(routerMock.navigate).toHaveBeenCalledWith(['/registration']);
+  });
+
+  it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+    const routerEvents = new Subject<any>();
+    const zoneDivisionService = new ZoneDivisionService();
+    zoneDivisionService.setSelection('Central Railway (CR)', 'Mumbai (CSTM)', true);
+
+    const testComponent = new GlobalCustomerCodeComponent(
+      customerServiceMock as CustomerService,
+      notificationService,
+      { navigate: vi.fn(), events: routerEvents.asObservable() } as any,
+      cdrMock,
+      authServiceMock,
+      zoneDivisionService
+    );
+    testComponent.ngOnInit();
+
+    testComponent.form.companyName = 'Acme Corp';
+    testComponent.form.panNumber = 'ABCDE1234F';
+    testComponent.form.address = '123 Test Road';
+    testComponent.form.email = 'test@corp.com';
+    testComponent.form.mobile = '9876543210';
+    testComponent.form.city = 'Mumbai';
+    testComponent.form.pincode = '400001';
+
+    expect(testComponent.form.companyName).toBe('Acme Corp');
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    // Simulate navigation event
+    routerEvents.next(new NavigationEnd(1, '/registration/global-code', '/registration/global-code'));
+
+    // Text fields must be cleared
+    expect(testComponent.form.companyName).toBe('');
+    expect(testComponent.form.panNumber).toBe('');
+    expect(testComponent.form.address).toBe('');
+    expect(testComponent.form.email).toBe('');
+    expect(testComponent.form.mobile).toBe('');
+    expect(testComponent.form.city).toBe('');
+    expect(testComponent.form.pincode).toBe('');
+
+    // Zone and Division MUST be preserved
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    testComponent.ngOnDestroy();
   });
 });
