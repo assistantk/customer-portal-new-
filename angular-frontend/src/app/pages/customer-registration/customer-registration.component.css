@@ -481,6 +481,22 @@ label b {
     color: #99a5b4;
 }
 
+.control.readonly-control,
+.control input[readonly] {
+    background: #f8fafc;
+    cursor: default;
+    color: #334155;
+}
+
+.control.readonly-control {
+    border-color: #cbd5e1;
+}
+
+.control.readonly-control:focus-within {
+    border-color: #94a3b8;
+    box-shadow: none;
+}
+
 .select {
     position: relative;
 }

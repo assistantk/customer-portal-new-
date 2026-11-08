@@ -153,8 +153,11 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
+    this.form.ownershipPartyCode = upperCode;
     delete this.errors['ownershipCode'];
+    delete this.errors['ownershipPartyCode'];
     this.form.ownershipAddress = '';
+    this.form.ownershipPartyAddress = '';
     this.form.address = '';
     this.form.panNumber = '';
     this.form.city = '';
@@ -175,36 +178,29 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
           next: (resp) => {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
-              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
-                this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.ownSection1Found = true;
-                this.ownSection1Source = resp.data.recordSource;
-              } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.form.address = resp.data.address || '';
-                this.form.panNumber = resp.data.panNumber || '';
-                this.form.city = resp.data.city || '';
-                this.form.pincode = resp.data.pincode || '';
-                this.ownSection1Found = true;
-                this.ownSection1Source = resp.data.recordSource;
-              } else {
-                this.ownSection1Found = false;
-                this.ownSection1Source = 'LOOKUP_ERROR';
-                this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
-              }
+              this.form.ownershipAddress = resp.data.ownershipDesc || '';
+              this.form.ownershipPartyAddress = this.form.ownershipAddress;
+              this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
+              this.form.panNumber = resp.data.panNumber || '';
+              this.form.city = resp.data.city || '';
+              this.form.pincode = resp.data.pincode || '';
+              this.ownSection1Found = true;
+              this.ownSection1Source = resp.data.recordSource;
             } else {
               this.ownSection1Found = false;
               this.ownSection1Source = 'INVALID_CODE';
-              this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+              this.ownSection1LookupError = resp?.message
+                || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             }
             this.ownSection1Loading = false;
             this.cdr.markForCheck();
           },
           error: (error) => {
             if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Source = 'LOOKUP_ERROR';
+            this.ownSection1Found = false;
+            this.ownSection1Source = 'INVALID_CODE';
             this.ownSection1LookupError = error?.error?.message
-              || 'Unable to fetch ownership record. Please try again.';
+              || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             this.ownSection1Loading = false;
             this.cdr.markForCheck();
           }
@@ -213,6 +209,13 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     } else {
       this.ownSection1Loading = false;
     }
+  }
+
+  handleOwnershipAddressChange(addr: string): void {
+    this.form.ownershipAddress = addr;
+    this.form.ownershipPartyAddress = addr;
+    delete this.errors['ownershipAddress'];
+    delete this.errors['ownershipPartyAddress'];
   }
 
   /* ===== Section 2: Ownership Party Code Lookup ===== */
@@ -390,20 +393,6 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
       e['operatingDivision'] = 'SR.DCM/ is required';
     }
 
-    if (!this.form.ownershipPartyCode?.trim()) {
-      e['ownershipPartyCode'] = 'Ownership Code is required';
-    } else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipPartyCode.trim())) {
-      e['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
-    } else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') {
-      e['ownershipPartyCode'] = this.ownSection2LookupError;
-    } else if (this.ownSection2Loading || !this.ownSection2Source) {
-      e['ownershipPartyCode'] = 'Wait for ownership code lookup to complete.';
-    }
-
-    if (!this.form.ownershipPartyAddress?.trim()) {
-      e['ownershipPartyAddress'] = 'Ownership Address is required';
-    }
-
     if (this.form.address && this.form.address.length > 100) {
       e['address'] = 'Address cannot exceed 100 characters.';
     }
@@ -434,10 +423,6 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     if (!this.form.state?.trim()) return false;
     if (!this.form.zone?.trim()) return false;
     if (!this.form.operatingDivision?.trim()) return false;
-
-    const code2 = (this.form.ownershipPartyCode || '').trim();
-    if (!code2 || !/^[A-Z0-9]{4}$/.test(code2) || this.ownSection2Loading || !this.ownSection2Source || this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') return false;
-    if (!this.form.ownershipPartyAddress?.trim()) return false;
 
     if (this.form.address && this.form.address.length > 100) return false;
     if (this.form.email?.trim() && !emailRe.test(this.form.email.trim())) return false;
@@ -477,8 +462,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
 
     const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
     const ownershipAddress = (this.form.ownershipAddress || '').trim();
-    const ownershipPartyCode = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-    const ownershipPartyAddress = (this.form.ownershipPartyAddress || '').trim();
+    const ownershipPartyCode = (this.form.ownershipPartyCode || ownershipCode).trim().toUpperCase();
+    const ownershipPartyAddress = (this.form.ownershipPartyAddress || ownershipAddress).trim();
 
     this.customerService.submitOwnershipJDBC(
       ownershipCode,

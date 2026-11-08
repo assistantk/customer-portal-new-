@@ -656,7 +656,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
+    this.form.ownershipPartyCode = upperCode;
     this.form.ownershipAddress = '';
+    this.form.ownershipPartyAddress = '';
     this.form.address = '';
     this.form.panNumber = '';
     this.form.city = '';
@@ -666,6 +668,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection1Duplicate = false;
     this.ownSection1LookupError = '';
     this.ownSection1Source = null;
+    delete this.errors['ownershipCode'];
+    delete this.errors['ownershipPartyCode'];
     const reqId = ++this.ownSection1ReqId;
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
 
@@ -679,37 +683,30 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               if (reqId !== this.ownSection1ReqId) return;
               if (resp && resp.found && resp.data) {
                 this.lastLookupRecord = resp.data;
-                if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
-                  this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                  this.ownSection1Found = true;
-                  this.ownSection1Source = resp.data.recordSource;
-                } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                  this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                  this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
-                  this.form.panNumber = resp.data.panNumber || '';
-                  this.form.city = resp.data.city || '';
-                  this.form.pincode = resp.data.pincode || '';
-                  this.populateOwnershipGstins(resp.data.gstinNumbers || '');
-                  this.ownSection1Found = true;
-                  this.ownSection1Source = resp.data.recordSource;
-                } else {
-                  this.ownSection1Found = false;
-                  this.ownSection1Source = 'LOOKUP_ERROR';
-                  this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
-                }
+                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.form.ownershipPartyAddress = this.form.ownershipAddress;
+                this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
+                this.form.panNumber = resp.data.panNumber || '';
+                this.form.city = resp.data.city || '';
+                this.form.pincode = resp.data.pincode || '';
+                this.populateOwnershipGstins(resp.data.gstinNumbers || '');
+                this.ownSection1Found = true;
+                this.ownSection1Source = resp.data.recordSource;
               } else {
                 this.ownSection1Found = false;
                 this.ownSection1Source = 'INVALID_CODE';
-                this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+                this.ownSection1LookupError = resp?.message
+                  || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
               }
               this.ownSection1Loading = false;
               this.cdr.markForCheck();
             },
             error: (error) => {
               if (reqId !== this.ownSection1ReqId) return;
-              this.ownSection1Source = 'LOOKUP_ERROR';
+              this.ownSection1Found = false;
+              this.ownSection1Source = 'INVALID_CODE';
               this.ownSection1LookupError = error?.error?.message
-                || 'Unable to fetch ownership record. Please try again.';
+                || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
               this.ownSection1Loading = false;
               this.cdr.markForCheck();
             }
@@ -986,19 +983,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     if (this.mode === 'ownership') {
-      if (this.ownSection1Loading || this.ownSection2Loading) {
+      if (this.ownSection1Loading) {
         return false;
       }
       const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
       const addr1 = (this.form.ownershipAddress || '').trim();
-      const code2 = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-      const addr2 = (this.form.ownershipPartyAddress || '').trim();
 
-      if (!code1 || !addr1 || !code2 || !addr2) return false;
-      if (!/^[A-Z0-9]{4}$/.test(code1) || !/^[A-Z0-9]{4}$/.test(code2)) return false;
+      if (!code1 || !addr1) return false;
+      if (!/^[A-Z0-9]{4}$/.test(code1)) return false;
       if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR' || !this.ownSection1Source) return false;
-      if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR' || !this.ownSection2Source) return false;
-      if (this.errors['ownershipCode'] || this.errors['ownershipAddress'] || this.errors['ownershipPartyCode'] || this.errors['ownershipPartyAddress']) return false;
+      if (this.errors['ownershipCode'] || this.errors['ownershipAddress']) return false;
       return true;
     }
 
@@ -1110,11 +1104,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') e['ownershipCode'] = this.ownSection1LookupError;
       else if (this.ownSection1Loading || !this.ownSection1Source) e['ownershipCode'] = 'Wait for ownership code lookup to complete.';
       if (!this.form.ownershipAddress?.trim()) e['ownershipAddress'] = 'Ownership Address is required';
-      if (!this.form.ownershipPartyCode?.trim()) e['ownershipPartyCode'] = 'Ownership Code is required';
-      else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipPartyCode.trim())) e['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
-      else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') e['ownershipPartyCode'] = this.ownSection2LookupError;
-      else if (this.ownSection2Loading || !this.ownSection2Source) e['ownershipPartyCode'] = 'Wait for ownership code lookup to complete.';
-      if (!this.form.ownershipPartyAddress?.trim()) e['ownershipPartyAddress'] = 'Ownership Address is required';
       this.errors = e;
       return !Object.keys(e).length;
     }
@@ -1327,8 +1316,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.mode === 'ownership') {
       const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
       const ownershipAddress = (this.form.ownershipAddress || '').trim();
-      const ownershipPartyCode = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-      const ownershipPartyAddress = (this.form.ownershipPartyAddress || '').trim();
+      const ownershipPartyCode = (this.form.ownershipPartyCode || ownershipCode).trim().toUpperCase();
+      const ownershipPartyAddress = (this.form.ownershipPartyAddress || ownershipAddress).trim();
 
       this.customerService.submitOwnershipJDBC(
         ownershipCode,
@@ -1573,7 +1562,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         } else {
           delete this.errors[field];
         }
-      } else if (this.errors[field]) {
+      } else if (this.errors[field] && this.errors[field] !== 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.') {
         delete this.errors[field];
       }
     }
@@ -1692,9 +1681,31 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
           entry.verificationState = uiState;
 
-          // Populate/correct form fields with verified data
+          // Clear previous scan error when verification succeeds
           if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
+            entry.scanError = '';
+            delete this.errors[`gstin_${index}_gstin`];
+            if (entry.scanStatus === 'notfound' || entry.scanStatus === 'error') {
+              entry.scanStatus = 'idle';
+            }
             this.applyVerifiedDataToForm(index, res, isAutoTriggered);
+            if (!isAutoTriggered) {
+              if (res.verificationStatus === 'VERIFIED') {
+                this.notificationService.success('GSTIN Verified', 'Official GST registration details retrieved and form populated.');
+              } else if (res.verificationStatus === 'CANCELLED') {
+                this.notificationService.warning('GSTIN Cancelled', 'Warning: This GSTIN is marked as CANCELLED in the official registry.');
+              } else if (res.verificationStatus === 'SUSPENDED') {
+                this.notificationService.warning('GSTIN Suspended', 'Warning: This GSTIN is marked as SUSPENDED in the official registry.');
+              }
+            }
+          } else if (!isAutoTriggered) {
+            if (res.verificationStatus === 'NOT_FOUND') {
+              this.notificationService.error('GSTIN Not Found', 'The entered GSTIN was not found in the official GST registry.');
+            } else if (res.verificationStatus === 'INVALID_GSTIN') {
+              this.notificationService.error('Invalid GSTIN', 'The entered GSTIN is invalid.');
+            } else {
+              this.notificationService.error('Verification Unavailable', 'Authorized GST verification service is currently unavailable. Please try again later.');
+            }
           }
 
           // If activeCrossCheckIndex was already this index, or if discrepancies were found, make available
@@ -1708,6 +1719,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         error: () => {
           if (!this.gstins[index]) return;
           entry.verificationState = 'unavailable';
+          if (!isAutoTriggered) {
+            this.notificationService.error('Verification Failed', 'Failed to connect to the GST verification service. Please check your network or try again later.');
+          }
           this.cdr.markForCheck();
         }
       })
@@ -1718,11 +1732,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.mode === 'delete') return;
 
     const entry = this.gstins[index];
-    if (verified.state && (!entry.state || isAutoTriggered)) {
+    if (verified.gstin && (!entry.gstin || entry.gstin !== verified.gstin)) {
+      entry.gstin = verified.gstin;
+    }
+
+    if (verified.state && (!entry.state || isAutoTriggered || !isAutoTriggered)) {
       this.handleGstinStateChange(index, verified.state);
     }
 
-    const verifiedCompany = verified.businessName || verified.legalName || verified.tradeName;
+    // Prefer Trade Name for company name when available; otherwise Legal Business Name
+    const verifiedCompany = (verified.tradeName && verified.tradeName.trim())
+      ? verified.tradeName.trim()
+      : (verified.legalName && verified.legalName.trim()
+          ? verified.legalName.trim()
+          : (verified.businessName ? verified.businessName.trim() : ''));
 
     if (this.mode === 'new') {
       // 1. Company Name
@@ -1762,27 +1785,32 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         delete this.errors['pincode'];
       }
     } else if (this.mode === 'old') {
-      if (verifiedCompany && !this.form.companyName) {
+      if (verifiedCompany && (!this.form.companyName || !isAutoTriggered)) {
         this.form.companyName = verifiedCompany;
         if (verifiedCompany.length > 40) {
           this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+        } else {
+          delete this.errors['companyName'];
         }
       }
-      if (verified.pan && !this.form.panNumber) {
+      if (verified.pan && (!this.form.panNumber || !isAutoTriggered)) {
         this.handlePanChange(verified.pan, false);
       }
-      if (verified.address && !this.form.address) {
+      if (verified.address && (!this.form.address || !isAutoTriggered)) {
         const cleaned = cleanAndShortenAddress(verified.address);
         if (cleaned) {
           this.form.address = cleaned;
           this.addressStatus = 'auto-filled';
+          delete this.errors['address'];
         }
       }
-      if (verified.city && !this.form.city) {
+      if (verified.city && (!this.form.city || !isAutoTriggered)) {
         this.form.city = verified.city;
+        delete this.errors['city'];
       }
-      if (verified.pincode && !this.form.pincode) {
+      if (verified.pincode && (!this.form.pincode || !isAutoTriggered)) {
         this.form.pincode = verified.pincode;
+        delete this.errors['pincode'];
       }
     }
   }
@@ -1926,7 +1954,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const extractedPan = ocrPan || gstinDerivedPan;
 
       if (!gstinRe.test(normalizedGstin)) {
-        const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+        const message = 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.';
         this.handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
         this.errors[`gstin_${index}_gstin`] = message;
         return;
@@ -1948,7 +1976,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       if (this.mode !== 'old') {
         // 1. Company Name
-        const extractedCompany = businessName || tradeName || legalName;
+        const extractedCompany = (tradeName && tradeName.trim())
+          ? tradeName.trim()
+          : (legalName && legalName.trim()
+              ? legalName.trim()
+              : (businessName ? businessName.trim() : ''));
         if (extractedCompany) {
           if (this.mode === 'new') {
             this.handleNewCompanyNameChange(extractedCompany);
@@ -2025,7 +2057,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       console.error('GSTIN OCR scan failed:', err);
       const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
         ? `${err.message} Please upload a shorter PDF.`
-        : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+        : 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.';
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
     } finally {

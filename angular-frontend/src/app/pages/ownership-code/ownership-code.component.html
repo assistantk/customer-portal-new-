@@ -49,10 +49,10 @@
                     <small *ngIf="ownSection1LookupError" class="error-msg">{{ ownSection1LookupError }}</small>
                 </div>
 
-                <!-- Ownership Address -->
+                <!-- Company Name (Read-Only, fetched from Global Customer) -->
                 <div class="field-group">
-                    <label for="ownershipAddress">Ownership Address <span class="req">*</span></label>
-                    <div class="input-control" [class.has-error]="errors['ownershipAddress']">
+                    <label for="ownershipAddress">Company Name <span class="req">*</span></label>
+                    <div class="input-control readonly-control" [class.has-error]="errors['ownershipAddress']">
                         <span class="icon-slot">
                             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
                         </span>
@@ -60,9 +60,11 @@
                             id="ownershipAddress"
                             name="ownershipAddress"
                             type="text"
+                            [readonly]="true"
+                            tabindex="-1"
                             [(ngModel)]="form.ownershipAddress"
-                            (input)="errors['ownershipAddress'] = ''"
-                            placeholder="Enter ownership address"
+                            placeholder="Company Name (auto-fetched from Global Customer)"
+                            class="readonly-input"
                         />
                     </div>
                     <small *ngIf="errors['ownershipAddress']" class="error-msg">{{ errors['ownershipAddress'] }}</small>
@@ -311,59 +313,6 @@
                         />
                     </div>
                     <small *ngIf="errors['mobile']" class="error-msg">{{ errors['mobile'] }}</small>
-                </div>
-            </div>
-
-            <!-- Section 2: Ownership Details -->
-            <div class="section-title">Ownership Details</div>
-
-            <div class="form-row row-two-cols">
-                <!-- Ownership Party Code -->
-                <div class="field-group">
-                    <label for="ownershipPartyCode">Ownership Code <span class="req">*</span></label>
-                    <div class="input-control" [class.has-error]="errors['ownershipPartyCode'] || ownSection2Duplicate">
-                        <span class="icon-slot">
-                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                        </span>
-                        <input
-                            id="ownershipPartyCode"
-                            name="ownershipPartyCode"
-                            type="text"
-                            maxlength="4"
-                            [value]="form.ownershipPartyCode"
-                            (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
-                            placeholder="ENTER OWNERSHIP CODE"
-                            style="text-transform: uppercase;"
-                        />
-                        <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status error-icon" title="Duplicate code" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status ok-icon" title="Record found in database" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    </div>
-                    <small *ngIf="errors['ownershipPartyCode']" class="error-msg">{{ errors['ownershipPartyCode'] }}</small>
-                    <small *ngIf="ownSection2LookupError" class="error-msg">{{ ownSection2LookupError }}</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error-msg">This Ownership Code already exists in database.</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" class="success-msg">Existing ownership record found - changes will be sent as an UPDATE request.</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" class="success-msg">Global Customer record found - a new ownership INSERT request can be submitted.</small>
-                    <small *ngIf="ownSection2LookupError" class="error-msg">{{ ownSection2LookupError }}</small>
-                </div>
-
-                <!-- Ownership Party Address -->
-                <div class="field-group">
-                    <label for="ownershipPartyAddress">Ownership Address <span class="req">*</span></label>
-                    <div class="input-control" [class.has-error]="errors['ownershipPartyAddress']">
-                        <span class="icon-slot">
-                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                        </span>
-                        <input
-                            id="ownershipPartyAddress"
-                            name="ownershipPartyAddress"
-                            type="text"
-                            [(ngModel)]="form.ownershipPartyAddress"
-                            (input)="errors['ownershipPartyAddress'] = ''"
-                            placeholder="Enter ownership address"
-                        />
-                    </div>
-                    <small *ngIf="errors['ownershipPartyAddress']" class="error-msg">{{ errors['ownershipPartyAddress'] }}</small>
                 </div>
             </div>
 

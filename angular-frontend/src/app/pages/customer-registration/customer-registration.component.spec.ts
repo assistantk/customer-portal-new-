@@ -720,7 +720,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.city).toBe('');
       expect(component.form.pincode).toBe('');
       expect(component.gstins[0].gstin).toBe('');
-      expect(component.errors['gstin_0_gstin']).toContain('GSTIN could not be extracted');
+      expect(component.errors['gstin_0_gstin']).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
     });
 
     it('discards results of older OCR requests when a newer upload is initiated', async () => {
@@ -1058,7 +1058,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       await component.handleGstinFileChange(0, fakeEvent);
 
       expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR', expect.anything());
-      expect(component.form.companyName).toBe('RELIANCE INDUSTRIES LIMITED');
+      expect(component.form.companyName).toBe('RELIANCE');
       expect(component.form.panNumber).toBe('AAACR7157R');
       expect(component.gstins[0].verificationState).toBe('verified');
       expect(component.gstins[0].verificationData?.status).toBe('Active');
@@ -1098,7 +1098,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
       expect(component.gstins[0].verificationState).toBe('verified');
-      expect(component.form.companyName).toBe('RELIANCE INDUSTRIES LIMITED');
+      expect(component.form.companyName).toBe('RELIANCE');
       expect(component.form.panNumber).toBe('AAACR7157R');
     });
 
@@ -1205,6 +1205,89 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.dismissCrossCheck();
       expect(component.activeCrossCheckIndex).toBeNull();
       expect(component.activeCrossCheck).toBeNull();
+    });
+
+    it('Scenario B: should display fallback error message when OCR fails to detect GSTIN and allow manual entry and verification', async () => {
+      component.mode = 'new';
+      // Simulate OCR failing to extract a valid GSTIN
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '',
+        stateName: '',
+        address: '',
+        city: '',
+        pincode: '',
+        tradeName: '',
+        legalName: '',
+        businessName: '',
+        pan: '',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'unclear-gst-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      // Verify exact fallback message is shown and scanStatus is set
+      expect(component.gstins[0].scanStatus).toBe('notfound');
+      expect(component.gstins[0].scanError).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
+      expect(component.errors['gstin_0_gstin']).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
+
+      // Now user manually enters the 15-character GSTIN
+      component.handleGstinChange(0, { gstin: '09ADMPA1980G1ZK' });
+      expect(component.gstins[0].gstin).toBe('09ADMPA1980G1ZK');
+
+      // User clicks "Verify GSTIN"
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '09ADMPA1980G1ZK',
+        tradeName: 'SILIGURI BARDANA CO',
+        legalName: 'SILIGURI BARDANA COMPANY PRIVATE LIMITED',
+        businessName: 'SILIGURI BARDANA COMPANY',
+        pan: 'ADMPA1980G',
+        address: '74/32, Collector Ganj, Kanpur, Uttar Pradesh, 208001',
+        city: 'Kanpur',
+        pincode: '208001',
+        state: 'Uttar Pradesh',
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      const successSpy = vi.spyOn(notificationService, 'success');
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('09ADMPA1980G1ZK');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      // Preference: Trade Name is preferred over Legal Name
+      expect(component.form.companyName).toBe('SILIGURI BARDANA CO');
+      expect(component.form.panNumber).toBe('ADMPA1980G');
+      expect(component.form.city).toBe('Kanpur');
+      expect(component.form.pincode).toBe('208001');
+      expect(component.form.address).toBe('74/32,Collector Ganj,Kanpur,Uttar Pradesh,208001');
+      expect(successSpy).toHaveBeenCalledWith('GSTIN Verified', 'Official GST registration details retrieved and form populated.');
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+    });
+
+    it('should fall back to Legal Business Name when Trade Name is empty', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = '09ADMPA1980G1ZK';
+
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '09ADMPA1980G1ZK',
+        tradeName: '',
+        legalName: 'LEGAL ENTERPRISE PVT LTD',
+        businessName: 'LEGAL ENTERPRISE',
+        pan: 'ADMPA1980G',
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe('LEGAL ENTERPRISE PVT LTD');
     });
   });
 

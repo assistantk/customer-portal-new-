@@ -81,7 +81,7 @@
                                         type="text"
                                         [(ngModel)]="g.gstin"
                                         [ngModelOptions]="{ standalone: true }"
-                                        [placeholder]="g.scanning ? 'Extracting GSTIN...' : 'ENTER GSTIN NUMBER'"
+                                        [placeholder]="g.scanning ? 'Extracting GSTIN...' : ((g.scanStatus === 'notfound' || g.scanStatus === 'error') ? 'Enter 15-character GSTIN manually' : 'ENTER GSTIN NUMBER')"
                                         (input)="handleGstinChange(i, { gstin: g.gstin })"
                                         (blur)="handleGstinBlur(i)"
                                         style="text-transform: uppercase;"
@@ -114,7 +114,7 @@
                                 />
 
                                 <!-- GSTIN Action Row: Verify & View Details -->
-                                <div class="gstin-action-row" *ngIf="g.gstin">
+                                <div class="gstin-action-row" *ngIf="g.gstin || g.scanStatus === 'notfound' || g.scanStatus === 'error' || g.file">
                                     <button
                                         type="button"
                                         class="gstin-verify-action-btn"
@@ -147,7 +147,7 @@
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> OCR complete - GSTIN auto-filled
                                 </small>
                                 <small *ngIf="!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error')" class="gstin-scan-status warn">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected.
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.
                                 </small>
 
                                 <!-- Verification Status Pills -->
@@ -162,6 +162,22 @@
                                 <small *ngIf="g.verificationState === 'cancelled'" class="gstin-registry-status cancelled">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                                     GSTIN Cancelled in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'suspended'" class="gstin-registry-status suspended">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GSTIN Suspended in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'notfound'" class="gstin-registry-status notfound">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GSTIN Not Found in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'invalid'" class="gstin-registry-status notfound">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    Invalid GSTIN Format
+                                </small>
+                                <small *ngIf="g.verificationState === 'unavailable'" class="gstin-registry-status unavailable">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GST Registry Service Unavailable
                                 </small>
                                 <small *ngIf="g.verificationState === 'suspended'" class="gstin-registry-status suspended">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -517,12 +533,12 @@
                 <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
             </div>
 
-            <!-- Ownership Address (Ownership mode) -->
+            <!-- Company Name (Ownership mode - Read Only) -->
             <div *ngIf="mode === 'ownership'" class="field">
-                <label for="ownershipAddress">Ownership Address <b>*</b></label>
-                <div class="control" [class.invalid]="errors['ownershipAddress']">
+                <label for="ownershipAddress">Company Name <b>*</b></label>
+                <div class="control readonly-control" [class.invalid]="errors['ownershipAddress']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                    <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress" placeholder="Enter ownership address" />
+                    <input id="ownershipAddress" name="ownershipAddress" [readonly]="true" tabindex="-1" [(ngModel)]="form.ownershipAddress" placeholder="Company Name (auto-fetched from Global Customer)" class="readonly-input" />
                 </div>
                 <small *ngIf="errors['ownershipAddress']" class="error">{{ errors['ownershipAddress'] }}</small>
             </div>
@@ -694,58 +710,6 @@
                 <small *ngIf="errors['operatingDivision']" class="error">{{ errors['operatingDivision'] }}</small>
             </div>
 
-        </div>
-
-        <!-- === Ownership Details (Section 2: Ownership Party Code) - shown only in ownership mode === -->
-        <div *ngIf="mode === 'ownership'" class="gstins-container" style="margin-top: 16px;">
-            <div class="gstins-header">
-                <h3>Ownership Details</h3>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem 0;">
-                <!-- Ownership Party Code -->
-                <div class="field">
-                    <label for="ownershipPartyCode">Ownership Code <b>*</b></label>
-                    <div class="control" [class.invalid]="errors['ownershipPartyCode'] || ownSection2Duplicate">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                        <input
-                            id="ownershipPartyCode"
-                            name="ownershipPartyCode"
-                            maxlength="4"
-                            [value]="form.ownershipPartyCode || ''"
-                            placeholder="ENTER OWNERSHIP CODE"
-                            (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
-                            style="text-transform: uppercase;"
-                        />
-                        <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status" style="color: var(--danger,#dc2626);" title="Duplicate: already exists in Ownership Party Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status code-ok" title="Found in Ownership Party Code records" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === false" width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);" title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    </div>
-                    <small *ngIf="errors['ownershipPartyCode']" class="error">{{ errors['ownershipPartyCode'] }}</small>
-                    <small *ngIf="ownSection2LookupError" class="error">{{ ownSection2LookupError }}</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error" style="display: flex; align-items: center; gap: 4px;">
-                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> This Ownership Party Code already exists in Ownership Party Code records. Duplicate entries are not allowed.
-                    </small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Existing ownership record found - changes will be sent as an UPDATE request.</small>
-                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" style="color: var(--success,#16a34a); font-size: 0.78rem;">Global Customer record found - a new ownership INSERT request can be submitted.</small>
-                    <small *ngIf="ownSection2LookupError" class="error">{{ ownSection2LookupError }}</small>
-                </div>
-
-                <!-- Ownership Party Address -->
-                <div class="field">
-                    <label for="ownershipPartyAddress">Ownership Address <b>*</b></label>
-                    <div class="control" [class.invalid]="errors['ownershipPartyAddress']">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                        <input
-                            id="ownershipPartyAddress"
-                            name="ownershipPartyAddress"
-                            [(ngModel)]="form.ownershipPartyAddress"
-                            placeholder="Enter ownership address"
-                        />
-                    </div>
-                    <small *ngIf="errors['ownershipPartyAddress']" class="error">{{ errors['ownershipPartyAddress'] }}</small>
-                </div>
-            </div>
         </div>
 
         <!-- OCR Auto-fill Notification -->

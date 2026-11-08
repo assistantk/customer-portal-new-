@@ -208,6 +208,23 @@ form {
     font-weight: 400;
 }
 
+.input-control.readonly-control,
+.input-control input[readonly] {
+    background: #f8fafc;
+    cursor: default;
+    color: #334155;
+}
+
+.input-control.readonly-control {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.input-control.readonly-control:focus-within {
+    border-color: #94a3b8;
+    box-shadow: none;
+}
+
 /* Select Control */
 .select-control {
     position: relative;
