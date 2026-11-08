@@ -56,15 +56,49 @@
     </form>
 
     <section *ngIf="verifiedRecord as record" class="confirmation" aria-live="polite">
-      <p class="reference-name"><strong>Company name on record:</strong> {{ record.companyName }}</p>
+      <!-- Full-detail verification table -->
+      <div class="verification-results-heading" style="margin-bottom: 8px;">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">Search Results</h3>
+      </div>
+      <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+          <thead>
+            <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">{{ codeType === 'HANDLING_AGENT' ? 'Handling Agent Code' : 'Global Customer Code' }}</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let g of getGstinList(recordDetails)" style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 12px 16px; font-family: monospace;">{{ (recordDetails?.customerCode || recordDetails?.code || record.code) || '-' }}</td>
+              <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+              <td style="padding: 12px 16px;">{{ (recordDetails?.companyName || record.companyName) || '-' }}</td>
+              <td style="padding: 12px 16px;">{{ (recordDetails?.address) || '-' }}</td>
+              <td style="padding: 12px 16px;">{{ (recordDetails?.panNumber) || '-' }}</td>
+              <td style="padding: 12px 16px;">{{ (recordDetails?.division) || '-' }}</td>
+              <td style="padding: 12px 16px;">{{ (recordDetails?.creationDate) || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="confirmation-instruction" style="margin: 0; font-weight: 600; font-size: 13px; color: #334155;">
+        Please enter the exact company name shown above to confirm deletion.
+      </p>
       <div class="field">
         <label for="confirmCompanyName">Company Name</label>
         <input id="confirmCompanyName" name="companyName" type="text" [value]="companyName"
                (input)="onCompanyNameChange($event)"
-               [disabled]="submitting" autocomplete="organization" required />
+               [disabled]="submitting" autocomplete="organization"
+               placeholder="Enter exact company name to confirm" required />
       </div>
       <button class="primary-button" type="button" (click)="sendRequest()"
-              [disabled]="submitting || verifying || !companyName.trim()">
+              [disabled]="submitting || verifying || !isCompanyNameMatched()">
         {{ submitting ? 'Sending Request...' : 'Send Delete Request' }}
       </button>
     </section>

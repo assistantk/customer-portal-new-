@@ -272,7 +272,7 @@
                     class="mode-tab mode-tab-delete"
                     [class.active]="mode === 'delete'"
                     (click)="switchMode('delete')">
-                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg> Delete Request
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg> Disable Code
                 </button>
             </div>
         </nav>
@@ -746,8 +746,8 @@
                 <header class="delete-mode-heading">
                     <span class="delete-mode-icon" aria-hidden="true">×</span>
                     <div>
-                        <h1 id="delete-mode-title">Delete Request</h1>
-                        <p>Verify a code and submit a deletion request to the DBA.</p>
+                        <h1 id="delete-mode-title">Disable Code</h1>
+                        <p>Verify a code and submit a disable request to the DBA.</p>
                     </div>
                 </header>
 
@@ -792,17 +792,52 @@
                 </div>
 
                 <section *ngIf="verifiedDeleteRecord as record" class="delete-mode-confirmation" aria-live="polite">
-                    <p class="delete-mode-reference"><strong>Company name on record:</strong> {{ record.companyName }}</p>
+                    <div class="verification-results-heading" style="margin-bottom: 8px;">
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">Search Results</h3>
+                    </div>
+                    <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+                            <thead>
+                                <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">{{ deleteCodeType === 'HANDLING_AGENT' ? 'Handling Agent Code' : 'Global Customer Code' }}</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr *ngFor="let g of getDeleteGstinList(deleteRecordDetails)" style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 12px 16px; font-family: monospace;">{{ (deleteRecordDetails?.customerCode || deleteRecordDetails?.code || record.code) || '-' }}</td>
+                                    <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.companyName || record.companyName) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.address) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.panNumber) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.division) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.creationDate) || '-' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p class="delete-confirmation-instruction" style="margin: 0; font-weight: 600; font-size: 13px; color: #334155;">
+                        Please enter the exact company name shown above to confirm deletion.
+                    </p>
+
                     <div class="field">
                         <label for="confirmDeleteCompanyName">Company Name</label>
                         <div class="control">
                             <input id="confirmDeleteCompanyName" name="confirmDeleteCompanyName" type="text"
                                 [value]="deleteCompanyName" (input)="onDeleteCompanyNameChange($event)"
                                 (keydown.enter)="sendDeleteRequest(); $event.preventDefault()"
-                                [disabled]="deleteSubmitting" autocomplete="organization" required />
+                                [disabled]="deleteSubmitting" autocomplete="organization"
+                                placeholder="Enter exact company name to confirm" required />
                         </div>
                     </div>
-                    <button class="submit" type="button" (click)="sendDeleteRequest()" [disabled]="deleteSubmitting || deleteVerifying">
+                    <button class="submit" type="button" (click)="sendDeleteRequest()"
+                        [disabled]="deleteSubmitting || deleteVerifying || !isDeleteCompanyNameMatched()">
                         {{ deleteSubmitting ? 'Sending Request...' : 'Send Delete Request' }}
                     </button>
                 </section>

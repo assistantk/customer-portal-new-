@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize, Subscription, timeout } from 'rxjs';
+import { finalize, Subscription, timeout, switchMap, of, catchError, map } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, GstVerificationUiState } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { GstVerificationService, GstVerificationResponse, GstCrossCheckResult } from '../../services/gst-verification.service';
@@ -194,11 +194,13 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   deleteCode = '';
   deleteCompanyName = '';
   verifiedDeleteRecord: { codeType: DeleteRequestCodeType; code: string; companyName: string } | null = null;
+  deleteRecordDetails: any = null;
   deleteVerificationMessage = '';
   deleteErrorMessage = '';
   deleteSuccessMessage = '';
   deleteVerifying = false;
   deleteSubmitting = false;
+  private deleteLookupRequestId = 0;
   private codeTimer: any = null;
   private codeRequestId = 0;
   private ocrRequestId = 0;
@@ -477,10 +479,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection2Duplicate = false;
     this.ownSection2LookupError = '';
     this.ownSection2Source = null;
+    this.deleteLookupRequestId++;
     this.deleteCodeType = '';
     this.deleteCode = '';
     this.deleteCompanyName = '';
     this.verifiedDeleteRecord = null;
+    this.deleteRecordDetails = null;
     this.deleteVerificationMessage = '';
     this.deleteErrorMessage = '';
     this.deleteSuccessMessage = '';
@@ -536,6 +540,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   onDeleteCodeTypeChange(event: Event): void {
     this.deleteCodeType = (event.target as HTMLSelectElement).value as DeleteRequestCodeType | '';
     this.deleteLogoMissing = false;
+    this.deleteCode = '';
     this.clearDeleteVerification();
   }
 
@@ -554,6 +559,23 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteCompanyName = (event.target as HTMLInputElement).value;
   }
 
+  getDeleteGstinList(c: any): string[] {
+    const rawGstins = c?.gstinNumbers || c?.gstin;
+    if (rawGstins == null || String(rawGstins).trim() === '') {
+      return ['-'];
+    }
+    const clean = String(rawGstins).replace(/[\[\]"\s]/g, '');
+    const list = clean.split(',').filter(Boolean);
+    return list.length > 0 ? list : ['-'];
+  }
+
+  isDeleteCompanyNameMatched(): boolean {
+    if (!this.verifiedDeleteRecord) return false;
+    const entered = (this.deleteCompanyName || '').trim();
+    const fetched = (this.verifiedDeleteRecord.companyName || '').trim();
+    return entered.length > 0 && entered === fetched;
+  }
+
   verifyDeleteCode(): void {
     if (this.deleteVerifying || this.deleteSubmitting) return;
 
@@ -567,28 +589,54 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Please enter a code.';
       return;
     }
-//the issue fix and backend pull request and verify the comment and logicaly the error of verify and the some the some of executed error
+
     this.clearDeleteVerification();
     this.deleteVerifying = true;
+    const requestId = ++this.deleteLookupRequestId;
+
     this.activeRequestsSub.add(
       this.customerService.verifyDeleteRequest(codeType, code).pipe(
+        switchMap((result) => {
+          if (!result || !result.found) {
+            return of({ verifyResult: result, details: null });
+          }
+          const lookup$ = codeType === 'GLOBAL_CUSTOMER'
+            ? (this.customerService.lookupOldCustomerJDBC
+                ? this.customerService.lookupOldCustomerJDBC(code).pipe(catchError(() => of(null)))
+                : of(null))
+            : (this.customerService.lookupHandlingAgentJDBC
+                ? this.customerService.lookupHandlingAgentJDBC(code).pipe(catchError(() => of(null)))
+                : of(null));
+
+          return lookup$.pipe(
+            map((details) => ({ verifyResult: result, details }))
+          );
+        }),
         finalize(() => {
+          if (requestId !== this.deleteLookupRequestId) return;
           this.deleteVerifying = false;
           this.cdr.markForCheck();
         })
       ).subscribe({
-        next: (result) => {
-          if (!result.found) {
+        next: ({ verifyResult, details }) => {
+          if (requestId !== this.deleteLookupRequestId) return;
+          if (!verifyResult || !verifyResult.found) {
             this.deleteVerificationMessage = 'This code is not present in the records, so it cannot be deleted.';
             return;
           }
-          const verifiedCode = result.code || code;
-          const verifiedName = result.companyName || '';
+          const verifiedCode = verifyResult.code || code;
+          const verifiedName = details?.companyName || verifyResult.companyName || '';
           this.verifiedDeleteRecord = { codeType, code: verifiedCode, companyName: verifiedName };
+          this.deleteRecordDetails = details || {
+            customerCode: verifiedCode,
+            code: verifiedCode,
+            companyName: verifiedName
+          };
           this.deleteCode = verifiedCode;
-          this.deleteVerificationMessage = 'Code found. Please enter the company name to confirm the deletion.';
+          this.deleteVerificationMessage = 'Code found. Please enter the exact company name shown above to confirm deletion.';
         },
         error: (error) => {
+          if (requestId !== this.deleteLookupRequestId) return;
           this.deleteErrorMessage = error?.error?.message
             || 'Unable to verify the code at this time. Please try again later.';
         }
@@ -606,7 +654,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Please enter the company name to confirm the request.';
       return;
     }
-    if (this.deleteCompanyName.trim().toLowerCase() !== this.verifiedDeleteRecord!.companyName.trim().toLowerCase()) {
+    if (!this.isDeleteCompanyNameMatched()) {
       this.deleteErrorMessage = 'Company name does not match the selected code. Please verify the company name.';
       return;
     }
@@ -618,7 +666,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.customerService.submitDeleteRequest(
         this.verifiedDeleteRecord!.codeType,
         this.verifiedDeleteRecord!.code,
-        this.deleteCompanyName
+        this.deleteCompanyName.trim()
       ).pipe(
         finalize(() => {
           this.deleteSubmitting = false;
@@ -628,6 +676,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         next: (result) => {
           this.deleteSuccessMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
           this.verifiedDeleteRecord = null;
+          this.deleteRecordDetails = null;
           this.deleteCompanyName = '';
           this.deleteVerificationMessage = '';
         },
@@ -645,7 +694,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   private clearDeleteVerification(): void {
+    this.deleteLookupRequestId++;
     this.verifiedDeleteRecord = null;
+    this.deleteRecordDetails = null;
     this.deleteCompanyName = '';
     this.deleteVerificationMessage = '';
     this.deleteErrorMessage = '';

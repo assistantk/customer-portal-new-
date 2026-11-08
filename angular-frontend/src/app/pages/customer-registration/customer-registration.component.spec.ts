@@ -908,6 +908,134 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.deleteErrorMessage)
         .toBe('Access denied. Administrator privileges required.');
     });
+
+    it('Global Code lookup fetches full details and displays Verification screen table structure', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+      customerServiceMock.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      }));
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'ACME01',
+        companyName: 'Acme Logistics',
+        address: '100 Industrial Area, Delhi',
+        panNumber: 'AAACA1234D',
+        gstinNumbers: '07AAACA1234D1Z5',
+        division: 'DELHI',
+        creationDate: '2025-03-01'
+      }));
+
+      component.verifyDeleteCode();
+
+      expect(component.deleteRecordDetails).toEqual({
+        customerCode: 'ACME01',
+        companyName: 'Acme Logistics',
+        address: '100 Industrial Area, Delhi',
+        panNumber: 'AAACA1234D',
+        gstinNumbers: '07AAACA1234D1Z5',
+        division: 'DELHI',
+        creationDate: '2025-03-01'
+      });
+      expect(component.getDeleteGstinList(component.deleteRecordDetails)).toEqual(['07AAACA1234D1Z5']);
+      expect(component.deleteVerificationMessage).toContain('Please enter the exact company name shown above');
+    });
+
+    it('Handling Agent Code lookup fetches full details and populates agent details', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'HANDLING_AGENT';
+      component.deleteCode = 'HNDG01';
+      customerServiceMock.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'HNDG01',
+        companyName: 'Handling Solutions Corp'
+      }));
+      customerServiceMock.lookupHandlingAgentJDBC.mockReturnValue(of({
+        code: 'HNDG01',
+        companyName: 'Handling Solutions Corp',
+        address: '200 Cargo Hub, Mumbai',
+        panNumber: 'BBBCB5678E',
+        gstinNumbers: '27BBBCB5678E1Z9',
+        division: 'MUMBAI',
+        creationDate: '2025-03-10'
+      }));
+
+      component.verifyDeleteCode();
+
+      expect(component.deleteRecordDetails.companyName).toBe('Handling Solutions Corp');
+      expect(component.deleteRecordDetails.division).toBe('MUMBAI');
+      expect(component.getDeleteGstinList(component.deleteRecordDetails)).toEqual(['27BBBCB5678E1Z9']);
+    });
+
+    it('validates company name strictly: disables Delete Request on partial or mismatch, enables on exact match', () => {
+      component.mode = 'delete';
+      component.verifiedDeleteRecord = {
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      };
+
+      // Empty
+      component.deleteCompanyName = '';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Partial
+      component.deleteCompanyName = 'Acme';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Case mismatch
+      component.deleteCompanyName = 'acme logistics';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Incorrect
+      component.deleteCompanyName = 'Another Company';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Exact match
+      component.deleteCompanyName = 'Acme Logistics';
+      expect(component.isDeleteCompanyNameMatched()).toBe(true);
+
+      // Exact match with whitespace trimming allowed
+      component.deleteCompanyName = '  Acme Logistics  ';
+      expect(component.isDeleteCompanyNameMatched()).toBe(true);
+    });
+
+    it('clears previous verification result and record details when code changes', () => {
+      component.mode = 'delete';
+      component.deleteCode = 'ACME01';
+      component.verifiedDeleteRecord = { codeType: 'GLOBAL_CUSTOMER', code: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteRecordDetails = { customerCode: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteCompanyName = 'Acme Logistics';
+
+      component.onDeleteCodeChange({ target: { value: 'ACME02' } } as unknown as Event);
+
+      expect(component.verifiedDeleteRecord).toBeNull();
+      expect(component.deleteRecordDetails).toBeNull();
+      expect(component.deleteCompanyName).toBe('');
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+    });
+
+    it('clears all unsaved lookup and confirmation data when leaving Disable Code mode', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+      component.verifiedDeleteRecord = { codeType: 'GLOBAL_CUSTOMER', code: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteRecordDetails = { customerCode: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteCompanyName = 'Acme Logistics';
+
+      component.switchMode('new');
+
+      expect(component.mode).toBe('new');
+      expect(component.deleteCodeType).toBe('');
+      expect(component.deleteCode).toBe('');
+      expect(component.verifiedDeleteRecord).toBeNull();
+      expect(component.deleteRecordDetails).toBeNull();
+      expect(component.deleteCompanyName).toBe('');
+    });
   });
 
   describe('Code Type Toggle & Dynamic Logo Switching', () => {

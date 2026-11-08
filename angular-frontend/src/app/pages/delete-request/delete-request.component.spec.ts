@@ -20,7 +20,7 @@ describe('DeleteRequestComponent', () => {
 
   it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
     expect(component.codeType).toBe('');
-    expect(component.pageTitle).toBe('Delete Request');
+    expect(component.pageTitle).toBe('Disable Code');
     expect(component.currentLogo).toBe('assets/portal-logo.webp');
     expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
@@ -34,7 +34,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Global Customer Code logo and heading when Global Code is selected', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
 
-    expect(component.pageTitle).toBe('Global Customer Code Deletion Request');
+    expect(component.pageTitle).toBe('Global Customer Code - Disable Code');
     expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
   });
@@ -42,7 +42,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Handling Agent logo and heading when Handling Agent Code is selected', () => {
     component.codeType = 'HANDLING_AGENT';
 
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
   });
@@ -100,7 +100,7 @@ describe('DeleteRequestComponent', () => {
     expect(component.verificationMessage).toBe('');
     expect(component.errorMessage).toBe('');
     expect(component.successMessage).toBe('');
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
 
     component.sendRequest();
@@ -203,5 +203,151 @@ describe('DeleteRequestComponent', () => {
     expect(component.submitting).toBe(false);
     expect(component.errorMessage).toBe('Email delivery failed');
     expect(component.verifiedRecord).not.toBeNull();
+  });
+
+  describe('Full-Detail Table and Exact Confirmation (Disable Code)', () => {
+    it('Global Code lookup fetches and displays full details matching Verification screen structure', () => {
+      (customerService as any).lookupOldCustomerJDBC = vi.fn().mockReturnValue(of({
+        customerCode: 'GLBL01',
+        companyName: 'Global Logistics Ltd',
+        address: '123 Main St, New Delhi',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '07ABCDE1234F1Z5,08ABCDE1234F1Z6',
+        division: 'DELHI',
+        creationDate: '2025-01-15'
+      }));
+      customerService.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'GLBL01',
+        companyName: 'Global Logistics Ltd'
+      }));
+
+      component.codeType = 'GLOBAL_CUSTOMER';
+      component.code = 'GLBL01';
+      component.verifyCode();
+
+      expect(customerService.verifyDeleteRequest).toHaveBeenCalledWith('GLOBAL_CUSTOMER', 'GLBL01');
+      expect((customerService as any).lookupOldCustomerJDBC).toHaveBeenCalledWith('GLBL01');
+      expect(component.recordDetails).toEqual({
+        customerCode: 'GLBL01',
+        companyName: 'Global Logistics Ltd',
+        address: '123 Main St, New Delhi',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '07ABCDE1234F1Z5,08ABCDE1234F1Z6',
+        division: 'DELHI',
+        creationDate: '2025-01-15'
+      });
+      expect(component.getGstinList(component.recordDetails)).toEqual([
+        '07ABCDE1234F1Z5',
+        '08ABCDE1234F1Z6'
+      ]);
+      expect(component.verificationMessage).toContain('Please enter the exact company name shown above');
+    });
+
+    it('Handling Agent Code lookup fetches and displays full details matching Verification screen structure', () => {
+      (customerService as any).lookupHandlingAgentJDBC = vi.fn().mockReturnValue(of({
+        code: 'AGNT01',
+        companyName: 'Express Handling Agency',
+        address: '456 Port Road, Mumbai',
+        panNumber: 'MNOPQ5678R',
+        gstinNumbers: '27MNOPQ5678R1Z1',
+        division: 'MUMBAI',
+        creationDate: '2025-02-20'
+      }));
+      customerService.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'AGNT01',
+        companyName: 'Express Handling Agency'
+      }));
+
+      component.codeType = 'HANDLING_AGENT';
+      component.code = 'AGNT01';
+      component.verifyCode();
+
+      expect(customerService.verifyDeleteRequest).toHaveBeenCalledWith('HANDLING_AGENT', 'AGNT01');
+      expect((customerService as any).lookupHandlingAgentJDBC).toHaveBeenCalledWith('AGNT01');
+      expect(component.recordDetails.companyName).toBe('Express Handling Agency');
+      expect(component.recordDetails.division).toBe('MUMBAI');
+      expect(component.getGstinList(component.recordDetails)).toEqual(['27MNOPQ5678R1Z1']);
+    });
+
+    it('keeps Delete Request disabled for incorrect or partial company name, and enables only on exact match', () => {
+      component.verifiedRecord = {
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'GLBL01',
+        companyName: 'Global Logistics Ltd'
+      };
+
+      // Empty
+      component.companyName = '';
+      expect(component.isCompanyNameMatched()).toBe(false);
+
+      // Partial
+      component.companyName = 'Global Logistics';
+      expect(component.isCompanyNameMatched()).toBe(false);
+
+      // Incorrect
+      component.companyName = 'Different Corp';
+      expect(component.isCompanyNameMatched()).toBe(false);
+
+      // Case mismatch
+      component.companyName = 'global logistics ltd';
+      expect(component.isCompanyNameMatched()).toBe(false);
+
+      // Exact match (with leading/trailing whitespace allowed by trimming)
+      component.companyName = '  Global Logistics Ltd  ';
+      expect(component.isCompanyNameMatched()).toBe(true);
+    });
+
+    it('clears verification and record details immediately when code or code type changes', () => {
+      component.codeType = 'GLOBAL_CUSTOMER';
+      component.code = 'GLBL01';
+      component.verifiedRecord = {
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'GLBL01',
+        companyName: 'Global Logistics Ltd'
+      };
+      component.recordDetails = { customerCode: 'GLBL01', companyName: 'Global Logistics Ltd' };
+      component.companyName = 'Global Logistics Ltd';
+
+      // Changing code
+      component.onCodeChange({ target: { value: 'NEWCODE' } } as unknown as Event);
+      expect(component.verifiedRecord).toBeNull();
+      expect(component.recordDetails).toBeNull();
+      expect(component.companyName).toBe('');
+      expect(component.isCompanyNameMatched()).toBe(false);
+
+      // Set record again
+      component.verifiedRecord = {
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'GLBL01',
+        companyName: 'Global Logistics Ltd'
+      };
+      component.recordDetails = { customerCode: 'GLBL01' };
+      component.companyName = 'Global Logistics Ltd';
+
+      // Changing code type
+      component.onCodeTypeChange({ target: { value: 'HANDLING_AGENT' } } as unknown as Event);
+      expect(component.verifiedRecord).toBeNull();
+      expect(component.recordDetails).toBeNull();
+      expect(component.code).toBe('');
+      expect(component.companyName).toBe('');
+      expect(component.isCompanyNameMatched()).toBe(false);
+    });
+
+    it('invalid code prevents display of full details and deletion', () => {
+      customerService.verifyDeleteRequest.mockReturnValue(of({ success: true, found: false }));
+
+      component.codeType = 'GLOBAL_CUSTOMER';
+      component.code = 'INVALID';
+      component.verifyCode();
+
+      expect(component.verifiedRecord).toBeNull();
+      expect(component.recordDetails).toBeNull();
+      expect(component.verificationMessage).toContain('not present in the records');
+      expect(component.isCompanyNameMatched()).toBe(false);
+    });
   });
 });

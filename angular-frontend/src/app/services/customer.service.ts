@@ -57,6 +57,7 @@ export interface DeleteRequestVerification {
   found: boolean;
   code?: string;
   companyName?: string;
+  record?: any;
 }
 
 @Injectable({ providedIn: 'root' })

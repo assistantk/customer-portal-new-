@@ -614,7 +614,8 @@ label b {
 }
 
 .delete-mode-panel {
-    width: min(100%, 760px);
+    width: 100%;
+    max-width: 1100px;
     margin: 0 auto 8px;
 }
 
