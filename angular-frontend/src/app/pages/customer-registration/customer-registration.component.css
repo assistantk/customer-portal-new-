@@ -95,6 +95,47 @@ main {
     border-radius: 12px;
     padding: 10px 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    position: relative;
+    z-index: 15;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, width 0.2s ease;
+    touch-action: none;
+}
+
+.header-gstin-card.is-expanded {
+    width: 440px;
+    max-width: min(92vw, 480px);
+    z-index: 45;
+    background: #ffffff;
+    border-color: #60a5fa;
+    box-shadow: 0 12px 30px -4px rgba(37, 99, 235, 0.22), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.header-gstin-card.is-expanded .header-gstin-body {
+    max-height: 480px;
+}
+
+.header-gstin-card.is-expanded .gstin-upload-btn {
+    max-width: 190px;
+}
+
+.header-gstin-card.is-expanded .gstin-upload-file {
+    max-width: 90px;
+}
+
+.header-gstin-card.is-moved {
+    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    border-color: #3b82f6;
+    background: #ffffff;
+    z-index: 50;
+}
+
+.header-gstin-card.is-dragging {
+    opacity: 0.96;
+    box-shadow: 0 16px 36px -4px rgba(37, 99, 235, 0.35), 0 12px 14px -6px rgba(0, 0, 0, 0.15);
+    border-color: #2563eb;
+    cursor: grabbing !important;
+    user-select: none;
+    z-index: 60;
 }
 
 .header-gstin-top {
@@ -103,6 +144,11 @@ main {
     justify-content: space-between;
     padding-bottom: 6px;
     user-select: none;
+    cursor: grab;
+}
+
+.header-gstin-top:active {
+    cursor: grabbing;
 }
 
 .header-gstin-title {
@@ -114,6 +160,72 @@ main {
     font-size: 13px;
 }
 
+.gstin-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    margin-right: 2px;
+    transition: color 0.15s ease;
+}
+
+.header-gstin-top:hover .gstin-drag-handle {
+    color: #3b82f6;
+}
+
+.gstin-count-badge {
+    background: #dbeafe;
+    color: #1e40af;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 2px;
+}
+
+.header-gstin-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.header-gstin-reset-pos {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #2563eb;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    transition: all 0.15s ease;
+}
+
+.header-gstin-reset-pos:hover {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+}
+
+.header-gstin-expand-btn {
+    background: transparent;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    border-radius: 4px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.header-gstin-expand-btn:hover {
+    background: #e0f2fe;
+    color: #1d4ed8;
+}
+
 .header-gstin-toggle {
     background: transparent;
     border: none;
@@ -122,13 +234,23 @@ main {
     display: flex;
     align-items: center;
     padding: 2px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+
+.header-gstin-toggle:hover {
+    background: #e0f2fe;
+}
+
+.header-gstin-card.collapsed .header-gstin-top {
+    padding-bottom: 0;
 }
 
 .header-gstin-body {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 240px;
+    max-height: 380px;
     overflow-y: auto;
     padding-right: 2px;
 }
@@ -1128,4 +1250,408 @@ label b {
 .notice-pdf-btn:hover {
     background: #16a34a;
     color: #ffffff;
+}
+
+/* ===== GSTIN Verification & Inspection Panel Styles (ClearTax inspired) ===== */
+.gstin-action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.gstin-verify-action-btn,
+.gstin-inspect-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.gstin-verify-action-btn {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.gstin-verify-action-btn:hover:not(:disabled) {
+    background: #dcfce7;
+    border-color: #4ade80;
+}
+
+.gstin-verify-action-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.gstin-inspect-btn {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+}
+
+.gstin-inspect-btn:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+
+.gstin-inspect-btn.has-discrepancy {
+    background: #fefce8;
+    border-color: #fde047;
+    color: #854d0e;
+}
+
+.gstin-inspect-btn.active-view {
+    background: #1e40af;
+    color: #ffffff;
+    border-color: #1e40af;
+}
+
+.gstin-registry-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.74rem;
+    font-weight: 500;
+    margin-top: 3px;
+}
+
+.gstin-registry-status.verified {
+    color: #15803d;
+}
+
+.gstin-registry-status.discrepancy {
+    color: #b45309;
+}
+
+.gstin-registry-status.cancelled {
+    color: #dc2626;
+}
+
+.gstin-registry-status.suspended {
+    color: #d97706;
+}
+
+.gstin-registry-status.notfound {
+    color: #e11d48;
+}
+
+.gstin-registry-status.unavailable {
+    color: #64748b;
+}
+
+/* Inspection Card / Panel */
+.gst-registry-card {
+    background: #ffffff;
+    border: 1.5px solid #93c5fd;
+    border-radius: 16px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 18px -4px rgba(37, 99, 235, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation: fadeInSlide 0.2s ease-out;
+}
+
+@keyframes fadeInSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.gst-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 12px;
+}
+
+.gst-card-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gst-title-badge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.gst-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #334155;
+    letter-spacing: 0.03em;
+}
+
+.gst-pill-badge.gstin-code {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-family: monospace;
+    font-size: 0.82rem;
+}
+
+.gst-pill-badge.taxpayer-type {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.gst-status-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.gst-status-badge.badge-active {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+}
+
+.gst-status-badge.badge-cancelled {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+}
+
+.gst-status-badge.badge-suspended {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+}
+
+.gst-card-heading {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.gst-card-close-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.gst-card-close-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+/* Banner Alerts inside Registry Inspection */
+.gst-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.gst-banner p {
+    margin: 2px 0 0;
+    opacity: 0.92;
+}
+
+.gst-banner.banner-success {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.gst-banner.banner-warning {
+    background: #fffbeb;
+    border: 1px solid #fde047;
+    color: #854d0e;
+}
+
+.gst-banner.banner-danger {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}
+
+.gst-section-subtitle {
+    margin: 0 0 8px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Tabular Comparison Matrix */
+.gst-comparison-wrap {
+    margin-top: 4px;
+}
+
+.gst-table-responsive {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.gst-comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    text-align: left;
+}
+
+.gst-comparison-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    padding: 9px 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.gst-comparison-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.gst-comparison-table tr:last-child td {
+    border-bottom: none;
+}
+
+.gst-comparison-table tr.row-discrepancy {
+    background: #fffdf5;
+}
+
+.gst-comparison-table tr.row-discrepancy td.col-ocr {
+    color: #b45309;
+    font-weight: 500;
+}
+
+.gst-comparison-table tr.row-discrepancy td.col-verified {
+    color: #15803d;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.status-pill.pill-match {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status-pill.pill-mismatch {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.status-pill.pill-autofill {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.text-muted {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Detailed Taxpayer Record Grid */
+.gst-details-grid-wrap {
+    margin-top: 4px;
+}
+
+.gst-details-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+@media (max-width: 900px) {
+    .gst-details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.gst-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gst-detail-item.full-span {
+    grid-column: 1 / -1;
+}
+
+.detail-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+.detail-value {
+    font-size: 0.84rem;
+    color: #1e293b;
+    word-break: break-word;
+}
+
+.font-mono {
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.activity-chip {
+    display: inline-block;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.74rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-right: 6px;
+    margin-top: 3px;
 }

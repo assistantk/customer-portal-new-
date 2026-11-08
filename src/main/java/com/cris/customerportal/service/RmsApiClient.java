@@ -39,10 +39,23 @@ public class RmsApiClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RmsApiClient.class);
 
     private final String validateUserUrl;
+    private final String logoutUrl;
     private final String generateOtpUrl;
     private final String verifyOtpUrl;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+
+    public RmsApiClient(
+            RestTemplateBuilder builder,
+            String baseUrl,
+            String otpBaseUrl,
+            String validateUserPath,
+            String generateOtpPath,
+            String verifyOtpPath,
+            long connectTimeoutMs,
+            long readTimeoutMs) {
+        this(builder, baseUrl, otpBaseUrl, validateUserPath, "/ATUSERLGOT", generateOtpPath, verifyOtpPath, connectTimeoutMs, readTimeoutMs);
+    }
 
     @Autowired
     public RmsApiClient(
@@ -50,6 +63,7 @@ public class RmsApiClient {
             @Value("${rms.api.base-url:}") String baseUrl,
             @Value("${rms.api.otp-base-url:http://10.60.201.192:7101/RMS}") String otpBaseUrl,
             @Value("${rms.api.validate-user-path:/ATVLDTUSER}") String validateUserPath,
+            @Value("${rms.api.logout-path:/ATUSERLGOT}") String logoutPath,
             @Value("${rms.api.generate-otp-path:/RTGNRTOTP}") String generateOtpPath,
             @Value("${rms.api.verify-otp-path:/RTVRFYOTP}") String verifyOtpPath,
             @Value("${rms.api.connect-timeout-ms:5000}") long connectTimeoutMs,
@@ -60,6 +74,7 @@ public class RmsApiClient {
         String normalizedBaseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
         String normalizedOtpBaseUrl = otpBaseUrl.replaceAll("/+$", "");
         this.validateUserUrl = normalizedBaseUrl + validateUserPath;
+        this.logoutUrl       = normalizedBaseUrl + (logoutPath != null ? logoutPath : "/ATUSERLGOT");
         this.generateOtpUrl  = normalizedOtpBaseUrl + generateOtpPath;
         this.verifyOtpUrl    = normalizedOtpBaseUrl + verifyOtpPath;
 
@@ -135,6 +150,35 @@ public class RmsApiClient {
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling ATVLDTUSER");
             throw new RmsApiException("RMS validation service error.");
+        }
+    }
+
+    public RmsApiResponse logoutUser(RmsLoginRequest request) {
+        LOGGER.info("Dispatching ATUSERLGOT logout request");
+        try {
+            ResponseEntity<String> response =
+                    restTemplate.postForEntity(logoutUrl, request, String.class);
+            String rawJson = response.getBody();
+            if (rawJson == null || rawJson.trim().isEmpty()) {
+                LOGGER.error("Empty response received from ATUSERLGOT");
+                throw new RmsApiException("Empty response received from RMS logout service.");
+            }
+            RmsApiResponse body = objectMapper.readValue(rawJson, RmsApiResponse.class);
+            LOGGER.info("ATUSERLGOT response parsed: status={} errorNo={}",
+                    body.getStatus(), body.getErrorNo());
+            return body;
+        } catch (ResourceAccessException ex) {
+            LOGGER.error("Network/timeout error calling ATUSERLGOT");
+            throw new RmsApiException("RMS logout service is currently unreachable. Please try again later.");
+        } catch (JsonProcessingException ex) {
+            LOGGER.error("JSON parse error calling ATUSERLGOT");
+            throw new RmsApiException("RMS logout response format error.");
+        } catch (HttpStatusCodeException ex) {
+            LOGGER.error("HTTP error calling ATUSERLGOT: status={}", ex.getRawStatusCode());
+            throw new RmsApiException("RMS logout service error.");
+        } catch (RestClientException ex) {
+            LOGGER.error("HTTP error calling ATUSERLGOT");
+            throw new RmsApiException("RMS logout service error.");
         }
     }
 

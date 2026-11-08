@@ -275,14 +275,11 @@ export class AuthService {
 
   logout(): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API}/logout`, {}, { withCredentials: true }).pipe(
-      tap(() => {
-        this.setRmsTempUser(null);
-        this.updateCurrentUser(null);
-      }),
-      catchError(() => {
-        this.setRmsTempUser(null);
-        this.updateCurrentUser(null);
-        return of({ success: true, message: 'Logged out' });
+      tap((res) => {
+        if (res && res.success) {
+          this.setRmsTempUser(null);
+          this.updateCurrentUser(null);
+        }
       })
     );
   }

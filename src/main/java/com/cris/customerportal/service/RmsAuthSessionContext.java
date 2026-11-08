@@ -1,5 +1,6 @@
 package com.cris.customerportal.service;
 
+import com.cris.customerportal.dto.RmsLoginRequest;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
@@ -9,8 +10,8 @@ import java.util.List;
  * multi-step login flow. The session key is defined in {@link RmsAuthOrchestrator}.
  *
  * States:
- *   CREDENTIALS_VALIDATED  – user credentials accepted by ATVLDTUSER; waiting for designation selection.
- *   OTP_PENDING            – designation selected (SR-DCM confirmed); OTP dispatched; waiting for OTP entry.
+ *   CREDENTIALS_VALIDATED  - user credentials accepted by ATVLDTUSER; waiting for designation selection.
+ *   OTP_PENDING            - designation selected (SR-DCM confirmed); OTP dispatched; waiting for OTP entry.
  */
 public class RmsAuthSessionContext implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -25,6 +26,7 @@ public class RmsAuthSessionContext implements Serializable {
     private String divisionCode;
     private List<String> designations;
     private String selectedDesignation;
+    private RmsLoginRequest loginRequest;
 
     public RmsAuthSessionContext() {}
 
@@ -51,4 +53,7 @@ public class RmsAuthSessionContext implements Serializable {
 
     public String getSelectedDesignation()                  { return selectedDesignation; }
     public void setSelectedDesignation(String v)            { this.selectedDesignation = v; }
+
+    public RmsLoginRequest getLoginRequest()                { return loginRequest; }
+    public void setLoginRequest(RmsLoginRequest v)          { this.loginRequest = v; }
 }

@@ -1,12 +1,16 @@
 package com.cris.customerportal.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.io.Serializable;
 
 /**
- * Request body sent to the RMS ATVLDTUSER API for user credential validation.
+ * Request body sent to the RMS ATVLDTUSER API for user credential validation
+ * and ATUSERLGOT API for session termination.
  * Fixed fields reflect the confirmed API contract from Postman.
  */
-public class RmsLoginRequest {
+public class RmsLoginRequest implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     // Variable fields — populated from login form
     @JsonProperty("F_LOCN")
     private String F_LOCN;
@@ -58,7 +62,7 @@ public class RmsLoginRequest {
     private String F_FLINFLAG = "W";
 
     @JsonProperty("F_ENTYSRVC")
-    private String F_ENTYSRVC = "RMS_TRANS";
+    private String F_ENTYSRVC = "FRT_CODE";
 
     public RmsLoginRequest() {}
 
