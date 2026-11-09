@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
-import { finalize, filter, Subscription } from 'rxjs';
+import { catchError, finalize, filter, map, of, Subscription, switchMap } from 'rxjs';
 import { CustomerService, DeleteRequestCodeType } from '../../services/customer.service';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 
@@ -23,6 +23,8 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
   verifying = false;
   submitting = false;
   logoLoadFailed = false;
+  private lookupRequestId = 0;
+  private activeSub = new Subscription();
   private routerEventsSubscription?: Subscription;
 
   constructor(
@@ -42,10 +44,17 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.lookupRequestId++;
     this.routerEventsSubscription?.unsubscribe();
+    this.activeSub.unsubscribe();
+    this.activeSub = new Subscription();
+    this.codeType = '';
+    this.code = '';
+    this.clearVerification();
   }
 
   reset(): void {
+    this.lookupRequestId++;
     this.codeType = '';
     this.code = '';
     this.companyName = '';
@@ -56,13 +65,6 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
     this.verifying = false;
     this.submitting = false;
     this.logoLoadFailed = false;
-  }
-
-  ngOnDestroy(): void {
-    this.codeType = '';
-    this.code = '';
-    this.clearVerification();
-    this.activeSub.unsubscribe();
   }
 
   get pageTitle(): string {

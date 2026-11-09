@@ -9,7 +9,7 @@ export interface MasterData {
 
 import type { GstVerificationResponse, GstCrossCheckResult } from './gst-verification.service';
 
-export type GstVerificationUiState = 'idle' | 'verifying' | 'verified' | 'discrepancy' | 'cancelled' | 'suspended' | 'notfound' | 'invalid' | 'unavailable' | 'error';
+export type GstVerificationUiState = 'idle' | 'pending' | 'verifying' | 'verified' | 'discrepancy' | 'cancelled' | 'suspended' | 'notfound' | 'invalid' | 'unavailable' | 'error';
 
 export interface GstinEntry {
   gstinId?: any;

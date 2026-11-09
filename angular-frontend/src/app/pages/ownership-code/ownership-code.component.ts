@@ -620,32 +620,6 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     return this.isFormValid && Object.keys(this.errors).length === 0;
   }
 
-  isFormValid(): boolean {
-    const code1 = (this.form.ownershipCode || '').trim();
-    if (!code1 || !/^[A-Z0-9]{4}$/.test(code1) || this.ownSection1Loading || !this.ownSection1Source || this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') return false;
-    if (!this.form.ownershipAddress?.trim()) return false;
-
-    const pan = (this.form.panNumber || '').trim().toUpperCase();
-    if (!pan || pan.length !== 10 || !panRe.test(pan)) return false;
-
-    const pin = (this.form.pincode || '').trim();
-    if (!pin || !pincodeRe.test(pin)) return false;
-
-    if (!this.form.state?.trim()) return false;
-    if (!this.form.zone?.trim()) return false;
-    if (!this.form.operatingDivision?.trim()) return false;
-
-    if (this.form.address && this.form.address.length > 100) return false;
-    if (this.form.email?.trim() && !emailRe.test(this.form.email.trim())) return false;
-    if (this.form.mobile?.trim() && !mobileRe.test(this.form.mobile.trim())) return false;
-
-    for (const key of Object.keys(this.errors)) {
-      if (this.errors[key]) return false;
-    }
-
-    return true;
-  }
-
   /* ===== Submission ===== */
   submit(e?: Event): void {
     if (e) {

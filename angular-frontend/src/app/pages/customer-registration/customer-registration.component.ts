@@ -1,9 +1,9 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
-import { finalize, filter, Subscription, timeout } from 'rxjs';
+import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, GstVerificationUiState } from '../../services/customer.service';
 import { PanOcrService, ExtractedGstinDetails, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
-import { GstVerificationService, GstVerificationResponse, GstCrossCheckResult } from '../../services/gst-verification.service';
+import { GSTIN_REGEX, GstVerificationService, GstVerificationResponse, GstCrossCheckResult } from '../../services/gst-verification.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
@@ -75,7 +75,7 @@ export const divisionsByZone: Record<string, string[]> = {
   'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
 };
 
-const gstinRe = /^[A-Z0-9]{15}$/;
+const gstinRe = GSTIN_REGEX;
 const panRe = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const mobileRe = /^[6-9][0-9]{9}$/;
 
@@ -120,7 +120,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.newCodeType = val;
     }
   }
-
   private populateOwnershipGstins(gstinNumbers: string): void {
     const gstins = (gstinNumbers || '').replace(/[\[\]"\s]/g, '').split(',').filter(Boolean);
     this.gstins = gstins.length
@@ -233,6 +232,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   // Timers
   private lookupTimer: any = null;
   private lookupRequestId = 0;
+  private activeRequestsSub = new Subscription();
+  private gstinVerificationRequestIds = new Map<number, number>();
+  private gstinVerificationSubscriptions = new Map<number, Subscription>();
   private divisionSelectionManuallyChanged = false;
   private userDivisionSubscription?: Subscription;
   private zoneDivisionSubscription?: Subscription;
@@ -246,12 +248,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   companyNameManuallyEdited = false;
   panManuallyEdited = false;
 
-  // Moveable & Expandable GSTIN card state
-  gstinCardPos = { x: 0, y: 0 };
-  isDraggingGstinCard = false;
-  gstinCardExpanded = false;
-  private dragStartPointer = { x: 0, y: 0 };
-  private dragCardInitialPos = { x: 0, y: 0 };
+  // Expandable GSTIN card state
+  gstinCardExpanded = true;
 
   readonly INDIAN_STATES = INDIAN_STATES;
   readonly divisionsByZone = divisionsByZone;
@@ -325,56 +323,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Moveable GSTIN Card handlers
-  onGstinDragStart(event: MouseEvent | TouchEvent): void {
-    const target = event.target as HTMLElement;
-    // Don't drag if user clicked interactive buttons or inputs inside the header
-    if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('a')) {
-      return;
-    }
-    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
-
-    this.isDraggingGstinCard = true;
-    this.dragStartPointer = { x: clientX, y: clientY };
-    this.dragCardInitialPos = { ...this.gstinCardPos };
-  }
-
-  @HostListener('window:mousemove', ['$event'])
-  @HostListener('window:touchmove', ['$event'])
-  onGstinDragMove(event: MouseEvent | TouchEvent): void {
-    if (!this.isDraggingGstinCard) return;
-
-    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
-
-    const deltaX = clientX - this.dragStartPointer.x;
-    const deltaY = clientY - this.dragStartPointer.y;
-
-    this.gstinCardPos = {
-      x: this.dragCardInitialPos.x + deltaX,
-      y: this.dragCardInitialPos.y + deltaY
-    };
-    this.cdr.markForCheck();
-  }
-
-  @HostListener('window:mouseup')
-  @HostListener('window:touchend')
-  onGstinDragEnd(): void {
-    if (this.isDraggingGstinCard) {
-      this.isDraggingGstinCard = false;
-      this.cdr.markForCheck();
-    }
-  }
-
-  resetGstinCardPosition(event?: Event): void {
-    if (event) {
-      event.stopPropagation();
-    }
-    this.gstinCardPos = { x: 0, y: 0 };
-    this.cdr.markForCheck();
-  }
-
   toggleGstinCollapse(event?: Event): void {
     if (event) {
       event.stopPropagation();
@@ -395,10 +343,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
-    if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
-    if (this.lookupTimer) clearTimeout(this.lookupTimer);
-    if (this.codeTimer) clearTimeout(this.codeTimer);
+    this.cancelPendingAsyncOperations();
+    this.resetFormState();
     this.userDivisionSubscription?.unsubscribe();
     this.zoneDivisionSubscription?.unsubscribe();
     this.routerEventsSubscription?.unsubscribe();
@@ -452,10 +398,69 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
-    this.cancelPendingAsyncOperations();
-    this.resetFormState();
-    this.userDivisionSubscription?.unsubscribe();
+  cancelPendingAsyncOperations(): void {
+    this.lookupRequestId++;
+    this.codeRequestId++;
+    this.ocrRequestId++;
+    for (const index of new Set([...this.gstinVerificationRequestIds.keys(), ...this.gstins.map((_, i) => i)])) {
+      this.invalidateGstinVerification(index);
+    }
+    this.activeRequestsSub.unsubscribe();
+    this.activeRequestsSub = new Subscription();
+    if (this.lookupTimer) {
+      clearTimeout(this.lookupTimer);
+      this.lookupTimer = null;
+    }
+    if (this.codeTimer) {
+      clearTimeout(this.codeTimer);
+      this.codeTimer = null;
+    }
+    if (this.ownSection1Timer) {
+      clearTimeout(this.ownSection1Timer);
+      this.ownSection1Timer = null;
+    }
+    if (this.ownSection2Timer) {
+      clearTimeout(this.ownSection2Timer);
+      this.ownSection2Timer = null;
+    }
+  }
+
+  private resetFormState(): void {
+    this.gstins.forEach((_, index) => this.invalidateGstinVerification(index));
+    this.notice = '';
+    this.loading = false;
+    this.lookupLoading = false;
+    this.lookupDone = false;
+    this.lookupError = '';
+    this.lastLookupRecord = null;
+    this.verifiedCustomerCode = null;
+    this.codeConfirmed = false;
+    this.codeChecking = false;
+    this.errors = {};
+    this.touchedFields = {};
+    this.form = { ...blank };
+    this.gstins = [{ ...blankGstin }];
+    this.ocrDataMap.clear();
+    this.activeCrossCheck = null;
+    this.activeCrossCheckIndex = null;
+    this.addressStatus = '';
+    this.addressManuallyEdited = false;
+    this.companyNameManuallyEdited = false;
+    this.panManuallyEdited = false;
+    this.ocrAutoFillApplied = false;
+    this.removedGstinIds = [];
+    this.ownershipLogoMissing = false;
+    this.deleteLogoMissing = false;
+    this.deleteCode = '';
+    this.deleteCompanyName = '';
+    this.verifiedDeleteRecord = null;
+    this.deleteRecordDetails = null;
+    this.deleteVerificationMessage = '';
+    this.deleteErrorMessage = '';
+    this.deleteSuccessMessage = '';
+    this.deleteVerifying = false;
+    this.deleteSubmitting = false;
+    this.deleteCodeType = '';
   }
 
   getGstinPanStatus(gstin: string, pan?: string): string | null {
@@ -472,6 +477,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   private resetFieldsPreservingZoneDivision(): void {
+    this.gstins.forEach((_, index) => this.invalidateGstinVerification(index));
     const shared = this.zoneDivisionService?.currentSelection;
     const currentZone = shared?.zone || this.form.zone || '';
     const currentDivision = shared?.division || this.form.operatingDivision || '';
@@ -490,6 +496,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     this.verifiedCustomerCode = null;
     this.gstins = [{ ...blankGstin }];
+    this.ocrDataMap.clear();
+    this.activeCrossCheck = null;
+    this.activeCrossCheckIndex = null;
     this.errors = {};
     this.touchedFields = {};
     this.notice = '';
@@ -1057,125 +1066,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return '';
   }
 
-  isFormValid(): boolean {
-    if (this.loading) {
-      return false;
-    }
-
-    if (this.mode === 'ownership') {
-      if (this.ownSection1Loading) {
-        return false;
-      }
-      const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
-      const addr1 = (this.form.ownershipAddress || '').trim();
-
-      if (!code1 || !addr1) return false;
-      if (!/^[A-Z0-9]{4}$/.test(code1)) return false;
-      if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR' || !this.ownSection1Source) return false;
-      if (this.errors['ownershipCode'] || this.errors['ownershipAddress']) return false;
-      return true;
-    }
-
-    if (this.mode === 'delete') {
-      return false;
-    }
-
-    // Common validations for new and old modes
-    const company = (this.form.companyName || '').trim();
-    if (!company || company.length > 40) {
-      return false;
-    }
-
-    const rawAddr = (this.form.address || '').trim();
-    if (!rawAddr) {
-      return false;
-    }
-    const normalizedAddr = this.getNormalizedAddress(rawAddr);
-    if (!normalizedAddr || normalizedAddr.length > 100) {
-      return false;
-    }
-
-    const pan = normalizeDocumentNumber(this.form.panNumber);
-    if (!pan || pan.length !== 10 || !panRe.test(pan)) {
-      return false;
-    }
-
-    if (this.form.pincode && this.form.pincode.trim()) {
-      if (!/^[1-9][0-9]{5}$/.test(this.form.pincode.trim())) return false;
-    }
-
-    if (this.form.mobile && this.form.mobile.trim()) {
-      if (!mobileRe.test(this.form.mobile.trim())) return false;
-    }
-
-    if (this.form.email && this.form.email.trim()) {
-      if (!/^\S+@\S+\.\S+$/.test(this.form.email.trim())) return false;
-    }
-
-    if (this.mode === 'new') {
-      const custCode = (this.form.customerCode || '').trim();
-      if (!custCode || custCode.length !== 4) return false;
-      if (this.codeChecking) return false;
-
-      const div = (this.form.operatingDivision || '').trim();
-      const zone = (this.form.zone || '').trim();
-      if (!div || !zone) return false;
-
-      if (!this.gstins || this.gstins.length === 0) return false;
-
-      const stateSet = new Set<string>();
-      const gstinSet = new Set<string>();
-
-      for (let i = 0; i < this.gstins.length; i++) {
-        const g = this.gstins[i];
-        if (g.scanning) return false;
-
-        const normGstin = normalizeDocumentNumber(g.gstin);
-        if (!normGstin || normGstin.length !== 15 || !gstinRe.test(normGstin)) return false;
-        if (gstinSet.has(normGstin)) return false;
-        gstinSet.add(normGstin);
-
-        // PAN embedded in GSTIN must match entered PAN
-        if (normGstin.slice(2, 12) !== pan) return false;
-
-        const state = (g.state || '').trim();
-        if (!state) return false;
-        if (stateSet.has(state)) return false;
-        stateSet.add(state);
-
-        if (!g.file && !g.existingFileName) return false;
-        if (g.file && this.checkFile(g.file)) return false;
-      }
-    } else if (this.mode === 'old') {
-      const custCode = (this.verifiedCustomerCode || this.form.customerCode || '').trim();
-      if (!custCode || custCode.length !== 4) return false;
-      if (this.lookupLoading || this.lookupError) return false;
-
-      const isSingleBlankGstin = this.gstins.length === 1 && !this.gstins[0].gstin?.trim() && !this.gstins[0].file && !this.gstins[0].state;
-      if (!isSingleBlankGstin) {
-        const gstinSet = new Set<string>();
-        for (let i = 0; i < this.gstins.length; i++) {
-          const g = this.gstins[i];
-          if (g.scanning) return false;
-
-          const normGstin = normalizeDocumentNumber(g.gstin);
-          if (!normGstin || normGstin.length !== 15 || !gstinRe.test(normGstin)) return false;
-          if (gstinSet.has(normGstin)) return false;
-          gstinSet.add(normGstin);
-
-          if (normGstin.slice(2, 12) !== pan) return false;
-          if (g.file && this.checkFile(g.file)) return false;
-        }
-      }
-    }
-
-    for (const key of Object.keys(this.errors)) {
-      if (this.errors[key]) return false;
-    }
-
-    return true;
-  }
-
   validate(): boolean {
     const e: Record<string, string> = {};
     if (this.mode === 'ownership') {
@@ -1233,6 +1123,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       else if (gstinSet.has(normalizedGstin)) e[`gstin_${i}_gstin`] = 'GSTIN already added';
       else if (normalizedGstin.slice(2, 12) !== normalizedPan) e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
       else gstinSet.add(normalizedGstin);
+      if (g.verificationState === 'verifying') e[`gstin_${i}_gstin`] = 'Please wait for GSTIN verification to finish.';
 
       if (!g.file && !g.existingFileName && this.mode === 'new') {
         e[`gstin_${i}_file`] = 'GSTIN file is required';
@@ -1313,6 +1204,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         const gstin = normalizeDocumentNumber(g.gstin);
         if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
         if (gstin.slice(2, 12) !== pan) return false;
+        if (g.verificationState === 'verifying') return false;
         if (gstinSet.has(gstin)) return false;
         gstinSet.add(gstin);
 
@@ -1356,6 +1248,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         const gstin = normalizeDocumentNumber(g.gstin);
         if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
         if (gstin.slice(2, 12) !== pan) return false;
+        if (g.verificationState === 'verifying') return false;
         if (gstinSet.has(gstin)) return false;
         gstinSet.add(gstin);
 
@@ -1836,6 +1729,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   removeGstin(index: number): void {
+    for (let currentIndex = index; currentIndex < this.gstins.length; currentIndex++) {
+      this.invalidateGstinVerification(currentIndex);
+    }
     const removed = this.gstins[index];
     if (removed?.gstinId) {
       this.removedGstinIds.push(removed.gstinId);
@@ -1883,19 +1779,33 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {
-    const oldGstin = this.gstins[index]?.gstin;
-    this.gstins[index] = { ...this.gstins[index], ...updates };
-    if (Object.prototype.hasOwnProperty.call(updates, 'gstin')) {
-      const currentGstin = updates.gstin || '';
-      if (oldGstin !== currentGstin) {
-        this.gstins[index].verificationState = 'idle';
-        this.gstins[index].verificationData = null;
-        this.gstins[index].crossCheckResult = null;
-        this.ocrDataMap.delete(index);
-        if (this.activeCrossCheckIndex === index) {
-          this.dismissCrossCheck();
-        }
+    const currentEntry = this.gstins[index];
+    if (!currentEntry) return;
+    const hasGstinUpdate = Object.prototype.hasOwnProperty.call(updates, 'gstin');
+    const oldGstin = normalizeDocumentNumber(currentEntry.gstin);
+    const currentGstin = hasGstinUpdate ? normalizeDocumentNumber(updates.gstin) : currentEntry.gstin;
+    const gstinChanged = hasGstinUpdate && oldGstin !== normalizeDocumentNumber(currentGstin);
+    this.gstins[index] = {
+      ...currentEntry,
+      ...updates,
+      ...(hasGstinUpdate ? { gstin: normalizeDocumentNumber(currentGstin) } : {})
+    };
+
+    if (gstinChanged) {
+      this.invalidateGstinVerification(index);
+      this.gstins[index].verificationState = currentGstin ? 'pending' : 'idle';
+      this.gstins[index].verificationData = null;
+      this.gstins[index].crossCheckResult = null;
+      this.gstins[index].scanError = '';
+      if (this.mode === 'new') {
+        this.restoreOcrValuesToForm(index);
       }
+      if (this.activeCrossCheckIndex === index) {
+        this.dismissCrossCheck();
+      }
+    }
+
+    if (hasGstinUpdate) {
       const field = `gstin_${index}_gstin`;
       const norm = normalizeDocumentNumber(currentGstin);
       if (norm.length === 15) {
@@ -1911,6 +1821,61 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         delete this.errors[field];
       }
     }
+  }
+
+  handleGstinInput(index: number, rawGstin: string): void {
+    const gstin = normalizeDocumentNumber(rawGstin);
+    const previousGstin = normalizeDocumentNumber(this.gstins[index]?.gstin);
+    if (previousGstin === gstin) return;
+
+    this.ocrRequestId++;
+    this.handleGstinChange(index, { gstin });
+    if (gstinRe.test(gstin)) {
+      this.verifyGstinAtIndex(index, true);
+    }
+    this.cdr.markForCheck();
+  }
+
+  private restoreOcrValuesToForm(index: number): void {
+    const ocr = this.ocrDataMap.get(index);
+    const companyName = (ocr?.tradeName || ocr?.businessName || ocr?.legalName || '').trim();
+    const pan = normalizeDocumentNumber(ocr?.pan);
+    const address = ocr?.address ? this.getNormalizedAddress(ocr.address) : '';
+
+    this.companyNameManuallyEdited = false;
+    this.panManuallyEdited = false;
+    this.addressManuallyEdited = false;
+    if (this.mode === 'new') {
+      this.handleNewCompanyNameChange(companyName, false);
+    } else {
+      this.form.companyName = companyName;
+    }
+    this.form.panNumber = pan;
+    this.form.address = address;
+    this.form.city = (ocr?.city || '').trim();
+    this.form.pincode = (ocr?.pincode || '').trim();
+    this.addressStatus = address ? 'auto-filled' : '';
+
+    delete this.errors['companyName'];
+    delete this.errors['panNumber'];
+    delete this.errors['address'];
+    delete this.errors['city'];
+    delete this.errors['pincode'];
+    if (companyName.length > 40) {
+      this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+    }
+    if (address.length > 100) {
+      this.errors['address'] = 'Address exceeds the maximum allowed length of 100 characters. Please review and shorten it manually.';
+    }
+    if (pan && !panRe.test(pan)) {
+      this.errors['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
+    }
+  }
+
+  private invalidateGstinVerification(index: number): void {
+    this.gstinVerificationRequestIds.set(index, (this.gstinVerificationRequestIds.get(index) || 0) + 1);
+    this.gstinVerificationSubscriptions.get(index)?.unsubscribe();
+    this.gstinVerificationSubscriptions.delete(index);
   }
 
   handleGstinBlur(index: number): void {
@@ -1946,9 +1911,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (isManual) {
       this.panManuallyEdited = true;
     }
-    this.form.panNumber = value;
+    this.form.panNumber = value.toUpperCase();
     this.touchedFields['panNumber'] = true;
-    const normalizedPan = normalizeDocumentNumber(value);
+    const normalizedPan = normalizeDocumentNumber(this.form.panNumber);
     if (value && !panRe.test(normalizedPan)) {
       this.errors['panNumber'] = 'Enter a valid PAN (5 letters, 4 numbers, and 1 letter).';
     } else if (this.errors['panNumber']?.startsWith('Enter a valid PAN')) {
@@ -1974,8 +1939,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const entry = this.gstins[index];
     if (!entry) return;
 
+    this.invalidateGstinVerification(index);
+    const requestId = this.gstinVerificationRequestIds.get(index)!;
     const gstin = normalizeDocumentNumber(entry.gstin);
     if (!gstinRe.test(gstin)) {
+      entry.verificationState = gstin ? 'pending' : 'idle';
       if (!isAutoTriggered) {
         this.errors[`gstin_${index}_gstin`] = 'Enter a valid 15-character GSTIN.';
         this.cdr.markForCheck();
@@ -1984,29 +1952,38 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     if (!this.gstVerificationService) {
+      entry.verificationState = 'unavailable';
+      entry.scanError = 'Authorized GST verification is unavailable. Please try again later.';
+      this.cdr.markForCheck();
       return;
     }
 
     entry.verificationState = 'verifying';
+    entry.scanError = '';
     this.cdr.markForCheck();
 
-    const ocrSnapshot = this.ocrDataMap.get(index);
-    const verify$ = ocrSnapshot
-      ? this.gstVerificationService.verifyGstin(gstin, ocrSnapshot)
-      : this.gstVerificationService.verifyGstin(gstin);
-
-    this.activeRequestsSub.add(
-      verify$.subscribe({
+    const subscription = this.gstVerificationService.verifyGstin(gstin).subscribe({
         next: (res: GstVerificationResponse) => {
-          if (!this.gstins[index]) return;
+          if (this.gstinVerificationRequestIds.get(index) !== requestId
+            || normalizeDocumentNumber(this.gstins[index]?.gstin) !== gstin) return;
+          if (!res || normalizeDocumentNumber(res.gstin) !== gstin) {
+            entry.verificationData = null;
+            entry.crossCheckResult = null;
+            entry.verificationState = 'error';
+            entry.scanError = 'The verification response did not match the current GSTIN. Please retry.';
+            this.cdr.markForCheck();
+            return;
+          }
 
-          entry.verificationData = res;
+          const successful = res.success && ['VERIFIED', 'CANCELLED', 'SUSPENDED'].includes(res.verificationStatus);
+          entry.verificationData = successful ? res : null;
+          entry.crossCheckResult = null;
 
           let uiState: GstVerificationUiState = 'verified';
 
-          if (res.verificationStatus === 'CANCELLED') {
+          if (successful && res.verificationStatus === 'CANCELLED') {
             uiState = 'cancelled';
-          } else if (res.verificationStatus === 'SUSPENDED') {
+          } else if (successful && res.verificationStatus === 'SUSPENDED') {
             uiState = 'suspended';
           } else if (res.verificationStatus === 'NOT_FOUND') {
             uiState = 'notfound';
@@ -2014,7 +1991,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             uiState = 'invalid';
           } else if (res.verificationStatus === 'SERVICE_UNAVAILABLE' || res.verificationStatus === 'ERROR') {
             uiState = 'unavailable';
-          } else if (res.verificationStatus === 'VERIFIED') {
+          } else if (res.verificationStatus === 'VERIFIED' && successful) {
             const ocrData = this.ocrDataMap.get(index);
             if (ocrData) {
               const crossCheck = this.gstVerificationService!.compareOcrAndVerified(ocrData, res);
@@ -2024,17 +2001,19 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               uiState = 'verified';
             }
           }
+          if (!successful && uiState === 'verified') {
+            uiState = 'error';
+          }
 
           entry.verificationState = uiState;
 
-          // Clear previous scan error when verification succeeds
-          if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
+          if (successful) {
             entry.scanError = '';
             delete this.errors[`gstin_${index}_gstin`];
             if (entry.scanStatus === 'notfound' || entry.scanStatus === 'error') {
               entry.scanStatus = 'idle';
             }
-            this.applyVerifiedDataToForm(index, res, isAutoTriggered);
+            this.applyVerifiedDataToForm(index, res);
             if (!isAutoTriggered) {
               if (res.verificationStatus === 'VERIFIED') {
                 this.notificationService.success('GSTIN Verified', 'Official GST registration details retrieved and form populated.');
@@ -2046,12 +2025,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             }
           } else if (!isAutoTriggered) {
             if (res.verificationStatus === 'NOT_FOUND') {
+              entry.scanError = res.message || 'The entered GSTIN was not found in the official GST registry.';
               this.notificationService.error('GSTIN Not Found', 'The entered GSTIN was not found in the official GST registry.');
             } else if (res.verificationStatus === 'INVALID_GSTIN') {
+              entry.scanError = res.message || 'The entered GSTIN is invalid.';
               this.notificationService.error('Invalid GSTIN', 'The entered GSTIN is invalid.');
             } else {
+              entry.scanError = res.message || 'Authorized GST verification service is currently unavailable. Please try again later.';
               this.notificationService.error('Verification Unavailable', 'Authorized GST verification service is currently unavailable. Please try again later.');
             }
+          }
+          if (!successful) {
+            entry.scanError = res.message || 'GSTIN verification did not succeed. Please retry.';
           }
 
           // If activeCrossCheckIndex was already this index, or if discrepancies were found, make available
@@ -2062,103 +2047,90 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
           this.cdr.markForCheck();
         },
-        error: () => {
-          if (!this.gstins[index]) return;
+        error: (error) => {
+          if (this.gstinVerificationRequestIds.get(index) !== requestId
+            || normalizeDocumentNumber(this.gstins[index]?.gstin) !== gstin) return;
+          entry.verificationData = null;
+          entry.crossCheckResult = null;
           entry.verificationState = 'unavailable';
+          entry.scanError = error?.error?.message || error?.message || 'Failed to connect to the authorized GST verification service. Please retry.';
           if (!isAutoTriggered) {
-            this.notificationService.error('Verification Failed', 'Failed to connect to the GST verification service. Please check your network or try again later.');
+            this.notificationService.error('Verification Failed', entry.scanError || 'GSTIN verification failed.');
           }
           this.cdr.markForCheck();
         }
-      })
-    );
+      });
+    this.gstinVerificationSubscriptions.set(index, subscription);
+    this.activeRequestsSub.add(subscription);
   }
 
-  applyVerifiedDataToForm(index: number, verified: GstVerificationResponse, isAutoTriggered: boolean): void {
+  applyVerifiedDataToForm(index: number, verified: GstVerificationResponse): void {
     if (this.mode === 'delete') return;
 
     const entry = this.gstins[index];
-    if (verified.gstin && (!entry.gstin || entry.gstin !== verified.gstin)) {
-      entry.gstin = verified.gstin;
+    if (!entry || normalizeDocumentNumber(entry.gstin) !== normalizeDocumentNumber(verified.gstin)) {
+      return;
     }
 
-    if (verified.state && (!entry.state || isAutoTriggered || !isAutoTriggered)) {
-      this.handleGstinStateChange(index, verified.state);
+    if (verified.state?.trim()) {
+      entry.state = verified.state.trim();
+      if (this.gstins.some((gstin, currentIndex) => currentIndex !== index && gstin.state === entry.state)) {
+        this.errors[`gstin_${index}_state`] = 'State already added';
+      } else {
+        delete this.errors[`gstin_${index}_state`];
+      }
     }
 
     // Prefer Trade Name for company name when available; otherwise Legal Business Name
-    const verifiedCompany = (verified.tradeName && verified.tradeName.trim())
-      ? verified.tradeName.trim()
-      : (verified.legalName && verified.legalName.trim()
-          ? verified.legalName.trim()
-          : (verified.businessName ? verified.businessName.trim() : ''));
+    const verifiedCompany = [verified.tradeName, verified.legalName, verified.businessName]
+      .find((name) => Boolean(name?.trim()))?.trim() || '';
 
-    if (this.mode === 'new') {
-      // 1. Company Name
-      if (verifiedCompany && (!this.companyNameManuallyEdited || !this.form.companyName)) {
+    if (verifiedCompany) {
+      this.companyNameManuallyEdited = false;
+      if (this.mode === 'new') {
         this.handleNewCompanyNameChange(verifiedCompany, false);
-        if (verifiedCompany.length > 40) {
-          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
-        } else {
-          delete this.errors['companyName'];
-        }
-      }
-
-      // 2. PAN Number
-      if (verified.pan && (!this.panManuallyEdited || !this.form.panNumber)) {
-        this.handlePanChange(verified.pan, false);
-      }
-
-      // 3. Address
-      if (verified.address && (!this.addressManuallyEdited || !this.form.address)) {
-        const cleaned = cleanAndShortenAddress(verified.address);
-        if (cleaned) {
-          this.form.address = cleaned;
-          this.addressStatus = 'auto-filled';
-          delete this.errors['address'];
-        }
-      }
-
-      // 4. City
-      if (verified.city && !this.form.city) {
-        this.form.city = verified.city;
-        delete this.errors['city'];
-      }
-
-      // 5. Pincode
-      if (verified.pincode && !this.form.pincode) {
-        this.form.pincode = verified.pincode;
-        delete this.errors['pincode'];
-      }
-    } else if (this.mode === 'old') {
-      if (verifiedCompany && (!this.form.companyName || !isAutoTriggered)) {
+      } else {
         this.form.companyName = verifiedCompany;
-        if (verifiedCompany.length > 40) {
-          this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
-        } else {
-          delete this.errors['companyName'];
-        }
       }
-      if (verified.pan && (!this.form.panNumber || !isAutoTriggered)) {
-        this.handlePanChange(verified.pan, false);
+      if (verifiedCompany.length > 40) {
+        this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+      } else {
+        delete this.errors['companyName'];
       }
-      if (verified.address && (!this.form.address || !isAutoTriggered)) {
-        const cleaned = cleanAndShortenAddress(verified.address);
-        if (cleaned) {
-          this.form.address = cleaned;
-          this.addressStatus = 'auto-filled';
-          delete this.errors['address'];
-        }
+    }
+
+    if (verified.pan?.trim()) {
+      this.panManuallyEdited = false;
+      this.handlePanChange(verified.pan.trim(), false);
+    }
+
+    if (verified.address?.trim()) {
+      const normalizedAddress = this.getNormalizedAddress(verified.address);
+      this.addressManuallyEdited = false;
+      this.form.address = normalizedAddress;
+      this.addressStatus = 'auto-filled';
+      if (normalizedAddress.length > 100) {
+        this.errors['address'] = 'Registered address exceeds the maximum allowed length of 100 characters. Please review and shorten it manually.';
+      } else {
+        delete this.errors['address'];
       }
-      if (verified.city && (!this.form.city || !isAutoTriggered)) {
-        this.form.city = verified.city;
-        delete this.errors['city'];
-      }
-      if (verified.pincode && (!this.form.pincode || !isAutoTriggered)) {
-        this.form.pincode = verified.pincode;
+    }
+
+    if (verified.city?.trim()) {
+      this.form.city = verified.city.trim();
+      delete this.errors['city'];
+    }
+
+    if (verified.pincode?.trim()) {
+      this.form.pincode = verified.pincode.trim();
+      if (!/^[1-9][0-9]{5}$/.test(this.form.pincode)) {
+        this.errors['pincode'] = 'Verified pincode is not a valid 6-digit pincode. Please review it manually.';
+      } else {
         delete this.errors['pincode'];
       }
     }
+
+    this.cdr.markForCheck();
   }
 
   toggleCrossCheckView(index: number): void {
@@ -2187,6 +2159,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   get normalizedAddressLength(): number {
     return this.getNormalizedAddress(this.form.address).length;
+  }
+
+  hasUnverifiedOcrValues(index: number): boolean {
+    const ocr = this.ocrDataMap.get(index);
+    const verified = this.gstins[index]?.verificationData;
+    if (!ocr || !verified) return false;
+    const verifiedCompany = [verified.tradeName, verified.businessName, verified.legalName]
+      .some((name) => Boolean(name?.trim()));
+    return Boolean(
+      (ocr.tradeName || ocr.businessName || ocr.legalName) && !verifiedCompany
+      || ocr.pan && !verified.pan
+      || ocr.address && !verified.address
+      || ocr.city && !verified.city
+      || ocr.pincode && !verified.pincode
+    );
   }
 
   getNormalizedAddress(address: string | null | undefined): string {
@@ -2231,6 +2218,15 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (!selected) return;
 
     const currentReqId = ++this.ocrRequestId;
+    this.invalidateGstinVerification(index);
+    this.ocrDataMap.delete(index);
+    this.gstins[index].verificationState = 'idle';
+    this.gstins[index].verificationData = null;
+    this.gstins[index].crossCheckResult = null;
+    this.gstins[index].scanError = '';
+    if (this.activeCrossCheckIndex === index) {
+      this.dismissCrossCheck();
+    }
 
     if (this.mode !== 'old') {
       this.form.companyName = '';

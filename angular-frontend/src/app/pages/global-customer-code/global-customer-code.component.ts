@@ -494,37 +494,6 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     return this.isFormValid && Object.keys(this.errors).length === 0;
   }
 
-  isFormValid(): boolean {
-    const company = (this.form.companyName || '').trim();
-    if (!company || company.length > 40) return false;
-
-    const code = (this.form.customerCode || '').trim();
-    if (!code || code.length !== 4 || this.codeChecking) return false;
-
-    const pan = (this.form.panNumber || '').trim().toUpperCase();
-    if (!pan || pan.length !== 10 || !panRe.test(pan)) return false;
-
-    if (!this.form.state?.trim()) return false;
-
-    const addr = (this.form.address || '').trim();
-    if (!addr || addr.length > 100) return false;
-
-    const pin = (this.form.pincode || '').trim();
-    if (!pin || !pincodeRe.test(pin)) return false;
-
-    if (!this.form.zone?.trim()) return false;
-    if (!this.form.operatingDivision?.trim()) return false;
-
-    if (this.form.email?.trim() && !emailRe.test(this.form.email.trim())) return false;
-    if (this.form.mobile?.trim() && !mobileRe.test(this.form.mobile.trim())) return false;
-
-    for (const key of Object.keys(this.errors)) {
-      if (this.errors[key]) return false;
-    }
-
-    return true;
-  }
-
   /* ===== Submission ===== */
   submit(e?: Event): void {
     if (e) {

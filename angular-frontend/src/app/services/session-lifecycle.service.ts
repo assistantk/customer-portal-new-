@@ -26,7 +26,6 @@ export class SessionLifecycleService implements OnDestroy {
 
   private readonly activityListener: EventListener = () => this.recordActivity();
   private readonly visibilityListener: EventListener = () => this.handleVisibilityChange();
-  private readonly pageHideListener = (event: PageTransitionEvent) => this.handlePageHide(event);
   private readonly storageListener = (event: StorageEvent) => this.handleStorageEvent(event);
   private readonly channelListener = (event: MessageEvent<SessionMessage>) => this.handleSessionMessage(event.data);
 
@@ -98,7 +97,6 @@ export class SessionLifecycleService implements OnDestroy {
     document.addEventListener('touchstart', this.activityListener, { passive: true });
     document.addEventListener('touchmove', this.activityListener, { passive: true });
     document.addEventListener('visibilitychange', this.visibilityListener);
-    window.addEventListener('pagehide', this.pageHideListener);
   }
 
   private removeSessionListeners(): void {
@@ -109,7 +107,6 @@ export class SessionLifecycleService implements OnDestroy {
     document.removeEventListener('touchstart', this.activityListener);
     document.removeEventListener('touchmove', this.activityListener);
     document.removeEventListener('visibilitychange', this.visibilityListener);
-    window.removeEventListener('pagehide', this.pageHideListener);
     window.removeEventListener('storage', this.storageListener);
   }
 
@@ -199,19 +196,6 @@ export class SessionLifecycleService implements OnDestroy {
       clearTimeout(this.hiddenTimer);
       this.hiddenTimer = undefined;
     }
-  }
-
-  private handlePageHide(event: PageTransitionEvent): void {
-    if (event.persisted || !this.authenticated || this.logoutStarted) {
-      return;
-    }
-
-    this.logoutStarted = true;
-    this.broadcast({ type: 'logout' });
-    this.authenticated = false;
-    this.cleanupSessionTracking();
-    this.authService.handleAuthExpired();
-    this.authService.sendLogoutBeacon();
   }
 
   private handleSessionMessage(message: SessionMessage): void {

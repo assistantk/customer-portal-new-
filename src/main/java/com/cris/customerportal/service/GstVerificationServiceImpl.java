@@ -13,7 +13,6 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -25,8 +24,8 @@ import java.util.regex.Pattern;
  * Implementation of {@link GstVerificationService} that integrates with an authorized
  * GST Suvidha Provider (GSP) or public Taxpayer Search API.
  *
- * Supports live GSP API calls and provides an integrated mock provider for local development,
- * testing, and offline fallback scenarios.
+ * Supports live GSP API calls and an explicitly enabled mock provider for local development
+ * and tests. Provider failures never produce mock data.
  */
 @Service
 public class GstVerificationServiceImpl implements GstVerificationService {
@@ -80,6 +79,7 @@ public class GstVerificationServiceImpl implements GstVerificationService {
 
     private final boolean enabled;
     private final String provider;
+    private final boolean mockEnabled;
     private final String apiUrl;
     private final String apiKey;
     private final String apiSecret;
@@ -94,7 +94,8 @@ public class GstVerificationServiceImpl implements GstVerificationService {
     public GstVerificationServiceImpl(
             RestTemplateBuilder restTemplateBuilder,
             @Value("${gst.verification.enabled:true}") boolean enabled,
-            @Value("${gst.verification.provider:mock}") String provider,
+            @Value("${gst.verification.provider:gsp}") String provider,
+            @Value("${gst.verification.mock-enabled:false}") boolean mockEnabled,
             @Value("${gst.verification.api-url:https://api.sandbox.co.in/gsp/public/taxpayer/search}") String apiUrl,
             @Value("${gst.verification.api-key:}") String apiKey,
             @Value("${gst.verification.api-secret:}") String apiSecret,
@@ -102,7 +103,8 @@ public class GstVerificationServiceImpl implements GstVerificationService {
             @Value("${gst.verification.connect-timeout-ms:5000}") long connectTimeoutMs,
             @Value("${gst.verification.read-timeout-ms:10000}") long readTimeoutMs) {
         this.enabled = enabled;
-        this.provider = provider != null ? provider.trim().toLowerCase(Locale.ROOT) : "mock";
+        this.provider = provider != null ? provider.trim().toLowerCase(Locale.ROOT) : "gsp";
+        this.mockEnabled = mockEnabled;
         this.apiUrl = apiUrl != null ? apiUrl.trim() : "";
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.apiSecret = apiSecret != null ? apiSecret.trim() : "";
@@ -114,8 +116,8 @@ public class GstVerificationServiceImpl implements GstVerificationService {
                 .build();
         this.objectMapper = new ObjectMapper();
 
-        LOGGER.info("GstVerificationService initialized: enabled={} provider={} apiUrl={}",
-                this.enabled, this.provider, this.apiUrl);
+        LOGGER.info("GstVerificationService initialized: enabled={} provider={} mockEnabled={} apiUrl={}",
+                this.enabled, this.provider, this.mockEnabled, this.apiUrl);
     }
 
     @Override
@@ -146,8 +148,19 @@ public class GstVerificationServiceImpl implements GstVerificationService {
                 DataMaskingUtil.maskSensitive(gstin), provider);
 
         GstVerificationResponse response;
-        if ("mock".equals(provider) || apiKey.isEmpty() && authToken.isEmpty()) {
+        if ("mock".equals(provider) && mockEnabled) {
             response = resolveMockGstDetails(gstin);
+        } else if ("mock".equals(provider)) {
+            LOGGER.error("Mock GST provider was requested but is disabled; refusing to return synthetic registration data");
+            response = GstVerificationResponse.unavailable(
+                    gstin,
+                    "Mock GST verification is disabled. Configure the authorized GST provider to verify this GSTIN."
+            );
+        } else if (apiKey.isEmpty() && apiSecret.isEmpty() && authToken.isEmpty()) {
+            response = GstVerificationResponse.unavailable(
+                    gstin,
+                    "GST verification credentials are not configured. Please contact the system administrator."
+            );
         } else {
             response = callExternalGspApi(gstin);
         }
@@ -200,20 +213,20 @@ public class GstVerificationServiceImpl implements GstVerificationService {
 
         } catch (HttpStatusCodeException ex) {
             int code = ex.getRawStatusCode();
-            LOGGER.warn("External GST API returned HTTP error: status={}, falling back to mock provider", code);
+            LOGGER.warn("External GST API returned HTTP error: status={}", code);
             if (code == 404) {
                 return GstVerificationResponse.notFound(gstin, "GSTIN not found in the authorized GST registry.");
             }
             if (code == 400) {
                 return GstVerificationResponse.invalid(gstin, "GSTIN was reported as invalid by the registry.");
             }
-            return resolveMockGstDetails(gstin);
+            return GstVerificationResponse.unavailable(gstin, "The authorized GST verification service is temporarily unavailable.");
         } catch (ResourceAccessException ex) {
-            LOGGER.warn("Network or timeout error calling GST verification API: {}, falling back to mock provider", ex.getMessage());
-            return resolveMockGstDetails(gstin);
+            LOGGER.warn("Network or timeout error calling GST verification API: {}", ex.getMessage());
+            return GstVerificationResponse.unavailable(gstin, "Unable to reach the authorized GST verification service. Please retry.");
         } catch (Exception ex) {
-            LOGGER.warn("Unexpected error during GST verification: {}, falling back to mock provider", ex.getMessage());
-            return resolveMockGstDetails(gstin);
+            LOGGER.warn("Unexpected error during GST verification: {}", ex.getMessage());
+            return GstVerificationResponse.unavailable(gstin, "The authorized GST verification service could not complete the request.");
         }
     }
 
@@ -232,27 +245,22 @@ public class GstVerificationServiceImpl implements GstVerificationService {
             GstVerificationResponse res = new GstVerificationResponse();
             res.setGstin(gstin);
 
-            String legalName = textValue(data, "legal_name", "lgnm", "trade_name");
-            String tradeName = textValue(data, "trade_name", "tradeNam", "lgnm");
+            String legalName = textValue(data, "legal_name", "lgnm");
+            String tradeName = textValue(data, "trade_name", "tradeNam");
             res.setLegalName(legalName);
             res.setTradeName(tradeName);
             res.setBusinessName(tradeName != null && !tradeName.trim().isEmpty() ? tradeName : legalName);
 
             String pan = textValue(data, "pan", "pan_number");
-            if (pan == null || pan.trim().isEmpty()) {
-                pan = gstin.substring(2, 12);
-            }
             res.setPan(pan);
 
             String status = textValue(data, "status", "sts", "gstin_status");
-            if (status == null || status.trim().isEmpty()) {
-                status = "Active";
-            } else {
+            if (status != null && !status.trim().isEmpty()) {
                 status = normalizeStatus(status);
             }
             res.setStatus(status);
 
-            res.setRegistrationDate(textValue(data, "registration_date", "rgdt", "dty"));
+            res.setRegistrationDate(textValue(data, "registration_date", "rgdt"));
             res.setConstitutionOfBusiness(textValue(data, "constitution_of_business", "ctb"));
             res.setTaxpayerType(textValue(data, "taxpayer_type", "dty"));
 
@@ -260,22 +268,26 @@ public class GstVerificationServiceImpl implements GstVerificationService {
             JsonNode pradr = data.has("pradr") ? data.get("pradr") : (data.has("address") ? data.get("address") : null);
             if (pradr != null) {
                 JsonNode addr = pradr.has("addr") ? pradr.get("addr") : pradr;
-                res.setAddress(formatAddress(addr));
-                res.setCity(textValue(addr, "city", "dst", "loc"));
+                String address = addr.isTextual() ? addr.asText().trim() : formatAddress(addr);
+                res.setAddress(address != null && !address.isEmpty() ? address : textValue(data, "principal_address"));
+                res.setCity(textValue(addr, "city", "loc"));
                 res.setDistrict(textValue(addr, "dst", "district"));
                 res.setState(textValue(addr, "stcd", "state"));
                 res.setPincode(textValue(addr, "pncd", "pincode"));
             } else {
-                res.setAddress(textValue(data, "address", "principal_address"));
+                res.setAddress(textValue(data, "principal_address", "address"));
                 res.setCity(textValue(data, "city"));
+                res.setDistrict(textValue(data, "district"));
+                res.setState(textValue(data, "state"));
                 res.setPincode(textValue(data, "pincode", "pncd"));
             }
 
-            String stateCode = gstin.substring(0, 2);
-            res.setStateCode(stateCode);
-            if (res.getState() == null || res.getState().trim().isEmpty()) {
-                res.setState(STATE_CODE_MAP.getOrDefault(stateCode, ""));
+            String stateCode = textValue(data, "state_code", "stateCode");
+            if ((stateCode == null || stateCode.isEmpty()) && pradr != null) {
+                JsonNode addr = pradr.has("addr") ? pradr.get("addr") : pradr;
+                stateCode = textValue(addr, "state_code", "stateCode");
             }
+            res.setStateCode(stateCode);
 
             // Nature of business
             List<String> nbaList = new ArrayList<>();
@@ -288,6 +300,11 @@ public class GstVerificationServiceImpl implements GstVerificationService {
                 }
             }
             res.setNatureOfBusiness(nbaList);
+
+            if (legalName == null && tradeName == null && pan == null && res.getAddress() == null
+                    && res.getStatus() == null) {
+                return GstVerificationResponse.notFound(gstin, "No registration details were returned for this GSTIN.");
+            }
 
             if ("Cancelled".equalsIgnoreCase(status)) {
                 res.setSuccess(true);

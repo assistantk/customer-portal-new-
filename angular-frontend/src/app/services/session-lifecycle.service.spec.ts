@@ -13,7 +13,6 @@ describe('SessionLifecycleService', () => {
     currentUser$: Observable<{ userId: string } | null>;
     logout: ReturnType<typeof vi.fn>;
     handleAuthExpired: ReturnType<typeof vi.fn>;
-    sendLogoutBeacon: ReturnType<typeof vi.fn>;
   };
   let navigate: ReturnType<typeof vi.fn>;
   let visibilityState: ReturnType<typeof vi.spyOn>;
@@ -25,8 +24,7 @@ describe('SessionLifecycleService', () => {
     authService = {
       currentUser$: userSubject.asObservable(),
       logout: vi.fn(() => of({ success: true })),
-      handleAuthExpired: vi.fn(() => userSubject.next(null)),
-      sendLogoutBeacon: vi.fn()
+      handleAuthExpired: vi.fn(() => userSubject.next(null))
     };
     navigate = vi.fn();
     visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
@@ -88,10 +86,11 @@ describe('SessionLifecycleService', () => {
     expect(authService.logout).toHaveBeenCalledTimes(1);
   });
 
-  it('attempts logout on tab close without calling the normal logout request', () => {
+  it('preserves the authenticated session on page hide for refresh or tab close', () => {
     window.dispatchEvent(new PageTransitionEvent('pagehide'));
 
-    expect(authService.sendLogoutBeacon).toHaveBeenCalledTimes(1);
+    expect(authService.handleAuthExpired).not.toHaveBeenCalled();
     expect(authService.logout).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

@@ -9,11 +9,10 @@ import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
 import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
-import { AuthGuard, NonAuthGuard, SrDcmAccessGuard } from './services/auth.guard';
+import { AuthGuard, SrDcmAccessGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  // { path: '', redirectTo: 'registration', pathMatch: 'full' },
-  // { path: 'login', component: LoginComponent },
+  { path: 'login', component: LoginComponent },
   { path: 'access-denied', component: AccessDeniedComponent },
   { path: 'signup', redirectTo: 'register' },
   {
@@ -21,7 +20,7 @@ const routes: Routes = [
     component: LayoutComponent,
     children: [
       { path: '', redirectTo: 'home', pathMatch: 'full' },
-      { path: 'home', component: HomeComponent },
+      { path: 'home', component: HomeComponent, canActivate: [AuthGuard] },
       { path: 'registration', component: CustomerRegistrationComponent, canActivate: [SrDcmAccessGuard] },
       { path: 'register', redirectTo: 'registration', pathMatch: 'full' },
       { path: 'registration/global-code', component: GlobalCustomerCodeComponent, canActivate: [SrDcmAccessGuard] },
@@ -32,7 +31,7 @@ const routes: Routes = [
       { path: 'registration/ownership', component: OwnershipCodeComponent, canActivate: [SrDcmAccessGuard] },
       { path: 'registration/ownership-code', redirectTo: 'registration/ownership', pathMatch: 'full' },
       { path: 'register/ownership', redirectTo: 'registration/ownership', pathMatch: 'full' },
-      { path: 'delete-request', component: CustomerRegistrationComponent },
+      { path: 'delete-request', component: CustomerRegistrationComponent, canActivate: [AuthGuard] },
       { path: 'verify', component: VerificationComponent, canActivate: [SrDcmAccessGuard] }
     ]
   },

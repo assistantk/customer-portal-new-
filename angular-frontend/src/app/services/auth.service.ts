@@ -289,30 +289,6 @@ export class AuthService {
     );
   }
 
-  sendLogoutBeacon(): void {
-    if (typeof navigator === 'undefined') {
-      return;
-    }
-
-    const logoutUrl = `${this.API}/logout`;
-    try {
-      if (typeof navigator.sendBeacon === 'function' && navigator.sendBeacon(logoutUrl, '')) {
-        return;
-      }
-    } catch (error) {
-      console.warn('The logout beacon could not be sent.', error);
-    }
-
-    if (typeof fetch === 'function') {
-      void fetch(logoutUrl, {
-        method: 'POST',
-        credentials: 'include',
-        keepalive: true,
-        body: ''
-      }).catch((error) => console.warn('The keepalive logout request failed.', error));
-    }
-  }
-
   checkSession(): Observable<AuthResponse> {
     return this.http.get<AuthResponse>(`${this.API}/session`, { withCredentials: true }).pipe(
       tap((res) => {
