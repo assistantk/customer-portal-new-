@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentMap;
  * Orchestrates the RMS authentication flow:
  *
  *   1. validateCredentials()      – calls ATVLDTUSER; validates credentials and retrieves designations.
- *   2. selectDesignation()        – enforces SR-DCM authorization; requests OTP via RTGNRTOTP.
+ *   2. selectDesignation()        – validates an RMS-returned designation and requests OTP via RTGNRTOTP.
  *   3. verifyOtp()                – calls RTVRFYOTP; on verification success returns a ready-to-store AuthUserDto.
  *
  * Always uses the live RMS APIs; local mock credential validation is disabled.
@@ -32,8 +32,6 @@ public class RmsAuthOrchestrator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RmsAuthOrchestrator.class);
 
-    /** Required canonical designation code for Senior DCM portal access. */
-    public static final String REQUIRED_DESIGNATION = "SR-DCM";
     public static final int OTP_RESEND_COOLDOWN_SECONDS = 60;
     private static final long OTP_RESEND_COOLDOWN_MILLIS = OTP_RESEND_COOLDOWN_SECONDS * 1000L;
 
@@ -130,28 +128,11 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
 
     /**
-     * Checks if the exact SR-DCM role is authorized for portal access.
-     */
-    public static boolean isAuthorizedDesignation(String designation) {
-        if (designation == null || designation.trim().isEmpty()) {
-            return false;
-        }
-        String clean = designation.trim().toUpperCase(Locale.ROOT)
-                .replaceAll("[^A-Z0-9]", "");
-        return "SRDCM".equals(clean);
-    }
-
-    public static boolean isSeniorDcm(String designation) {
-        return isAuthorizedDesignation(designation);
-    }
-
-    /**
      * Validates the selected designation and requests an OTP from RMS.
      *
      * @param ctx              Session context
      * @param selectedDesig    Designation chosen by the user (e.g. Senior DFM, Senior DCM)
      * @param clientIp         HTTP client IP
-     * @throws AccessDeniedException             if the designation is not SR-DCM
      * @throws InvalidRmsCredentialsException    if the designation is empty or invalid
      * @throws OtpResendCooldownException        if cooldown is active
      * @throws RmsApiException                   on HTTP failure (live mode, no fallback)
@@ -164,7 +145,7 @@ public class RmsAuthOrchestrator {
                 throw new InvalidRmsCredentialsException(
                         "OTP has already been generated. Use Resend OTP when the countdown ends.");
             }
-            validateSeniorDcmDesignation(ctx, selectedDesig);
+            validateSelectedDesignation(ctx, selectedDesig);
 
             int remainingSeconds = getResendCooldownSeconds(userKey);
             if (remainingSeconds > 0) {
@@ -190,8 +171,7 @@ public class RmsAuthOrchestrator {
             if (ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING) {
                 throw new InvalidRmsCredentialsException("No OTP is pending. Please restart login.");
             }
-            if (!isAuthorizedDesignation(ctx.getSelectedDesignation())
-                    || ctx.getDesignations() == null
+            if (ctx.getDesignations() == null
                     || ctx.getDesignations().stream().noneMatch(
                             d -> d != null && d.equalsIgnoreCase(ctx.getSelectedDesignation()))) {
                 throw new InvalidRmsCredentialsException("The selected designation is not valid for this session.");
@@ -235,7 +215,7 @@ public class RmsAuthOrchestrator {
         otpResendAllowedAt.put(userKey, System.currentTimeMillis() + OTP_RESEND_COOLDOWN_MILLIS);
     }
 
-    private void validateSeniorDcmDesignation(RmsAuthSessionContext ctx, String selectedDesig) {
+    private void validateSelectedDesignation(RmsAuthSessionContext ctx, String selectedDesig) {
         String raw = selectedDesig == null ? "" : selectedDesig.trim();
         if (raw.isEmpty()) {
             throw new InvalidRmsCredentialsException("Please select a designation.");
@@ -247,13 +227,6 @@ public class RmsAuthOrchestrator {
         if (!inList) {
             LOGGER.warn("Selected designation is not in the allowed list");
             throw new InvalidRmsCredentialsException("Selected designation is not valid for your account.");
-        }
-
-        // Portal access is restricted to the confirmed SR-DCM role.
-        if (!isAuthorizedDesignation(raw)) {
-            LOGGER.info("Access denied: selected designation is unauthorized");
-            throw new AccessDeniedException(
-                    "Access denied. Only users with the SR-DCM role may access this portal.");
         }
 
         ctx.setSelectedDesignation(raw);
@@ -297,6 +270,17 @@ public class RmsAuthOrchestrator {
     public AuthUserDto verifyOtp(RmsAuthSessionContext ctx, String otp, String clientIp) {
         LOGGER.info("RMS OTP verification request received");
 
+        if (ctx == null || ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING) {
+            throw new InvalidRmsCredentialsException("No OTP is pending. Please restart login.");
+        }
+        String confirmedRole = ctx.getSelectedDesignation() == null
+                ? ""
+                : ctx.getSelectedDesignation().trim();
+        if (confirmedRole.isEmpty() || ctx.getDesignations().stream()
+                .noneMatch(designation -> designation != null
+                        && designation.trim().equalsIgnoreCase(confirmedRole))) {
+            throw new InvalidRmsCredentialsException("Select a valid designation before verifying the OTP.");
+        }
         if (otp == null || otp.trim().isEmpty()) {
             throw new InvalidRmsCredentialsException("OTP is required.");
         }
@@ -320,7 +304,6 @@ public class RmsAuthOrchestrator {
         }
         LOGGER.info("RMS OTP verification accepted");
 
-        String confirmedRole = ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION;
         if (ctx.getLoginRequest() != null) {
             ctx.getLoginRequest().setF_ROLEID(confirmedRole);
         }
@@ -335,7 +318,7 @@ public class RmsAuthOrchestrator {
                 ctx.getEmail(),
                 ctx.getMobileNo());
         authUser.setDivisionCode(ctx.getDivisionCode());
-        authUser.setDesignation(ctx.getSelectedDesignation() != null ? ctx.getSelectedDesignation() : REQUIRED_DESIGNATION);
+        authUser.setDesignation(confirmedRole);
         return authUser;
     }
 
@@ -415,7 +398,4 @@ public class RmsAuthOrchestrator {
         }
     }
 
-    public static class AccessDeniedException extends RuntimeException {
-        public AccessDeniedException(String message) { super(message); }
-    }
 }

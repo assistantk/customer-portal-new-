@@ -236,7 +236,7 @@ export class AuthService {
           const mergedUser: AuthUserData = {
             ...res.data,
             divisionCode: res.data.divisionCode || tempUser?.divisionCode,
-            designation: res.data.designation || res.data.userRole || 'SR.DCM'
+            designation: res.data.designation || res.data.userRole
           };
           this.setRmsTempUser(null);
           this.updateCurrentUser(mergedUser);

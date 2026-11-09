@@ -13,6 +13,8 @@ import { IMAGE_ASSETS } from '../config/image-assets';
 })
 export class LayoutComponent implements OnInit, OnDestroy {
   readonly imageAssets = IMAGE_ASSETS;
+  readonly restrictedAccessMessage =
+    'You are not authorized to access this page. This page is available only to users with the SR-DCM role.';
   isDrawerOpen = false;
   currentUser: AuthUserData | null = null;
   isLoggingOut = false;
@@ -45,6 +47,20 @@ export class LayoutComponent implements OnInit, OnDestroy {
     return this.router.url.includes('/global-code') ||
            this.router.url.includes('/handling-agent') ||
            this.router.url.includes('/ownership');
+  }
+
+  get hasSrDcmAccess(): boolean {
+    const selectedRole = this.currentUser?.designation || this.currentUser?.userRole || '';
+    return selectedRole.trim().toUpperCase() === 'SR-DCM';
+  }
+
+  onRestrictedNavigation(event: MouseEvent): void {
+    if (this.hasSrDcmAccess) {
+      return;
+    }
+
+    event.preventDefault();
+    this.notificationService.error('Access Restricted', this.restrictedAccessMessage);
   }
 
   onLogout(): void {

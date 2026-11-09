@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, isDevMode } from "@angular/core";
 import { FormBuilder, FormGroup, Validators } from "@angular/forms";
-import { Router, ActivatedRoute } from "@angular/router";
+import { Router } from "@angular/router";
 import { merge, Subscription } from "rxjs";
 import { finalize, timeout } from "rxjs/operators";
 import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../../services/auth.service";
@@ -44,13 +44,11 @@ export class LoginComponent implements OnInit, OnDestroy {
   loading = false;
   error = '';
   successMessage = '';
-  returnUrl = '/registration';
 
   constructor(
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private route: ActivatedRoute,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -72,9 +70,6 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.otpForm = this.fb.group({
       otp: ["", [Validators.required, Validators.pattern(/^[0-9]{5}$/)]]
     });
-
-    const qUrl = this.route.snapshot.queryParams['returnUrl'];
-    this.returnUrl = qUrl ? qUrl : '/registration';
 
     this.credentialChangeSubscription = merge(
       this.loginForm.get('userId')!.valueChanges,
@@ -230,9 +225,8 @@ export class LoginComponent implements OnInit, OnDestroy {
       this.error = "Please select a designation.";
       return;
     }
-    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())
-        || !this.isPortalDesignation(selectedDesig)) {
-      this.error = "The selected designation is not permitted for this account.";
+    if (!this.availableDesignations.some((designation) => designation.toLowerCase() === selectedDesig.toLowerCase())) {
+      this.error = "Please select a designation available for this account.";
       return;
     }
 
@@ -248,12 +242,6 @@ export class LoginComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (res) => {
-        if (res && res.accessDenied) {
-          this.designationForm.reset({ designation: '' });
-          this.error = res.message || "The selected designation is not authorized for this portal.";
-          return;
-        }
-
         if (res && res.success) {
           this.maskedDestination = res.data?.destinationMasked || 'registered mobile / email';
           this.currentStep = 'OTP';
@@ -267,12 +255,6 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       },
       error: (err) => {
-        if (err?.status === 403 || err?.error?.accessDenied) {
-          this.designationForm.reset({ designation: '' });
-          this.error = err?.error?.message || "The selected designation is not authorized for this portal.";
-          return;
-        }
-
         if (err?.status === 429) {
           const retryAfterSeconds = Number(err?.error?.retryAfterSeconds);
           this.startCooldown(retryAfterSeconds > 0 ? retryAfterSeconds : OTP_RESEND_COOLDOWN_SECONDS);
@@ -286,12 +268,6 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
       }
     });
-  }
-
-  private isPortalDesignation(designation: string): boolean {
-    if (typeof designation !== 'string') return false;
-    const normalized = designation.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    return normalized === 'SRDCM';
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -341,7 +317,7 @@ export class LoginComponent implements OnInit, OnDestroy {
           this.successMessage = "Verification Successful! Redirecting to portal...";
           this.clearCooldownTimer();
           setTimeout(() => {
-            this.router.navigateByUrl(this.returnUrl);
+            this.router.navigateByUrl('/home');
           }, 300);
         } else {
           this.error = res.message || "OTP verification failed. Please try again.";

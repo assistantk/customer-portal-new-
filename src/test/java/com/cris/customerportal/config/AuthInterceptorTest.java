@@ -53,19 +53,34 @@ class AuthInterceptorTest {
     }
 
     @Test
-    void authenticatedUser_accessStandardCustomerApi_isAllowed() throws Exception {
+    void authenticatedUser_withoutSrDcmDesignation_isRejectedFromCodeGenerationApi() throws Exception {
         AuthUserDto user = new AuthUserDto("USR1", "Standard User", "USER", "Y");
         when(request.getSession(false)).thenReturn(session);
         when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
         when(request.getRequestURI()).thenReturn("/api/customers/lookup");
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
+        assertTrue(responseWriter.toString().contains(
+                "This page is available only to users with the SR-DCM role."));
+    }
+
+    @Test
+    void authenticatedSrDcmUser_accessCodeGenerationAndVerificationApis_isAllowed() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation(" sr-dcm ");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/new-generate-code");
 
         assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
     }
 
     @Test
-    void sameUserCanAccessProtectedApisThroughIndependentSessions() throws Exception {
-        AuthUserDto user = new AuthUserDto("USR1", "Standard User", "USER", "Y");
+    void sameSrDcmUserCanAccessProtectedApisThroughIndependentSessions() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation("SR-DCM");
         HttpSession secondSession = mock(HttpSession.class);
         HttpServletRequest secondRequest = mock(HttpServletRequest.class);
         when(request.getSession(false)).thenReturn(session);
@@ -105,6 +120,18 @@ class AuthInterceptorTest {
 
         assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void roleFieldCannotOverrideTheSelectedSessionDesignation() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation("DCM");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/ownership-submit");
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
     }
 
     @Test

@@ -27,16 +27,38 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
 
         String requestUri = request.getRequestURI();
+        if (isCodeGenerationOrVerificationRequest(requestUri) && !hasSrDcmDesignation(user)) {
+            writeForbidden(response,
+                    "You are not authorized to access this page. This page is available only to users with the SR-DCM role.");
+            return false;
+        }
+
         if (requestUri != null && requestUri.contains("/global-delete")
                 && !"ADMIN".equalsIgnoreCase(user.getUserRole())) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(
-                    "{\"success\":false,\"message\":\"Access denied. Administrator privileges required.\"}");
+            writeForbidden(response, "Access denied. Administrator privileges required.");
             return false;
         }
 
         return true;
+    }
+
+    private boolean isCodeGenerationOrVerificationRequest(String requestUri) {
+        return requestUri != null
+                && requestUri.contains("/api/customers/")
+                && !requestUri.contains("/api/customers/delete-requests/")
+                && !requestUri.endsWith("/global-delete");
+    }
+
+    private boolean hasSrDcmDesignation(AuthUserDto user) {
+        String designation = user.getDesignation();
+        return designation != null && "SR-DCM".equalsIgnoreCase(designation.trim());
+    }
+
+    private void writeForbidden(HttpServletResponse response, String message) throws Exception {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setContentType("application/json;charset=UTF-8");
+        String escapedMessage = message.replace("\\", "\\\\").replace("\"", "\\\"");
+        response.getWriter().write("{\"success\":false,\"message\":\"" + escapedMessage + "\"}");
     }
 
     private void writeUnauthorized(HttpServletResponse response) throws Exception {

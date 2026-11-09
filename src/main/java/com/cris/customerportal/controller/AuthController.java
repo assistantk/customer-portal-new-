@@ -244,15 +244,6 @@ public class AuthController {
                     .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                     .body(body);
 
-        } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("Access denied: {}. Status: {}",
-                    DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.FORBIDDEN.value());
-            Map<String, Object> body = new HashMap<>();
-            body.put("success", false);
-            body.put("accessDenied", true);
-            body.put("message", "Access Restricted: This website is available only to users with the SR-DCM role.");
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
-
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS select-designation result: FAILED (invalid credentials/designation): {}. Status: {}",
                     DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.BAD_REQUEST.value());
@@ -325,11 +316,6 @@ public class AuthController {
                     .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                     .body(body);
 
-        } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("RMS resend-otp denied: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(errorBody(ex.getMessage()));
-
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS resend-otp rejected: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
             return ResponseEntity.badRequest()
@@ -400,9 +386,10 @@ public class AuthController {
         }
 
         if (ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING
-                || !RmsAuthOrchestrator.isAuthorizedDesignation(ctx.getSelectedDesignation())
+                || ctx.getDesignations() == null
                 || ctx.getDesignations().stream().noneMatch(
                         designation -> designation != null
+                                && ctx.getSelectedDesignation() != null
                                 && designation.equalsIgnoreCase(ctx.getSelectedDesignation()))) {
             LOGGER.info("RMS verify-otp result: FAILED (invalid authentication flow state). Status: {}",
                     HttpStatus.BAD_REQUEST.value());

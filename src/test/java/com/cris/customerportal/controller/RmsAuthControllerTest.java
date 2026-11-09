@@ -183,7 +183,7 @@ class RmsAuthControllerTest {
     }
 
     @Test
-    void selectDesignation_nonSrDcm_returnsForbiddenWithAccessDenied() {
+    void selectDesignation_nonSrDcm_returnsOk() {
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
         ctx.setUserId("SREEJU");
         ctx.setDesignations(Arrays.asList("SR-DCM", "DCM"));
@@ -193,11 +193,12 @@ class RmsAuthControllerTest {
         RmsSelectDesignationRequest req = new RmsSelectDesignationRequest("DCM");
         ResponseEntity<?> response = controller.selectDesignation(req, request);
 
-        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertNotNull(body);
-        assertFalse((Boolean) body.get("success"));
-        assertEquals(Boolean.TRUE, body.get("accessDenied"));
+        assertTrue((Boolean) body.get("success"));
+        assertEquals("DCM", ctx.getSelectedDesignation());
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
         verify(session, never()).removeAttribute(AuthController.RMS_SESSION_CONTEXT_KEY);
     }
 

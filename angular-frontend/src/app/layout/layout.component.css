@@ -139,6 +139,61 @@ header {
     z-index: 1;
 }
 
+.primary-navigation {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 54px;
+    padding: 0 34px;
+    background: rgba(255, 255, 255, 0.96);
+    border-bottom: 1px solid #dbe5f0;
+    box-shadow: 0 2px 6px rgba(30, 64, 110, 0.06);
+    position: relative;
+    z-index: 1;
+    overflow-x: auto;
+}
+
+.primary-navigation-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 112px;
+    padding: 0 18px;
+    border-bottom: 3px solid transparent;
+    color: #475569;
+    font: 600 14px 'Inter', Arial, sans-serif;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.primary-navigation-tab:hover {
+    color: #1d4ed8;
+    background: #f3f7ff;
+}
+
+.primary-navigation-tab.active {
+    color: #1d4ed8;
+    border-bottom-color: #2563eb;
+    background: #f8faff;
+}
+
+.primary-navigation-tab:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: -3px;
+}
+
+.primary-navigation-tab.restricted {
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.primary-navigation-tab.restricted:hover {
+    color: #64748b;
+    background: #f8fafc;
+}
+
 .brand {
     display: flex;
     align-items: center;
@@ -345,4 +400,41 @@ footer {
     border-top: 1px solid #e2e8f0;
     background: #fff;
     margin-top: auto;
+}
+
+@media (max-width: 600px) {
+    header {
+        padding: 0 14px;
+    }
+
+    .brand {
+        gap: 8px;
+        font-size: 12px;
+    }
+
+    .brand .cris img {
+        width: 68px;
+    }
+
+    .header-user-badge {
+        gap: 5px;
+        padding: 4px 7px;
+    }
+
+    .header-user-name,
+    .header-role-pill {
+        display: none;
+    }
+
+    .primary-navigation {
+        min-height: 50px;
+        padding: 0 12px;
+        gap: 2px;
+    }
+
+    .primary-navigation-tab {
+        min-width: 100px;
+        padding: 0 12px;
+        font-size: 13px;
+    }
 }

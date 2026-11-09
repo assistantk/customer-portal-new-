@@ -168,10 +168,10 @@ try {
     if ($backendEntries -contains 'WEB-INF/classes/static/index.html') {
         throw 'Backend WAR unexpectedly contains the Angular frontend; expected independent WARs.'
     }
-    if ($backendEntries | Where-Object { $_ -match '^WEB-INF/lib(-provided)?/(tomcat-embed-|spring-boot-starter-tomcat)' }) {
+    if ($backendEntries | Where-Object { $_ -match '^WEB-INF/lib/(tomcat-embed-|spring-boot-starter-tomcat)' }) {
         throw 'Backend WAR contains embedded Tomcat libraries; WebLogic supplies the servlet container.'
     }
-    if ($backendEntries | Where-Object { $_ -match '^WEB-INF/lib(-provided)?/(javax\.servlet-api|jakarta\.servlet-api|javax\.el-api|jakarta\.el-api)' }) {
+    if ($backendEntries | Where-Object { $_ -match '^WEB-INF/lib/(javax\.servlet-api|jakarta\.servlet-api|javax\.el-api|jakarta\.el-api)' }) {
         throw 'Backend WAR contains a Servlet or EL API jar that must be supplied by WebLogic.'
     }
     Write-Host "SUCCESS: Created and verified $backendWarName."

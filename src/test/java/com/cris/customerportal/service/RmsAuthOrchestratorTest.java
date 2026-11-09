@@ -126,17 +126,28 @@ class RmsAuthOrchestratorTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Test 5: Unauthorized Designation Triggers Access Denied
+    // Test 5: Valid non-SR-DCM designation can complete OTP authentication
     // ─────────────────────────────────────────────────────────────
     @Test
-    void test5_unauthorizedDesignation_triggersAccessDenied() {
+    void test5_nonSrDcmDesignation_canAuthenticate() {
         RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        // User selects DCM (non-SR-DCM)
-        assertThrows(RmsAuthOrchestrator.AccessDeniedException.class, () ->
-                orchestrator.selectDesignationAndGenerateOtp(ctx, "DCM", "127.0.0.1")
-        );
-        // Step must NOT move to OTP_PENDING
-        assertNotEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
+        orchestrator.selectDesignationAndGenerateOtp(ctx, "DCM", "127.0.0.1");
+
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx.getStep());
+        assertEquals("DCM", ctx.getSelectedDesignation());
+        AuthUserDto user = orchestrator.verifyOtp(ctx, "59521", "127.0.0.1");
+        assertEquals("DCM", user.getUserRole());
+        assertEquals("DCM", user.getDesignation());
+        assertEquals("DCM", ctx.getLoginRequest().getF_ROLEID());
+    }
+
+    @Test
+    void verifyOtp_requiresAnRmsReturnedDesignationToBeSelected() {
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
+
+        assertThrows(RmsAuthOrchestrator.InvalidRmsCredentialsException.class,
+                () -> orchestrator.verifyOtp(ctx, "59521", "127.0.0.1"));
+        verify(mockClient, never()).verifyOtp(any(RmsOtpVerifyRequest.class));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -570,17 +581,19 @@ class RmsAuthOrchestratorTest {
     }
 
     @Test
-    void scenario9_onlyExactSrDcmRoleIsAuthorized() {
+    void scenario9_anyReturnedDesignationCanProceedToOtp() {
         RmsAuthSessionContext ctx1 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
         assertDoesNotThrow(() ->
                 orchestrator.selectDesignationAndGenerateOtp(ctx1, "SR-DCM", "127.0.0.1"));
         assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx1.getStep());
 
+        orchestrator.clearCooldownForTesting("SREEJU");
         RmsAuthSessionContext ctx2 = orchestrator.validateCredentials("SREEJU", "test@123", "TKD");
-        assertThrows(RmsAuthOrchestrator.AccessDeniedException.class, () ->
+        assertDoesNotThrow(() ->
                 orchestrator.selectDesignationAndGenerateOtp(ctx2, "DCM", "127.0.0.1"));
-        assertNotEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx2.getStep());
-        verify(mockClient, times(1)).generateOtp(any(RmsOtpGenerateRequest.class));
+        assertEquals(RmsAuthSessionContext.Step.OTP_PENDING, ctx2.getStep());
+        assertEquals("DCM", ctx2.getSelectedDesignation());
+        verify(mockClient, times(2)).generateOtp(any(RmsOtpGenerateRequest.class));
     }
 
     @Test

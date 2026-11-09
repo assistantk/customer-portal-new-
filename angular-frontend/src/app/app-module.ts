@@ -6,6 +6,7 @@ import { ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { AppRoutingModule } from './app-routing-module';
 import { App } from './app';
 import { LoginComponent } from './pages/login/login.component';
+import { HomeComponent } from './pages/home/home.component';
 import { SignupComponent } from './pages/signup/signup.component';
 import { VerificationComponent } from './pages/verification/verification.component';
 import { CustomerRegistrationComponent } from './pages/customer-registration/customer-registration.component';
@@ -27,6 +28,7 @@ export function initializeImagePreloader(preloader: ImagePreloadService): () => 
   declarations: [
     App,
     LoginComponent,
+    HomeComponent,
     SignupComponent,
     VerificationComponent,
     DeleteRequestComponent,
