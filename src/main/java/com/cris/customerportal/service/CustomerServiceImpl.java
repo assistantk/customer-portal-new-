@@ -645,18 +645,50 @@ public class CustomerServiceImpl implements CustomerService {
   requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
 
+  String existingPan = normalizeNullableValue(oldCustomer.getPanNumber());
+  if (existingPan != null) {
+   existingPan = existingPan.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if ("NULL".equalsIgnoreCase(existingPan) || "UNDEFINED".equalsIgnoreCase(existingPan)) {
+    existingPan = null;
+   }
+  }
+  boolean panAlreadyExists = (existingPan != null && !existingPan.isEmpty());
+
   String rawPan = formData.get("panNumber");
   String panVal = normalizeNullableValue(rawPan);
   if (panVal != null) {
    panVal = panVal.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
-   if (!panVal.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+   if ("NULL".equalsIgnoreCase(panVal) || "UNDEFINED".equalsIgnoreCase(panVal)) {
+    panVal = null;
+   } else if (!panVal.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
     throw new IllegalArgumentException("Enter a valid PAN number.");
    }
   }
-  requested.put(panColumn, panVal);
+
+  // Prevent accidental overwrite: if PAN already exists in DB and incoming value is null/empty/undefined, retain existing PAN
+  if (panAlreadyExists && (panVal == null || panVal.isEmpty())) {
+   requested.put(panColumn, existingPan);
+  } else {
+   requested.put(panColumn, panVal);
+  }
+
+  String existingGst = normalizeNullableValue(oldCustomer.getGstinNumbers());
+  if (existingGst != null) {
+   String cleaned = existingGst.replaceAll("[\\[\\]\"'\\s]", "");
+   if (cleaned.isEmpty() || "NULL".equalsIgnoreCase(cleaned) || "UNDEFINED".equalsIgnoreCase(cleaned)) {
+    existingGst = null;
+   }
+  }
+  boolean gstAlreadyExists = (existingGst != null && !existingGst.trim().isEmpty());
 
   String rawGst = formData.get("gstinNumbers");
   String gstVal = normalizeNullableValue(rawGst);
+  if (gstVal != null) {
+   String cleaned = gstVal.replaceAll("[\\[\\]\"'\\s]", "");
+   if (cleaned.isEmpty() || "NULL".equalsIgnoreCase(cleaned) || "UNDEFINED".equalsIgnoreCase(cleaned)) {
+    gstVal = null;
+   }
+  }
   boolean gstinChanged = gstVal != null && !Objects.equals(
       normalizeUpdateComparisonValue(gstColumn, oldCustomer.getGstinNumbers()),
       normalizeUpdateComparisonValue(gstColumn, gstVal)
@@ -664,6 +696,7 @@ public class CustomerServiceImpl implements CustomerService {
   if (gstVal != null && !gstVal.isEmpty()) {
    Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$");
    List<String> cleanGstins = new ArrayList<>();
+   String activePan = panVal != null ? panVal : (existingPan != null ? existingPan : null);
    for (String g : gstVal.split(",")) {
     String trimmed = g.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
     if (trimmed.isEmpty()) continue;
@@ -671,11 +704,10 @@ public class CustomerServiceImpl implements CustomerService {
      throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + trimmed);
     }
     if (gstinChanged) {
-     String comparePan = panVal != null ? panVal : (oldCustomer.getPanNumber() != null ? oldCustomer.getPanNumber().replaceAll("\\s+", "").toUpperCase(Locale.ROOT) : null);
-     if (comparePan != null && comparePan.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+     if (activePan != null && activePan.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
       String gstinPan = trimmed.substring(2, 12);
-      if (!gstinPan.equals(comparePan)) {
-       throw new IllegalArgumentException("GSTIN " + trimmed + " does not match PAN number " + comparePan);
+      if (!gstinPan.equals(activePan)) {
+       throw new IllegalArgumentException("GSTIN " + trimmed + " does not match PAN number " + activePan);
       }
      }
     }
@@ -683,7 +715,13 @@ public class CustomerServiceImpl implements CustomerService {
    }
    gstVal = String.join(",", cleanGstins);
   }
-  requested.put(gstColumn, gstVal);
+
+  // Prevent accidental overwrite: if GST already exists in DB and incoming value is null/empty/undefined, retain existing GST
+  if (gstAlreadyExists && (gstVal == null || gstVal.isEmpty())) {
+   requested.put(gstColumn, oldCustomer.getGstinNumbers());
+  } else {
+   requested.put(gstColumn, gstVal);
+  }
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
    requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
