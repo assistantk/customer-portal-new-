@@ -380,7 +380,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         panNumber: 'ABCDE1234F',
         email: 'verified@example.com',
         mobile: '9876543210',
-        gstinNumbers: '27ABCDE1234F1Z5'
+        gstinNumbers: ''
       };
       customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(customer));
       customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({
@@ -393,6 +393,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       vi.advanceTimersByTime(800);
       vi.useRealTimers();
 
+      component.handleGstinChange(0, { gstin: '27ABCDE1234F1Z5' });
       component.addGstin();
       component.handleGstinChange(1, { gstin: '07ABCDE1234F1Z5' });
       component.addGstin();
@@ -2068,6 +2069,271 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       }];
 
       expect(component.isFormValid).toBe(true);
+    });
+  });
+
+  describe('Conditional PAN and GST Field Editability in Old Entry Section', () => {
+    beforeEach(() => {
+      component.switchMode('old');
+      component.form.customerCode = '';
+      component.form.companyName = '';
+      component.form.address = '';
+      component.form.panNumber = '';
+      component.gstins = [{ ...component.gstins[0], gstin: '', state: '' }];
+      component.isOldPanDisabled = false;
+      component.isOldGstDisabled = false;
+    });
+
+    it('Case 1: Both PAN and GST available in DB -> auto-populates, disables both fields, prevents mutations', () => {
+      const existingCustomer = {
+        companyName: 'Heavy Engineering Corp',
+        address: 'Ranchi Industrial Area',
+        panNumber: 'AAACH1234K',
+        gstinNumbers: '20AAACH1234K1Z2'
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(existingCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('HECK');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.form.companyName).toBe('Heavy Engineering Corp');
+      expect(component.form.address).toBe('Ranchi Industrial Area');
+      expect(component.form.panNumber).toBe('AAACH1234K');
+      expect(component.gstins[0].gstin).toBe('20AAACH1234K1Z2');
+      expect(component.isPanDisabled).toBe(true);
+      expect(component.isGstDisabled).toBe(true);
+
+      // Attempt to modify PAN via handlePanChange
+      component.handlePanChange('BBBB1234K');
+      expect(component.form.panNumber).toBe('AAACH1234K');
+
+      // Attempt to modify GST via handleGstinChange, handleGstinInput, handleGstinStateChange
+      component.handleGstinChange(0, { gstin: '27AAACH1234K1Z9' });
+      expect(component.gstins[0].gstin).toBe('20AAACH1234K1Z2');
+
+      component.handleGstinInput(0, '27AAACH1234K1Z9');
+      expect(component.gstins[0].gstin).toBe('20AAACH1234K1Z2');
+
+      component.handleGstinStateChange(0, 'Maharashtra');
+      expect(component.gstins[0].state).not.toBe('Maharashtra');
+
+      // Attempt to add or remove GSTIN rows
+      component.addGstin();
+      expect(component.gstins.length).toBe(1);
+
+      component.removeGstin(0);
+      expect(component.gstins.length).toBe(1);
+    });
+
+    it('Case 2: Both PAN and GST missing in DB -> company name & address populated, both fields editable', () => {
+      const existingCustomer = {
+        companyName: 'Legacy Workshop',
+        address: 'Old Railway Yard',
+        panNumber: null,
+        gstinNumbers: ''
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(existingCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('LWSK');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.form.companyName).toBe('Legacy Workshop');
+      expect(component.form.address).toBe('Old Railway Yard');
+      expect(component.form.panNumber).toBe('');
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(false);
+
+      // User enters missing PAN and GST
+      component.handlePanChange('AAACL5678M');
+      expect(component.form.panNumber).toBe('AAACL5678M');
+
+      component.handleGstinChange(0, { gstin: '07AAACL5678M1Z1', state: 'Delhi' });
+      expect(component.gstins[0].gstin).toBe('07AAACL5678M1Z1');
+      expect(component.gstins[0].state).toBe('Delhi');
+
+      // User can add another GSTIN row when missing
+      component.addGstin();
+      expect(component.gstins.length).toBe(2);
+    });
+
+    it('Case 2 (Edge Cases): treats "null", "undefined", "[]", and whitespace as missing PAN and GST', () => {
+      const edgeCustomer = {
+        companyName: 'Edge Case Logistics',
+        address: 'Dock 4, Port Area',
+        panNumber: '   undefined   ',
+        gstinNumbers: ' [ "null" ] '
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(edgeCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('EDGL');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.form.companyName).toBe('Edge Case Logistics');
+      expect(component.form.panNumber).toBe('');
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(false);
+    });
+
+    it('Case 3: Only PAN available in DB -> PAN populated & disabled, GST enabled & editable', () => {
+      const existingCustomer = {
+        companyName: 'Central Logistics Ltd',
+        address: 'Sector 5, Salt Lake',
+        panNumber: 'AAACC9876Z',
+        gstinNumbers: null
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(existingCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('CLLT');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.form.panNumber).toBe('AAACC9876Z');
+      expect(component.isPanDisabled).toBe(true);
+      expect(component.isGstDisabled).toBe(false);
+
+      // PAN cannot be edited
+      component.handlePanChange('ZZZZ9999Z');
+      expect(component.form.panNumber).toBe('AAACC9876Z');
+
+      // Missing GST can be entered
+      component.handleGstinChange(0, { gstin: '19AAACC9876Z1Z8', state: 'West Bengal' });
+      expect(component.gstins[0].gstin).toBe('19AAACC9876Z1Z8');
+      expect(component.gstins[0].state).toBe('West Bengal');
+
+      // Another GSTIN row can be added
+      component.addGstin();
+      expect(component.gstins.length).toBe(2);
+    });
+
+    it('Case 4: Only GST available in DB -> GST populated & disabled, PAN enabled & editable', () => {
+      const existingCustomer = {
+        companyName: 'Eastern Shipping',
+        address: 'Wharf Road, Kolkata',
+        panNumber: '',
+        gstinNumbers: '19AAACE1111E1Z3'
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(existingCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('ESHP');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.gstins[0].gstin).toBe('19AAACE1111E1Z3');
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(true);
+
+      // GST cannot be modified or added to
+      component.handleGstinChange(0, { gstin: '27AAACE1111E1Z5' });
+      expect(component.gstins[0].gstin).toBe('19AAACE1111E1Z3');
+      component.addGstin();
+      expect(component.gstins.length).toBe(1);
+
+      // Missing PAN can be entered
+      component.handlePanChange('AAACE1111E');
+      expect(component.form.panNumber).toBe('AAACE1111E');
+    });
+
+    it('resets field disabled states when a different code is typed or code type changes', () => {
+      const existingCustomer = {
+        companyName: 'Initial Test Corp',
+        address: 'Initial Address',
+        panNumber: 'AAACI2222J',
+        gstinNumbers: '27AAACI2222J1Z4'
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(existingCustomer));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('INIT');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.isPanDisabled).toBe(true);
+      expect(component.isGstDisabled).toBe(true);
+
+      // Typing a different customer code resets the disabled states immediately
+      component.handleOldCodeChange('DIFF');
+      expect(component.isOldPanDisabled).toBe(false);
+      expect(component.isOldGstDisabled).toBe(false);
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(false);
+
+      // Changing old code type also resets disabled states
+      component.isOldPanDisabled = true;
+      component.isOldGstDisabled = true;
+      component.handleOldCodeTypeChange({ target: { value: 'NEW_CODE_TYPE' } } as unknown as Event);
+      expect(component.isOldPanDisabled).toBe(false);
+      expect(component.isOldGstDisabled).toBe(false);
+    });
+
+    it('handles lookup failure cleanly and leaves fields enabled for manual retry', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(throwError(() => ({
+        status: 404,
+        error: { message: 'Customer code not found' }
+      })));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('NOTF');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.lookupLoading).toBe(false);
+      expect(component.lookupError).toBe('Customer code not found');
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(false);
+    });
+
+    it('ensures New Entry Section (mode: new) is never affected by old field disabled states', () => {
+      component.switchMode('new');
+      component.isOldPanDisabled = true;
+      component.isOldGstDisabled = true;
+
+      // In new mode, isPanDisabled and isGstDisabled must always be false
+      expect(component.isPanDisabled).toBe(false);
+      expect(component.isGstDisabled).toBe(false);
+    });
+
+    it('re-evaluates editability dynamically after form submission when DB updates', () => {
+      const initial = {
+        companyName: 'Updatable Customer',
+        address: 'Station Road',
+        panNumber: 'AAACU3333R',
+        gstinNumbers: ''
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(initial));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('UPDT');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.isPanDisabled).toBe(true);
+      expect(component.isGstDisabled).toBe(false);
+
+      // User adds missing GSTIN and submits
+      component.handleGstinChange(0, { gstin: '27AAACU3333R1Z9', state: 'Maharashtra' });
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true, message: 'Updated' }));
+
+      // Mock refreshed DB record returning both PAN and newly saved GST
+      const refreshed = {
+        ...initial,
+        gstinNumbers: '27AAACU3333R1Z9'
+      };
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(refreshed));
+
+      component.submit();
+
+      // After successful update and DB refresh, both PAN and GST are now available in DB and disabled
+      expect(component.isPanDisabled).toBe(true);
+      expect(component.isGstDisabled).toBe(true);
+      expect(component.gstins[0].gstin).toBe('27AAACU3333R1Z9');
     });
   });
 });

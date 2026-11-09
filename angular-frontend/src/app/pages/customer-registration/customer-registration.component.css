@@ -428,10 +428,17 @@ label b {
 }
 
 .control.readonly-control,
-.control input[readonly] {
+.control input[readonly],
+.control input:disabled,
+.control select:disabled {
     background: #f8fafc;
+    cursor: not-allowed;
+    color: #1e293b;
+    -webkit-text-fill-color: #1e293b;
+}
+
+.control input[readonly]:not(:disabled) {
     cursor: default;
-    color: #334155;
 }
 
 .control.readonly-control {
