@@ -48,7 +48,12 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         }
       })),
       checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
-      ocrImage: vi.fn()
+      ocrImage: vi.fn(),
+      verifySemGstin: vi.fn().mockReturnValue(of({
+        verified: false,
+        status: 'UNAVAILABLE',
+        message: 'ℹ Verification Unavailable – Unable to connect to office database.'
+      }))
     };
     panOcrServiceMock = {
       extractGstinFromFile: vi.fn()
@@ -1041,6 +1046,130 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       const validPdf = new File(['fake-pdf'], 'doc.pdf', { type: 'application/pdf' });
       expect(component.checkFile(validPdf)).toBe('');
+    });
+
+    describe('Office Database (SEM_GSTIN) Verification', () => {
+      beforeEach(() => {
+        component.mode = 'new';
+        component.form = {
+          companyName: 'ACME LOGISTICS',
+          customerCode: 'ACME',
+          address: '123 CONNAUGHT PLACE, NEW DELHI',
+          city: 'Delhi',
+          pincode: '110001',
+          panNumber: 'AAAAA0000A',
+          operatingDivision: 'DLI',
+          zone: 'NR',
+          codeType: 'GLOBAL'
+        };
+        component.gstins = [{
+          state: 'Delhi',
+          gstin: '07AAAAA0000A1Z4',
+          file: new File(['fake'], 'cert.pdf', { type: 'application/pdf' })
+        }];
+      });
+
+      it('Case 1: displays Verified when GSTIN and company details match office database', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: true,
+          status: 'VERIFIED',
+          message: '✓ Verified – Details matched with office database.',
+          gstin: '07AAAAA0000A1Z4',
+          dbCompanyName: 'ACME LOGISTICS',
+          dbAddress: '123 CONNAUGHT PLACE, NEW DELHI'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(customerServiceMock.verifySemGstin).toHaveBeenCalledWith(
+          '07AAAAA0000A1Z4', 'ACME LOGISTICS', '123 CONNAUGHT PLACE, NEW DELHI'
+        );
+        expect(component.gstins[0].dbVerificationStatus).toBe('verified');
+        expect(component.gstins[0].dbVerificationMessage).toBe('✓ Verified – Details matched with office database.');
+        expect(component.errors['gstin_0_gstin']).toBeUndefined();
+        // Crucial requirement: User MUST still be able to validate/submit form
+        expect(component.validate()).toBe(true);
+      });
+
+      it('Case 2: displays Verification Failed when GSTIN exists but details differ, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'MISMATCH',
+          message: '⚠ Verification Failed – Entered details do not match office database.',
+          gstin: '07AAAAA0000A1Z4',
+          dbCompanyName: 'DIFFERENT FIRM',
+          companyNameMatched: false
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('mismatch');
+        expect(component.gstins[0].dbVerificationMessage).toBe('⚠ Verification Failed – Entered details do not match office database.');
+        // Submission must NOT be blocked by mismatch
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('Case 3: displays Verification Unavailable when GSTIN is not found in database, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'NOT_FOUND',
+          message: 'ℹ Verification Unavailable – GSTIN not found in office database.',
+          gstin: '07AAAAA0000A1Z4'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('not_found');
+        expect(component.gstins[0].dbVerificationMessage).toBe('ℹ Verification Unavailable – GSTIN not found in office database.');
+        // Submission must NOT be blocked
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('Case 4: displays Verification Unavailable when database or connection is inaccessible, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'UNAVAILABLE',
+          message: 'ℹ Verification Unavailable – Unable to connect to office database.',
+          gstin: '07AAAAA0000A1Z4'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('unavailable');
+        expect(component.gstins[0].dbVerificationMessage).toBe('ℹ Verification Unavailable – Unable to connect to office database.');
+        // Submission must NOT be blocked
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('clears previous verification status when GSTIN changes', () => {
+        component.gstins[0].dbVerificationStatus = 'verified';
+        component.gstins[0].dbVerificationMessage = '✓ Verified – Details matched with office database.';
+
+        component.handleGstinInput(0, '07BBBBB1111B1Z9');
+
+        expect(component.gstins[0].dbVerificationStatus).toBeUndefined();
+        expect(component.gstins[0].dbVerificationMessage).toBeUndefined();
+      });
+
+      it('re-verifies GSTIN when company name changes', () => {
+        vi.useFakeTimers();
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: true,
+          status: 'VERIFIED',
+          message: '✓ Verified – Details matched with office database.'
+        }));
+
+        component.handleNewCompanyNameChange('NEW ACME CORP');
+        vi.advanceTimersByTime(350);
+
+        expect(customerServiceMock.verifySemGstin).toHaveBeenCalledWith(
+          '07AAAAA0000A1Z4', 'NEW ACME CORP', '123 CONNAUGHT PLACE, NEW DELHI'
+        );
+        vi.useRealTimers();
+      });
     });
 
     it('rejects a manually entered address longer than 100 characters', () => {

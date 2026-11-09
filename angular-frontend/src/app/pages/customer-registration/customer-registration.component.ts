@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout, firstValueFrom } from 'rxjs';
-import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
+import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, SemGstinVerificationResult } from '../../services/customer.service';
 import { PanOcrService, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
@@ -227,6 +227,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private codeTimer: any = null;
   private codeRequestId = 0;
   private ocrRequestId = 0;
+  private semGstinVerifyTimer: any = null;
 
   // Dropdown states
   zoneOpen = false;
@@ -445,6 +446,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.ownSection2Timer) {
       clearTimeout(this.ownSection2Timer);
       this.ownSection2Timer = null;
+    }
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
     }
   }
 
@@ -1053,6 +1058,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.lookupError = '';
     delete this.errors['customerCode'];
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    this.verifyAllEligibleGstins();
 
     if (newName.length > 40) {
       this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
@@ -1872,7 +1878,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (previousGstin === gstin) return;
 
     this.ocrRequestId++;
+    const targetGstin = this.gstins[index];
+    if (targetGstin) {
+      targetGstin.dbVerificationStatus = undefined;
+      targetGstin.dbVerificationMessage = undefined;
+      targetGstin.dbVerifying = false;
+    }
     this.handleGstinChange(index, { gstin });
+
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
+    }
+    if (gstin.length === 15) {
+      this.semGstinVerifyTimer = setTimeout(() => this.verifySemGstinForIndex(index), 350);
+    }
     this.cdr.markForCheck();
   }
 
@@ -1883,6 +1903,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const rawGstin = (g.gstin || '').trim();
     if (!rawGstin) {
       delete this.errors[field];
+      g.dbVerificationStatus = undefined;
+      g.dbVerificationMessage = undefined;
+      g.dbVerifying = false;
       return;
     }
     const status = this.getGstinPanStatus(rawGstin, this.form.panNumber);
@@ -1892,6 +1915,73 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.errors[field] = status;
     } else {
       delete this.errors[field];
+    }
+    if (rawGstin.length === 15) {
+      this.verifySemGstinForIndex(index);
+    }
+  }
+
+  verifySemGstinForIndex(index: number): void {
+    const g = this.gstins[index];
+    if (!g) return;
+    const rawGstin = (g.gstin || '').trim().toUpperCase();
+    if (rawGstin.length !== 15 || !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(rawGstin)) {
+      g.dbVerificationStatus = undefined;
+      g.dbVerificationMessage = undefined;
+      g.dbVerifying = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    const reqId = (g.dbVerifyReqId || 0) + 1;
+    g.dbVerifyReqId = reqId;
+    g.dbVerifying = true;
+    g.dbVerificationStatus = 'checking';
+    this.cdr.markForCheck();
+
+    this.customerService.verifySemGstin(rawGstin, this.form.companyName, this.form.address).subscribe({
+      next: (res) => {
+        if (g.dbVerifyReqId !== reqId) return;
+        g.dbVerifying = false;
+        if (res.status === 'VERIFIED') {
+          g.dbVerificationStatus = 'verified';
+        } else if (res.status === 'MISMATCH') {
+          g.dbVerificationStatus = 'mismatch';
+        } else if (res.status === 'NOT_FOUND') {
+          g.dbVerificationStatus = 'not_found';
+        } else {
+          g.dbVerificationStatus = 'unavailable';
+        }
+        g.dbVerificationMessage = res.message;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        if (g.dbVerifyReqId !== reqId) return;
+        g.dbVerifying = false;
+        g.dbVerificationStatus = 'unavailable';
+        g.dbVerificationMessage = 'ℹ Verification Unavailable – Unable to connect to office database.';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  verifyAllEligibleGstins(debounceMs = 300): void {
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
+    }
+    const run = () => {
+      this.gstins.forEach((g, idx) => {
+        const raw = (g.gstin || '').trim();
+        if (raw.length === 15) {
+          this.verifySemGstinForIndex(idx);
+        }
+      });
+    };
+    if (debounceMs <= 0) {
+      run();
+    } else {
+      this.semGstinVerifyTimer = setTimeout(run, debounceMs);
     }
   }
 
@@ -1950,6 +2040,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.form.address) {
       this.form.address = this.getNormalizedAddress(this.form.address);
     }
+    this.verifyAllEligibleGstins(0);
   }
 
   handleAddressPaste(e: ClipboardEvent): void {
@@ -2215,6 +2306,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       this.ocrAutoFillApplied = true;
       console.info('[GSTIN OCR] Extraction results applied to the form.');
+      this.verifySemGstinForIndex(index);
 
     } catch (err) {
       if (currentReqId !== this.ocrRequestId) return;

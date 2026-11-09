@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, forkJoin, map, switchMap } from 'rxjs';
+import { Observable, of, forkJoin, map, switchMap, catchError } from 'rxjs';
 import { API_BASE_URL } from './api-config';
 
 export interface MasterData {
@@ -23,6 +23,10 @@ export interface GstinEntry {
   addressStatus?: string;
   hasFile?: boolean;
   activeFlag?: string;
+  dbVerificationStatus?: 'idle' | 'checking' | 'verified' | 'mismatch' | 'not_found' | 'unavailable';
+  dbVerificationMessage?: string;
+  dbVerifying?: boolean;
+  dbVerifyReqId?: number;
 }
 
 export interface CustomerPayload {
@@ -65,6 +69,17 @@ export interface BackendImageOcrResponse {
   panMismatch?: boolean;
   companyNameTooLong?: boolean;
   rawText?: string;
+}
+
+export interface SemGstinVerificationResult {
+  verified: boolean;
+  status: 'VERIFIED' | 'MISMATCH' | 'NOT_FOUND' | 'UNAVAILABLE';
+  message: string;
+  gstin?: string;
+  dbCompanyName?: string;
+  dbAddress?: string;
+  companyNameMatched?: boolean;
+  addressMatched?: boolean;
 }
 
 export interface DeleteRequestVerification {
@@ -417,5 +432,22 @@ export class CustomerService {
     return this.http.post<BackendImageOcrResponse>(`${this.API}/customers/ocr-image`, formData, {
       withCredentials: true
     });
+  }
+
+  /* ---------- Office Database (SEM_GSTIN) Verification ---------- */
+  verifySemGstin(gstin: string, companyName?: string, address?: string): Observable<SemGstinVerificationResult> {
+    const params: Record<string, string> = { gstin: (gstin || '').trim().toUpperCase() };
+    if (companyName?.trim()) params['companyName'] = companyName.trim();
+    if (address?.trim()) params['address'] = address.trim();
+    return this.http.get<SemGstinVerificationResult>(`${this.API}/customers/verify-sem-gstin`, {
+      params,
+      withCredentials: true
+    }).pipe(
+      catchError(() => of({
+        verified: false,
+        status: 'UNAVAILABLE' as const,
+        message: 'ℹ Verification Unavailable – Unable to connect to office database.'
+      }))
+    );
   }
 }
