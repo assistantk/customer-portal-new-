@@ -1,7 +1,25 @@
+// @vitest-environment jsdom
+import { vi } from 'vitest';
+import { PanOcrService } from './pan-ocr.service';
 import { describe, expect, it } from 'vitest';
 import { cleanAndShortenAddress, extractGstinDetailsFromText, combineMultiPageDetails } from './pan-ocr.service';
+import { generateCustomerCode } from './customer-code-generator';
+
+vi.mock('pdfjs-dist', () => ({
+  GlobalWorkerOptions: { workerSrc: '' },
+  getDocument: vi.fn(() => ({ promise: Promise.reject(new Error('Invalid PDF')) }))
+}));
 
 describe('GSTIN OCR text extraction', () => {
+  it('reports a PDF parsing failure instead of silently returning empty OCR results', async () => {
+    const service = new PanOcrService();
+    const file = new File(['not a PDF'], 'invalid.pdf', { type: 'application/pdf' });
+
+    await expect(service.extractGstinFromFile(file)).rejects.toThrow(
+      'Unable to open this PDF for OCR. Please upload a valid, unprotected PDF or convert it to an image. PDF.js error: Invalid PDF'
+    );
+  });
+
   it('removes repeated place names while preserving their first spelling and order', () => {
     expect(cleanAndShortenAddress(
       'Paradip, Madhuban, Madhuban, Madhuban, Paradip, Jagatsinghapur, Odisha, 754142'
@@ -155,6 +173,16 @@ describe('GSTIN OCR text extraction', () => {
     const details = extractGstinDetailsFromText(text);
     expect(details.companyNameTooLong).toBe(true);
     expect(details.businessName).toBe('BHARAT HEAVY ELECTRICALS AND MECHANICAL LOGISTICS ENTERPRISES PRIVATE LIMITED');
+  });
+
+  it('stops a trade name before the managing-director section so OCR does not block code generation', () => {
+    const details = extractGstinDetailsFromText(
+      'GSTIN: 29AAFFJ8045D1ZB Trade Name, if any: M/S JAI HANUMAN AGRO INDUSTRIES Details of Managing / Whole-Time Director'
+    );
+
+    expect(details.businessName).toBe('M/S JAI HANUMAN AGRO INDUSTRIES');
+    expect(details.companyNameTooLong).toBe(false);
+    expect(generateCustomerCode(details.businessName!)).toBe('MSJH');
   });
 
   it('prioritizes Trade Name over Legal Name and never concatenates them', () => {

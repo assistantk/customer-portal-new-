@@ -35,19 +35,24 @@
                 "input": "public"
               },
               {
+                "glob": "**/*",
+                "input": "public/assets/tessdata",
+                "output": "assets/tessdata-ocr-v2"
+              },
+              {
                 "glob": "worker.min.js",
                 "input": "node_modules/tesseract.js/dist",
-                "output": "assets/tesseract-assets"
+                "output": "assets/tesseract-assets-ocr-v2"
               },
               {
                 "glob": "tesseract-core*.wasm*",
                 "input": "node_modules/tesseract.js/node_modules/tesseract.js-core",
-                "output": "assets/tesseract-assets"
+                "output": "assets/tesseract-assets-ocr-v2"
               },
               {
                 "glob": "pdf.worker.min.mjs",
                 "input": "node_modules/pdfjs-dist/build",
-                "output": "assets/pdfjs-assets"
+                "output": "assets/pdfjs-assets-ocr-v2"
               }
             ],
             "styles": [

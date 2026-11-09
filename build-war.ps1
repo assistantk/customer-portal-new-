@@ -64,6 +64,12 @@ try {
     if ($mainBundleContent -match 'http://localhost:8080') {
         throw 'Production Angular bundle contains a hardcoded localhost backend URL.'
     }
+    $tesseractWorkerChunks = @(Get-ChildItem -LiteralPath $frontendBuildDir -Filter 'chunk-*.js' -File | Where-Object {
+        [System.IO.File]::ReadAllText($_.FullName) -match 'export\{[^}]*\bas createWorker\}'
+    })
+    if ($tesseractWorkerChunks.Count -eq 0) {
+        throw 'Production frontend does not expose createWorker from the lazy Tesseract module.'
+    }
 
     if (-not (Test-Path -LiteralPath $frontendDescriptorDir -PathType Container)) {
         throw "Frontend WebLogic descriptors were not found at '$frontendDescriptorDir'."
@@ -90,13 +96,13 @@ try {
         'index.html',
         'WEB-INF/web.xml',
         'WEB-INF/weblogic.xml',
-        'assets/tesseract-assets/worker.min.js',
-        'assets/tesseract-assets/tesseract-core-simd-lstm.wasm',
-        'assets/tesseract-assets/tesseract-core-simd-lstm.wasm.js',
-        'assets/tesseract-assets/tesseract-core-lstm.wasm',
-        'assets/tesseract-assets/tesseract-core-lstm.wasm.js',
-        'assets/tessdata/eng.traineddata',
-        'assets/pdfjs-assets/pdf.worker.min.mjs',
+        'assets/tesseract-assets-ocr-v2/worker.min.js',
+        'assets/tesseract-assets-ocr-v2/tesseract-core-simd-lstm.wasm',
+        'assets/tesseract-assets-ocr-v2/tesseract-core-simd-lstm.wasm.js',
+        'assets/tesseract-assets-ocr-v2/tesseract-core-lstm.wasm',
+        'assets/tesseract-assets-ocr-v2/tesseract-core-lstm.wasm.js',
+        'assets/tessdata-ocr-v2/eng.traineddata',
+        'assets/pdfjs-assets-ocr-v2/pdf.worker.min.mjs',
         'assets/cris-logo.webp',
         'assets/3562.webp',
         'assets/indian-railways-logo.webp',

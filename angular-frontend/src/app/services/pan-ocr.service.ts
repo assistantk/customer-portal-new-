@@ -50,8 +50,10 @@ const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const PIN_PATTERN = /\b[1-9][0-9]{5}\b/;
 const MAX_PDF_PAGES = 50;
 const baseUri = typeof document !== 'undefined' && document.baseURI ? document.baseURI : 'http://localhost/';
-const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets/', baseUri).href;
-const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata/', baseUri).href;
+const TESSERACT_ASSET_BASE = new URL('assets/tesseract-assets-ocr-v2/', baseUri).href;
+const TESSERACT_LANGUAGE_BASE = new URL('assets/tessdata-ocr-v2/', baseUri).href;
+const PDFJS_WORKER_URL = new URL('assets/pdfjs-assets-ocr-v2/pdf.worker.min.mjs', baseUri).href;
+const TESSERACT_CORE_URL = new URL('tesseract-core-lstm.wasm.js', TESSERACT_ASSET_BASE).href;
 const ADDRESS_BOUNDARY = /\b(?:date\s+of\s+liabil\w{2,}|date\s+of\s+valid\w{2,}|type\s+of\s+registration|status\s+of\s+registration|registration\s+status|additional\s+places?\s+of\s+business|details?\s+of\s+additional\s+places?\s+of\s+business)\b|\b\d{1,2}\s*[.)]?\s*(?=(?:date|type|status|principal|additional|nature|constitution)\b)/i;
 const ADDRESS_LABELS: Array<{ key: string; pattern: RegExp }> = [
   { key: 'building', pattern: /Building\s+No\.?\s*\/\s*Flat\s+No\.?|Building\s+No\.?|Building\s+Number/ig },
@@ -116,6 +118,16 @@ interface PdfDocument {
 }
 
 type OcrWorker = Awaited<ReturnType<(typeof import('tesseract.js'))['createWorker']>>;
+export type OcrProgressReporter = (message: string) => void;
+
+function reportOcrProgress(reporter: OcrProgressReporter | undefined, message: string): void {
+  console.info(`[GSTIN OCR] ${message}`);
+  reporter?.(message);
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function correctGstinCandidate(candidate: string): string | null {
   let clean = candidate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -415,7 +427,7 @@ function trimUnrelatedBusinessValue(value: string): string {
   return value
     .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
     .replace(/\b(?:null|n\/a|na|not\s+applicable|not\s+available)\b/gi, '')
-    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
+    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
     .replace(/\s*\d+\s*[\.\)\(\{\}\[\]:\-\s]*$/g, '')
     .replace(/^[\d\s\.\)\(\{\}\[\]:\-]+/g, '')
     .replace(/^(?:government\s+of\s+india|registration\s+certificate)\s*[:\-]?\s*/gi, '')
@@ -442,13 +454,13 @@ function extractFieldValue(text: string, labelPattern: RegExp, nextFieldPattern:
 
 function extractLegalName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:legal|regal|1egal|iegal|leal)\s+name(?:\s+of\s+business)?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
 function extractTradeName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
@@ -704,7 +716,10 @@ async function renderPdfPage(pdf: PdfDocument, pageNumber: number): Promise<HTML
 
 @Injectable({ providedIn: 'root' })
 export class PanOcrService {
-  async extractGstinFromFile(file: File | Blob | string | null | undefined): Promise<ExtractedGstinDetails> {
+  async extractGstinFromFile(
+    file: File | Blob | string | null | undefined,
+    reportProgress?: OcrProgressReporter
+  ): Promise<ExtractedGstinDetails> {
     if (!file) {
       return {};
     }
@@ -720,7 +735,10 @@ export class PanOcrService {
           throw new Error(`Could not fetch the document (${response.status}). Please upload the PDF manually.`);
         }
         const blob = await response.blob();
-        return this.extractGstinFromFile(new File([blob], trimmed.split(/[\\/]/).pop() || 'document.pdf', { type: blob.type || 'application/pdf' }));
+        return this.extractGstinFromFile(
+          new File([blob], trimmed.split(/[\\/]/).pop() || 'document.pdf', { type: blob.type || 'application/pdf' }),
+          reportProgress
+        );
       }
       throw new Error('OCR requires a browser File or Blob object. Please upload the document from the file picker instead of passing a raw filesystem path.');
     }
@@ -728,15 +746,20 @@ export class PanOcrService {
     const browserFile = file instanceof File ? file : new File([file], 'document.pdf', { type: file.type || 'application/pdf' });
     const extension = browserFile.name.split('.').pop()?.toLowerCase();
     const isPdf = browserFile.type === 'application/pdf' || extension === 'pdf';
+    reportOcrProgress(reportProgress, 'Document processing started.');
     let pdf: PdfDocument | null = null;
+    let pdfLoadError: unknown = null;
     let pageLimitExceeded = false;
     const pageRecords: Array<{ pageNumber: number; text: string; isScanned: boolean }> = [];
 
     if (isPdf) {
       try {
+        reportOcrProgress(reportProgress, 'Loading PDF...');
         const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('assets/pdfjs-assets/pdf.worker.min.mjs', document.baseURI).href;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        console.info('[GSTIN OCR] PDF.js worker URL configured:', PDFJS_WORKER_URL);
         pdf = await pdfjsLib.getDocument({ data: await browserFile.arrayBuffer() }).promise as PdfDocument;
+        reportOcrProgress(reportProgress, `PDF loaded successfully. ${pdf.numPages} page(s) detected.`);
         if (pdf.numPages > MAX_PDF_PAGES) {
           pageLimitExceeded = true;
           const oversizedPdf = pdf;
@@ -744,6 +767,7 @@ export class PanOcrService {
           await oversizedPdf.destroy();
         } else {
           for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            reportOcrProgress(reportProgress, `Reading PDF text from page ${pageNumber} of ${pdf.numPages}...`);
             const page = await pdf.getPage(pageNumber);
             const content = await page.getTextContent();
             const digitalText = content.items.map(item => item.str || '').filter(Boolean).join(' ').trim();
@@ -753,33 +777,58 @@ export class PanOcrService {
           }
         }
       } catch (error) {
-        console.warn('Client-side PDF text extraction failed; trying OCR:', error);
+        pdfLoadError = error;
+        if (pdf) {
+          console.warn('[GSTIN OCR] PDF text extraction failed; trying OCR on rendered pages:', error);
+        } else {
+          console.error('[GSTIN OCR] PDF loading failed:', error);
+        }
       }
     }
     if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
+    if (isPdf && !pdf) {
+      const cause = pdfLoadError ? ` PDF.js error: ${getErrorMessage(pdfLoadError)}` : '';
+      throw new Error(`Unable to open this PDF for OCR. Please upload a valid, unprotected PDF or convert it to an image.${cause}`);
+    }
 
     let details: ExtractedGstinDetails = {};
     if (pageRecords.length > 0) {
       details = combineMultiPageDetails(pageRecords);
+      reportOcrProgress(reportProgress, 'PDF text extraction completed.');
     }
 
     const needsOcr = !isPdf || pageRecords.some(p => p.isScanned) || !details.gstin || !details.address || !(details.tradeName || details.legalName);
     let ocrFailed = false;
     let ocrError: unknown;
+    let processingStage = 'OCR initialization';
 
     if (needsOcr && (!isPdf || pdf)) {
       let worker: OcrWorker | null = null;
       let imageCanvas: HTMLCanvasElement | null = null;
       let preparedImage: File | HTMLCanvasElement | null = null;
       try {
-        const { createWorker } = await import('tesseract.js');
+        reportOcrProgress(reportProgress, 'Initializing OCR engine and loading language data...');
+        const { createWorker } = await import('./tesseract-worker');
+        const workerUrl = new URL('worker.min.js', TESSERACT_ASSET_BASE).href;
+        console.info('[GSTIN OCR] Tesseract assets configured:', {
+          workerUrl,
+          corePath: TESSERACT_CORE_URL,
+          languagePath: TESSERACT_LANGUAGE_BASE,
+        });
         worker = await createWorker('eng', 1, {
-          workerPath: new URL('worker.min.js', TESSERACT_ASSET_BASE).href,
-          corePath: TESSERACT_ASSET_BASE,
+          workerPath: workerUrl,
+          corePath: TESSERACT_CORE_URL,
           langPath: TESSERACT_LANGUAGE_BASE,
+          cachePath: 'gstin-ocr-v2',
+          cacheMethod: 'write',
           gzip: false,
           workerBlobURL: false,
+          logger: ({ status, progress }) => {
+            processingStage = status;
+            reportOcrProgress(reportProgress, `${status}${Number.isFinite(progress) ? ` (${Math.round(progress * 100)}%)` : ''}`);
+          },
         });
+        reportOcrProgress(reportProgress, 'OCR engine initialized; language data loaded.');
         await worker.setParameters({
           tessedit_pageseg_mode: '3' as Parameters<OcrWorker['setParameters']>[0]['tessedit_pageseg_mode'],
         });
@@ -788,19 +837,25 @@ export class PanOcrService {
         const ocrRecords: Array<{ pageNumber: number; text: string }> = [];
 
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+          processingStage = `page ${pageNumber} of ${pageCount}`;
+          reportOcrProgress(reportProgress, `Scanning page ${pageNumber} of ${pageCount}...`);
           const existing = pageRecords[pageNumber - 1];
           if (existing && !existing.isScanned && existing.text.length > 100) {
             ocrRecords.push({ pageNumber, text: existing.text });
+            reportOcrProgress(reportProgress, `Page ${pageNumber} of ${pageCount} text extracted.`);
             continue;
           }
 
+          processingStage = `rendering page ${pageNumber} of ${pageCount}`;
           const source = isPdf
             ? await renderPdfPage(pdf!, pageNumber)
             : (preparedImage ||= await prepareImageForOcr(browserFile));
           if (source instanceof HTMLCanvasElement && !isPdf) imageCanvas = source;
 
+          processingStage = `recognizing text on page ${pageNumber} of ${pageCount}`;
           const result = await worker.recognize(source);
           ocrRecords.push({ pageNumber, text: result.data.text });
+          reportOcrProgress(reportProgress, `Page ${pageNumber} of ${pageCount} scanned.`);
 
           if (isPdf && source instanceof HTMLCanvasElement) {
             source.width = 0;
@@ -809,6 +864,7 @@ export class PanOcrService {
         }
 
         const ocrCombined = combineMultiPageDetails(ocrRecords);
+        reportOcrProgress(reportProgress, 'Text from all document pages combined.');
         details = {
           gstin: details.gstin || ocrCombined.gstin,
           stateCode: details.stateCode || ocrCombined.stateCode,
@@ -824,11 +880,17 @@ export class PanOcrService {
           companyNameTooLong: details.companyNameTooLong ?? ocrCombined.companyNameTooLong,
         };
       } catch (error) {
-        console.error('Client-side GSTIN OCR failed:', error);
+        console.error(`[GSTIN OCR] Failed during ${processingStage}:`, error);
         ocrFailed = true;
-        ocrError = error;
+        ocrError = new Error(`Failed during ${processingStage}: ${getErrorMessage(error)}`);
       } finally {
-        if (worker) await worker.terminate();
+        if (worker) {
+          try {
+            await worker.terminate();
+          } catch (error) {
+            console.warn('[GSTIN OCR] Worker cleanup failed after the OCR operation:', error);
+          }
+        }
         if (imageCanvas) {
           imageCanvas.width = 0;
           imageCanvas.height = 0;
@@ -836,8 +898,21 @@ export class PanOcrService {
       }
     }
 
-    if (pdf) await pdf.destroy();
-    if (ocrFailed) throw ocrError;
+    if (pdf) {
+      try {
+        await pdf.destroy();
+      } catch (error) {
+        console.warn('[GSTIN OCR] PDF cleanup failed after document processing:', error);
+      }
+    }
+    if (ocrFailed) {
+      throw new Error(`Document OCR failed. ${getErrorMessage(ocrError)}`);
+    }
+    reportOcrProgress(reportProgress, 'GSTIN extraction started.');
+    reportOcrProgress(
+      reportProgress,
+      details.gstin ? 'GSTIN detected after document processing completed.' : 'GSTIN not found after document processing completed.'
+    );
     return {
       ...details,
       stateName: details.state || getStateNameFromGstinCode(details.stateCode),

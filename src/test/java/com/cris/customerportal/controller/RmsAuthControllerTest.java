@@ -439,6 +439,7 @@ class RmsAuthControllerTest {
         HttpServletRequest secondRequest = mock(HttpServletRequest.class);
         HttpServletResponse secondResponse = mock(HttpServletResponse.class);
         AuthUserDto user = new AuthUserDto("SREEJU", "SREEJU KRISHNAN", "SR-DCM", "Y");
+        user.setDesignation("SR-DCM");
         when(firstRequest.getSession(false)).thenReturn(firstSession);
         when(firstSession.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
         when(secondRequest.getMethod()).thenReturn("GET");
