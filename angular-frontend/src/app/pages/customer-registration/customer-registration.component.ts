@@ -772,6 +772,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   handleOwnershipCodeChange(code: string): void {
     const upperCode = (code || '').toUpperCase();
     this.form.ownershipCode = upperCode;
+    this.handleOwnershipPartyCodeChange(upperCode);
     this.touchedFields['ownershipCode'] = true;
     delete this.errors['ownershipCode'];
     this.form.ownershipAddress = '';
@@ -790,7 +791,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const reqId = ++this.ownSection1ReqId;
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
 
-    if (upperCode.trim().length === 4) {
+    if (/^[A-Z0-9]+$/.test(upperCode.trim())) {
       this.ownSection1Loading = true;
       this.ownSection1Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
@@ -850,7 +851,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const reqId = ++this.ownSection2ReqId;
     if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
 
-    if (upperCode.trim().length === 4) {
+    if (/^[A-Z0-9]+$/.test(upperCode.trim())) {
       this.ownSection2Loading = true;
       this.ownSection2Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
@@ -922,7 +923,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const requestId = ++this.lookupRequestId;
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
 
-    if (code.trim().length === 4) {
+    if (/^[A-Z0-9]+$/.test(code.trim())) {
       this.lookupLoading = true;
       this.lookupTimer = setTimeout(() => {
         const lookup$ = type === 'HANDLING_AGENT'
@@ -943,7 +944,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               if (requestId !== this.lookupRequestId) return;
               this.lastLookupRecord = customer;
               this.form.companyName = customer.companyName || '';
-              this.verifiedCustomerCode = code.trim().toUpperCase();
+              const storedCode = customer.customerCode || customer.code || code.trim();
+              this.verifiedCustomerCode = String(storedCode).trim();
               this.form.customerCode = this.verifiedCustomerCode;
               this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
               this.form.city = customer.city || '';
@@ -1005,6 +1007,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     } else {
       this.lookupLoading = false;
       this.verifiedCustomerCode = null;
+      this.lookupDone = false;
       this.gstins = [{ ...blankGstin }];
       this.isOldPanDisabled = false;
       this.isOldGstDisabled = false;
@@ -1126,10 +1129,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const e: Record<string, string> = {};
     if (this.mode === 'ownership') {
       if (!this.form.ownershipCode?.trim()) e['ownershipCode'] = 'Ownership Code is required';
-      else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipCode.trim())) e['ownershipCode'] = 'Enter a valid four-character Global Customer Code.';
+      else if (!/^[A-Z0-9]+$/.test(this.form.ownershipCode.trim())) e['ownershipCode'] = 'Enter a valid Global Customer Code.';
       else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') e['ownershipCode'] = this.ownSection1LookupError;
       else if (this.ownSection1Loading || !this.ownSection1Source) e['ownershipCode'] = 'Wait for ownership code lookup to complete.';
-      if (!this.form.ownershipAddress?.trim()) e['ownershipAddress'] = 'Ownership Address is required';
+      else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') e['ownershipCode'] = this.ownSection2LookupError;
+      else if (this.ownSection2Loading || !this.ownSection2Source) e['ownershipCode'] = 'Wait for both ownership table lookups to complete.';
+      if (!this.form.ownershipAddress?.trim()) e['ownershipAddress'] = 'Company Name is required';
       this.errors = e;
       return !Object.keys(e).length;
     }
@@ -1142,10 +1147,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     });
     if (this.mode === 'old') {
       const code = (this.verifiedCustomerCode || this.form.customerCode || '').trim();
-      if (!code || code.length !== 4) {
-        e['customerCode'] = 'Enter a valid four-character Customer Code.';
+      if (!/^[A-Z0-9]+$/i.test(code)) {
+        e['customerCode'] = 'Enter a valid Customer Code.';
       } else if (this.lookupError) {
         e['customerCode'] = this.lookupError;
+      } else if (!this.lookupDone) {
+        e['customerCode'] = 'Wait for the customer code lookup to complete.';
       }
     }
     if ((this.form.companyName || '').length > 40) {
@@ -1204,18 +1211,15 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   get isFormValid(): boolean {
     if (this.mode === 'ownership') {
       const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
-      if (!code1 || !/^[A-Z0-9]{4}$/.test(code1)) return false;
+      if (!/^[A-Z0-9]+$/.test(code1)) return false;
       if (this.ownSection1Loading || !this.ownSection1Source || this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') return false;
 
       const addr1 = (this.form.ownershipAddress || '').trim();
       if (!addr1) return false;
 
       const code2 = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-      if (!code2 || !/^[A-Z0-9]{4}$/.test(code2)) return false;
+      if (code2 !== code1) return false;
       if (this.ownSection2Loading || !this.ownSection2Source || this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') return false;
-
-      const addr2 = (this.form.ownershipPartyAddress || '').trim();
-      if (!addr2) return false;
 
       return true;
     }
@@ -1273,9 +1277,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     if (this.mode === 'old') {
       const code = (this.form.customerCode || '').trim().toUpperCase();
-      if (!code || !/^[A-Z0-9]{4}$/.test(code)) return false;
+      if (!/^[A-Z0-9]+$/.test(code)) return false;
       if (this.lookupLoading || !!this.lookupError) return false;
-      if (this.verifiedCustomerCode && this.verifiedCustomerCode !== code) return false;
+      if (!this.lookupDone || !this.verifiedCustomerCode || this.verifiedCustomerCode.toUpperCase() !== code) return false;
 
       const name = (this.form.companyName || '').trim();
       if (!name || name.length > 40) return false;
@@ -1406,12 +1410,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const code = (this.form.ownershipCode || '').trim();
       if (!code) {
         this.errors['ownershipCode'] = 'Ownership Code is required';
-      } else if (!/^[A-Z0-9]{4}$/.test(code)) {
-        this.errors['ownershipCode'] = 'Enter a valid four-character Global Customer Code.';
+      } else if (!/^[A-Z0-9]+$/.test(code)) {
+        this.errors['ownershipCode'] = 'Enter a valid Global Customer Code.';
       } else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') {
         this.errors['ownershipCode'] = this.ownSection1LookupError;
       } else if (this.ownSection1Loading || !this.ownSection1Source) {
         this.errors['ownershipCode'] = 'Wait for ownership code lookup to complete.';
+      } else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') {
+        this.errors['ownershipCode'] = this.ownSection2LookupError;
+      } else if (this.ownSection2Loading || !this.ownSection2Source) {
+        this.errors['ownershipCode'] = 'Wait for both ownership table lookups to complete.';
       } else {
         delete this.errors['ownershipCode'];
       }
@@ -1425,8 +1433,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const code = (this.form.ownershipPartyCode || '').trim();
       if (!code) {
         this.errors['ownershipPartyCode'] = 'Ownership Code is required';
-      } else if (!/^[A-Z0-9]{4}$/.test(code)) {
-        this.errors['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
+      } else if (!/^[A-Z0-9]+$/.test(code)) {
+        this.errors['ownershipPartyCode'] = 'Enter a valid Global Customer Code.';
       } else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') {
         this.errors['ownershipPartyCode'] = this.ownSection2LookupError;
       } else if (this.ownSection2Loading || !this.ownSection2Source) {
@@ -1600,8 +1608,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.mode === 'ownership') {
       const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
       const ownershipAddress = (this.form.ownershipAddress || '').trim();
-      const ownershipPartyCode = (this.form.ownershipPartyCode || ownershipCode).trim().toUpperCase();
-      const ownershipPartyAddress = (this.form.ownershipPartyAddress || ownershipAddress).trim();
+      const ownershipPartyCode = ownershipCode;
+      const ownershipPartyAddress = ownershipAddress;
 
       this.customerService.submitOwnershipJDBC(
         ownershipCode,

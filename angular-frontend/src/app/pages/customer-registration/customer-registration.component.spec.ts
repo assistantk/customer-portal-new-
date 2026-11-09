@@ -266,6 +266,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   describe('Old User Flow (mode: old)', () => {
     beforeEach(() => {
       component.mode = 'old';
+      component.lookupDone = true;
+      component.verifiedCustomerCode = 'OLD1';
       component.form = {
         companyName: 'Old User Logistics',
         customerCode: 'OLD1',
@@ -344,6 +346,28 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.verifiedCustomerCode).toBe('SAEB');
       expect(component.lookupDone).toBe(true);
       expect(component.lookupLoading).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it.each([
+      ['A', 'a'],
+      ['BD', 'BD'],
+      ['MCC', 'MCC'],
+      ['LONG4', 'LONG4']
+    ])('looks up and preserves the stored code for existing code %s', (enteredCode, storedCode) => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: storedCode,
+        companyName: 'Legacy Company'
+      }));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange(enteredCode);
+      vi.advanceTimersByTime(800);
+
+      expect(customerServiceMock.lookupOldCustomerJDBC).toHaveBeenCalledWith(enteredCode.toUpperCase());
+      expect(component.verifiedCustomerCode).toBe(storedCode);
+      expect(component.form.customerCode).toBe(storedCode);
+      expect(component.lookupDone).toBe(true);
       vi.useRealTimers();
     });
 
@@ -503,16 +527,19 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         vi.useRealTimers();
       });
 
-      it('fetches ownership section 1 data for a complete four-character code', () => {
-        component.handleOwnershipCodeChange('own1');
+      it('fetches ownership data for a short existing code', () => {
+        component.handleOwnershipCodeChange('a');
         expect(customerServiceMock.lookupOwnershipJDBC).not.toHaveBeenCalled();
+        expect(customerServiceMock.lookupOwnershipPartyJDBC).not.toHaveBeenCalled();
 
         vi.advanceTimersByTime(600);
 
-        expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('OWN1');
+        expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('A');
+        expect(customerServiceMock.lookupOwnershipPartyJDBC).toHaveBeenCalledWith('A');
         expect(component.form.ownershipAddress).toBe('Railway Division');
         expect(component.ownSection1Found).toBe(true);
         expect(component.ownSection1Loading).toBe(false);
+        expect(component.ownSection2Loading).toBe(false);
       });
 
       it('fetches ownership section 2 data for a complete four-character code', () => {
@@ -590,12 +617,12 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         panNumber: '',
         ownershipCode: 'OWN1',
         ownershipAddress: 'Ownership Desc 1',
-        ownershipPartyCode: 'PTY1',
-        ownershipPartyAddress: 'Party Desc 1'
+        ownershipPartyCode: 'OWN1',
+        ownershipPartyAddress: 'Ownership Desc 1'
       };
     });
 
-    it('should reset loading to false and display success notification on Ownership submit', () => {
+    it('submits the same code and company name for both Ownership tables', () => {
       customerServiceMock.submitOwnershipJDBC.mockReturnValue(
         of({
           success: true,
@@ -611,8 +638,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(customerServiceMock.submitOwnershipJDBC).toHaveBeenCalledWith(
         'OWN1',
         'Ownership Desc 1',
-        'PTY1',
-        'Party Desc 1'
+        'OWN1',
+        'Ownership Desc 1'
       );
       expect(successSpy).toHaveBeenCalledWith(
         'Request Submitted Successfully',
@@ -848,6 +875,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
     it('allows address that exceeds 100 characters with comma spaces but fits within 100 characters when normalized', () => {
       component.mode = 'old';
+      component.lookupDone = true;
+      component.verifiedCustomerCode = 'TEST';
       component.form.companyName = 'Test Corporation';
       component.form.customerCode = 'TEST';
       const rawAddress = 'SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004, SUITE 101';
@@ -1435,8 +1464,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           panNumber: '',
           ownershipCode: 'OWN1',
           ownershipAddress: 'Valid Ownership Address',
-          ownershipPartyCode: 'PRT1',
-          ownershipPartyAddress: 'Valid Party Address'
+          ownershipPartyCode: 'OWN1',
+          ownershipPartyAddress: 'Valid Ownership Address'
         };
       }
 
@@ -1445,7 +1474,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         expect(component.isFormValid).toBe(false);
       });
 
-      it('enables when ownership code and party code are verified and addresses present', () => {
+      it('enables when both table lookups use the unified code and company name', () => {
         setupValidOwnershipForm();
         expect(component.isFormValid).toBe(true);
       });
