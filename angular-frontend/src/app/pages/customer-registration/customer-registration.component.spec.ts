@@ -2,6 +2,7 @@ import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigationEnd } from '@angular/router';
+import '../../app-module';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
@@ -72,6 +73,21 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       undefined,
       authServiceMock
     );
+  });
+
+  it('starts the GSTIN card expanded and preserves manual expand and collapse controls', () => {
+    expect(component.gstinCardExpanded).toBe(true);
+    expect(component.gstinCollapsed).toBe(false);
+
+    component.toggleGstinExpand();
+    expect(component.gstinCardExpanded).toBe(false);
+    component.toggleGstinExpand();
+    expect(component.gstinCardExpanded).toBe(true);
+
+    component.toggleGstinCollapse();
+    expect(component.gstinCollapsed).toBe(true);
+    component.toggleGstinCollapse();
+    expect(component.gstinCollapsed).toBe(false);
   });
 
   it('defaults registration division from login and preserves a manual form choice', () => {
@@ -806,24 +822,20 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.address).toBe('123 MAIN ST,APT 4B,NEW DELHI');
     });
 
-    it('allows typing multiple words and spaces continuously in the GST input field without restriction', () => {
+    it('normalizes whitespace in GSTIN input and validates the normalized value on blur', () => {
       component.gstins = [{ gstin: '', state: '' }];
 
-      // 1. User can type continuous characters and multiple words with spaces
+      // Whitespace is removed from GSTINs before validation and verification.
       component.handleGstinChange(0, { gstin: 'FIRST WORD SECOND WORD 12345' });
-      expect(component.gstins[0].gstin).toBe('FIRST WORD SECOND WORD 12345');
-      // No validation error during typing
+      expect(component.gstins[0].gstin).toBe('FIRSTWORDSECONDWORD12345');
       expect(component.errors['gstin_0_gstin']).toBeUndefined();
 
-      // 2. Spaces and partial editing are retained without being stripped
       component.handleGstinChange(0, { gstin: '27 ABCDE ' });
-      expect(component.gstins[0].gstin).toBe('27 ABCDE ');
+      expect(component.gstins[0].gstin).toBe('27ABCDE');
 
-      // 3. Validation occurs on blur
       component.handleGstinBlur(0);
       expect(component.errors['gstin_0_gstin']).toBe('Enter a valid 15-character GSTIN.');
 
-      // 4. Typing again clears the validation error
       component.handleGstinChange(0, { gstin: '27ABCDE1234F1Z5' });
       expect(component.errors['gstin_0_gstin']).toBeUndefined();
 
@@ -1535,7 +1547,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       await component.handleGstinFileChange(0, fakeEvent);
 
-      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR', expect.anything());
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
       expect(component.form.companyName).toBe('RELIANCE');
       expect(component.form.panNumber).toBe('AAACR7157R');
       expect(component.gstins[0].verificationState).toBe('verified');
@@ -1566,6 +1578,125 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.gstins[0].verificationState).toBe('discrepancy');
       expect(component.gstins[0].crossCheckResult?.hasDiscrepancies).toBe(true);
       expect(component.activeCrossCheck).toBeDefined();
+    });
+
+    it('automatically verifies a corrected GSTIN and ignores an older response that arrives later', () => {
+      const originalGstin = '27ABCDE1234F1Z5';
+      const correctedGstin = '07ABCDE1234F1Z5';
+      const latestGstin = '09ABCDE1234F1Z5';
+      const olderResponse = new Subject<any>();
+      const latestResponse = new Subject<any>();
+
+      component.mode = 'old';
+      component.gstins[0].gstin = originalGstin;
+      component.gstins[0].state = 'Maharashtra';
+      component.form.companyName = 'OCR COMPANY';
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.address = 'OCR ADDRESS';
+      component.form.city = 'OCR CITY';
+      component.form.pincode = '400001';
+      component.ocrDataMap.set(0, {
+        gstin: originalGstin,
+        businessName: 'OCR COMPANY',
+        pan: 'ABCDE1234F',
+        address: 'OCR ADDRESS',
+        city: 'OCR CITY',
+        pincode: '400001',
+        stateName: 'Maharashtra'
+      });
+      gstVerificationServiceMock.verifyGstin
+        .mockReturnValueOnce(olderResponse.asObservable())
+        .mockReturnValueOnce(latestResponse.asObservable());
+
+      component.handleGstinInput(0, correctedGstin);
+      expect(component.gstins[0].verificationState).toBe('verifying');
+      expect(component.form.companyName).toBe('OCR COMPANY');
+
+      component.handleGstinInput(0, latestGstin);
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenNthCalledWith(1, correctedGstin);
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenNthCalledWith(2, latestGstin);
+
+      olderResponse.next({
+        success: true,
+        gstin: correctedGstin,
+        legalName: 'STALE COMPANY',
+        verificationStatus: 'VERIFIED'
+      });
+      expect(component.form.companyName).toBe('OCR COMPANY');
+
+      latestResponse.next({
+        success: true,
+        gstin: latestGstin,
+        legalName: 'LATEST OFFICIAL COMPANY',
+        pan: 'ABCDE1234F',
+        address: 'LATEST OFFICIAL ADDRESS',
+        city: 'LATEST CITY',
+        pincode: '400002',
+        state: 'Gujarat',
+        verificationStatus: 'VERIFIED'
+      });
+
+      expect(component.gstins[0].verificationState).toBe('discrepancy');
+      expect(component.form.companyName).toBe('LATEST OFFICIAL COMPANY');
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.form.address).toBe('LATEST OFFICIAL ADDRESS');
+      expect(component.form.city).toBe('LATEST CITY');
+      expect(component.form.pincode).toBe('400002');
+      expect(component.gstins[0].state).toBe('Gujarat');
+      expect(component.ocrDataMap.get(0)?.gstin).toBe(originalGstin);
+    });
+
+    it('keeps missing official fields as OCR-only and marks them unverified', () => {
+      const originalGstin = '27ABCDE1234F1Z5';
+      const correctedGstin = '07ABCDE1234F1Z5';
+      component.mode = 'old';
+      component.gstins[0].gstin = originalGstin;
+      component.form.companyName = 'OCR COMPANY';
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.address = 'OCR ADDRESS';
+      component.form.city = 'OCR CITY';
+      component.form.pincode = '400001';
+      component.ocrDataMap.set(0, {
+        gstin: originalGstin,
+        businessName: 'OCR COMPANY',
+        pan: 'ABCDE1234F',
+        address: 'OCR ADDRESS',
+        city: 'OCR CITY',
+        pincode: '400001'
+      });
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: correctedGstin,
+        legalName: 'OFFICIAL COMPANY',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.handleGstinInput(0, correctedGstin);
+
+      expect(component.form.companyName).toBe('OFFICIAL COMPANY');
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.form.address).toBe('OCR ADDRESS');
+      expect(component.form.city).toBe('OCR CITY');
+      expect(component.form.pincode).toBe('400001');
+      expect(component.hasUnverifiedOcrValues(0)).toBe(true);
+    });
+
+    it('does not truncate long official addresses and blocks submission with a validation message', () => {
+      const longAddress = 'REGISTERED OFFICE, '.repeat(8);
+      component.mode = 'old';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27AAACR7157R1ZR',
+        legalName: 'OFFICIAL COMPANY',
+        address: longAddress,
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.address).toBe(longAddress.replace(/,\s+/g, ',').trim());
+      expect(component.errors['address']).toContain('Registered address exceeds the maximum allowed length of 100 characters');
     });
 
     it('should allow manual GSTIN verification via verifyGstinAtIndex', () => {
@@ -1641,14 +1772,14 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.errors['companyName']).toContain('Company name exceeds the maximum allowed length of 40 characters');
     });
 
-    it('should preserve user manual edits when auto-filling verified data', () => {
+    it('should replace manually entered registration values with verified official values', () => {
       component.mode = 'new';
       component.handleNewCompanyNameChange('My Manually Entered Company', true);
 
       component.gstins[0].gstin = '27AAACR7157R1ZR';
       component.verifyGstinAtIndex(0, false);
 
-      expect(component.form.companyName).toBe('My Manually Entered Company');
+      expect(component.form.companyName).toBe('RELIANCE');
     });
 
     it('should gracefully handle verification service failure without breaking form submission', () => {
@@ -1780,7 +1911,6 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.form.panNumber = 'ABCDE1234F';
       component.form.address = '123 Industrial Area, Block B';
       component.form.customerCode = 'ACME';
-      component.form.state = 'Maharashtra';
       component.addGstin();
       component.gstins[0].gstin = '27ABCDE1234F1Z5';
       component.gstins[0].state = 'Maharashtra';
@@ -1827,16 +1957,16 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   describe('Submit Request Validation and Enablement (isFormValid)', () => {
     it('isFormValid returns false by default for an empty form', () => {
       component.switchMode('new');
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
     });
 
     it('isFormValid rejects company name that is whitespace or > 40 chars', () => {
       component.switchMode('new');
       component.form.companyName = '   ';
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
 
       component.form.companyName = 'A'.repeat(41);
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
     });
 
     it('isFormValid rejects invalid PAN format or length', () => {
@@ -1855,15 +1985,15 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       // 9 chars
       component.form.panNumber = 'ABCDE1234';
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
 
       // 11 chars
       component.form.panNumber = 'ABCDE1234FA';
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
 
       // invalid format
       component.form.panNumber = '12345ABCDE';
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
     });
 
     it('isFormValid rejects GSTIN if length != 15 or does not match PAN', () => {
@@ -1882,15 +2012,15 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         state: 'Maharashtra',
         file: new File(['dummy'], 'cert.pdf', { type: 'application/pdf' })
       }];
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
 
       // GSTIN with different PAN: 27XYZWE1234F1Z5 vs ABCDE1234F
       component.gstins[0].gstin = '27XYZWE1234F1Z5';
-      expect(component.isFormValid()).toBe(false);
+      expect(component.isFormValid).toBe(false);
 
       // Correct matching GSTIN
       component.gstins[0].gstin = '27ABCDE1234F1Z5';
-      expect(component.isFormValid()).toBe(true);
+      expect(component.isFormValid).toBe(true);
     });
 
     it('isFormValid returns true when all mandatory fields and validations pass', () => {
@@ -1908,7 +2038,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         file: new File(['dummy'], 'gst_cert.pdf', { type: 'application/pdf' })
       }];
 
-      expect(component.isFormValid()).toBe(true);
+      expect(component.isFormValid).toBe(true);
     });
   });
 });

@@ -98,7 +98,6 @@ main {
     position: relative;
     z-index: 15;
     transition: box-shadow 0.2s ease, border-color 0.2s ease, width 0.2s ease;
-    touch-action: none;
 }
 
 .header-gstin-card.is-expanded {
@@ -122,33 +121,12 @@ main {
     max-width: 90px;
 }
 
-.header-gstin-card.is-moved {
-    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-    border-color: #3b82f6;
-    background: #ffffff;
-    z-index: 50;
-}
-
-.header-gstin-card.is-dragging {
-    opacity: 0.96;
-    box-shadow: 0 16px 36px -4px rgba(37, 99, 235, 0.35), 0 12px 14px -6px rgba(0, 0, 0, 0.15);
-    border-color: #2563eb;
-    cursor: grabbing !important;
-    user-select: none;
-    z-index: 60;
-}
-
 .header-gstin-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding-bottom: 6px;
     user-select: none;
-    cursor: grab;
-}
-
-.header-gstin-top:active {
-    cursor: grabbing;
 }
 
 .header-gstin-title {
@@ -158,19 +136,6 @@ main {
     color: #1e3a8a;
     font-weight: 700;
     font-size: 13px;
-}
-
-.gstin-drag-handle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #94a3b8;
-    margin-right: 2px;
-    transition: color 0.15s ease;
-}
-
-.header-gstin-top:hover .gstin-drag-handle {
-    color: #3b82f6;
 }
 
 .gstin-count-badge {
@@ -187,25 +152,6 @@ main {
     display: flex;
     align-items: center;
     gap: 4px;
-}
-
-.header-gstin-reset-pos {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    color: #2563eb;
-    border-radius: 4px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3px;
-    transition: all 0.15s ease;
-}
-
-.header-gstin-reset-pos:hover {
-    background: #dbeafe;
-    color: #1d4ed8;
-    border-color: #93c5fd;
 }
 
 .header-gstin-expand-btn {

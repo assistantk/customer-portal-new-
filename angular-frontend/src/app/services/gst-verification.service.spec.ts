@@ -74,7 +74,7 @@ describe('GstVerificationService', () => {
     expect(cached.gstin).toBe('07AAAAA0000A1Z5');
   });
 
-  it('falls back to mock registry details gracefully when backend is unreachable or 503', async () => {
+  it('does not present fabricated registry details when the backend is unavailable', async () => {
     httpMock.get.mockReturnValue(throwError(() => ({
       status: 503,
       error: { message: 'GST service timeout' }
@@ -84,24 +84,28 @@ describe('GstVerificationService', () => {
       service.verifyGstin('07AAAAA0000A1Z5').subscribe(resolve);
     });
 
-    expect(res.success).toBe(true);
-    expect(res.legalName).toBe('DELHI FREIGHT LOGISTICS PRIVATE LIMITED');
-    expect(res.verificationStatus).toBe('VERIFIED');
+    expect(res.success).toBe(false);
+    expect(res.legalName).toBeUndefined();
+    expect(res.verificationStatus).toBe('SERVICE_UNAVAILABLE');
   });
 
-  it('correctly resolves Siliguri Bardana Company for 09ADMPA1980G1ZK in fallback mode', async () => {
-    httpMock.get.mockReturnValue(throwError(() => ({ status: 0 })));
+  it('preserves partial official responses without filling missing values from OCR', async () => {
+    httpMock.get.mockReturnValue(of({
+      success: true,
+      gstin: '07AAAAA0000A1Z5',
+      legalName: 'OFFICIAL COMPANY LIMITED',
+      verificationStatus: 'VERIFIED'
+    }));
 
     const res = await new Promise<GstVerificationResponse>((resolve) => {
-      service.verifyGstin('09ADMPA1980G1ZK').subscribe(resolve);
+      service.verifyGstin('07AAAAA0000A1Z5').subscribe(resolve);
     });
 
     expect(res.success).toBe(true);
-    expect(res.legalName).toBe('SILIGURI BARDANA COMPANY');
-    expect(res.pan).toBe('ADMPA1980G');
-    expect(res.state).toBe('Uttar Pradesh');
-    expect(res.pincode).toBe('208001');
-    expect(res.constitutionOfBusiness).toBe('Proprietorship');
+    expect(res.legalName).toBe('OFFICIAL COMPANY LIMITED');
+    expect(res.pan).toBeUndefined();
+    expect(res.address).toBeUndefined();
+    expect(res.pincode).toBeUndefined();
     expect(res.verificationStatus).toBe('VERIFIED');
   });
 
@@ -205,4 +209,3 @@ describe('GstVerificationService', () => {
     });
   });
 });
-

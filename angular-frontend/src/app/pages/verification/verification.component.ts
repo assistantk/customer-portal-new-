@@ -11,7 +11,7 @@ import { CustomerService } from "../../services/customer.service";
   styleUrls: ["./verification.component.css"]
 })
 export class VerificationComponent implements OnInit, OnDestroy {
-  verificationType: "customer" | "gstin" = "customer";
+  verificationType: "customer" | "gstin" | "agent" | "ownership" = "customer";
   code = "";
   loading = false;
   customers: any[] | null = null;

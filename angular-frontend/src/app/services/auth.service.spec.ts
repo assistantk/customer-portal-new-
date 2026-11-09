@@ -37,18 +37,28 @@ describe('AuthService', () => {
     expect(refreshedService.currentUser).toEqual(user);
   });
 
-  it('confirms the cached user against the server session after refresh', () => {
+  it('restores the authenticated user and selected role from the server session after refresh', () => {
     const cachedUser: AuthUserData = { userId: 'RAILUSER', userName: 'Rail User' };
     sessionStorage.setItem('customer-portal.authenticated-user', JSON.stringify(cachedUser));
     service = new AuthService(TestBed.inject(HttpClient));
 
     service.checkSession().subscribe();
-    httpTestingController.expectOne('/api/auth/session').flush({
+    const request = httpTestingController.expectOne('/api/auth/session');
+    expect(request.request.withCredentials).toBe(true);
+    request.flush({
       success: true,
       authenticated: true,
-      data: { userId: 'RAILUSER', userName: 'Rail User', userRole: 'USER' }
+      data: {
+        userId: 'RAILUSER',
+        userName: 'Rail User',
+        userRole: 'DCM',
+        designation: 'SR-DCM',
+        divisionCode: 'TKD'
+      }
     });
     expect(service.currentUser?.userId).toBe('RAILUSER');
+    expect(service.currentUser?.designation).toBe('SR-DCM');
+    expect(service.currentUser?.divisionCode).toBe('TKD');
   });
 
   it('loads a CAPTCHA image using the session cookie', () => {

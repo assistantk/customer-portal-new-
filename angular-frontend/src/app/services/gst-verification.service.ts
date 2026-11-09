@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, tap, catchError, map } from 'rxjs';
 import { API_BASE_URL } from './api-config';
-import { ExtractedGstinDetails, cleanAndShortenAddress } from './pan-ocr.service';
+import { ExtractedGstinDetails } from './pan-ocr.service';
 
 export interface GstVerificationResponse {
   success: boolean;
@@ -51,47 +51,6 @@ export interface GstCrossCheckResult {
 
 export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
-const STATE_CODE_MAP: Record<string, string> = {
-  '01': 'Jammu and Kashmir',
-  '02': 'Himachal Pradesh',
-  '03': 'Punjab',
-  '04': 'Chandigarh',
-  '05': 'Uttarakhand',
-  '06': 'Haryana',
-  '07': 'Delhi',
-  '08': 'Rajasthan',
-  '09': 'Uttar Pradesh',
-  '10': 'Bihar',
-  '11': 'Sikkim',
-  '12': 'Arunachal Pradesh',
-  '13': 'Nagaland',
-  '14': 'Manipur',
-  '15': 'Mizoram',
-  '16': 'Tripura',
-  '17': 'Meghalaya',
-  '18': 'Assam',
-  '19': 'West Bengal',
-  '20': 'Jharkhand',
-  '21': 'Odisha',
-  '22': 'Chhattisgarh',
-  '23': 'Madhya Pradesh',
-  '24': 'Gujarat',
-  '25': 'Dadra and Nagar Haveli and Daman and Diu',
-  '26': 'Dadra and Nagar Haveli and Daman and Diu',
-  '27': 'Maharashtra',
-  '28': 'Andhra Pradesh',
-  '29': 'Karnataka',
-  '30': 'Goa',
-  '31': 'Lakshadweep',
-  '32': 'Kerala',
-  '33': 'Tamil Nadu',
-  '34': 'Puducherry',
-  '35': 'Andaman and Nicobar Islands',
-  '36': 'Telangana',
-  '37': 'Andhra Pradesh',
-  '38': 'Ladakh'
-};
-
 @Injectable({
   providedIn: 'root'
 })
@@ -104,110 +63,10 @@ export class GstVerificationService {
   constructor(private http: HttpClient) {}
 
   /**
-   * Resolves realistic, deterministic official GST registry details for a GSTIN.
-   * Used for offline/fallback scenarios or when the backend verification service is unreachable.
-   */
-  resolveMockGstDetails(gstin: string, ocrData?: Partial<ExtractedGstinDetails>): GstVerificationResponse {
-    const stateCode = gstin.substring(0, 2);
-    const stateName = STATE_CODE_MAP[stateCode] || 'Uttar Pradesh';
-    const pan = gstin.substring(2, 12);
-    const panType = pan.charAt(3).toUpperCase();
-
-    let constitution = 'Private Limited Company';
-    if (panType === 'P') constitution = 'Proprietorship';
-    else if (panType === 'F') constitution = 'Partnership Firm';
-    else if (panType === 'C') constitution = 'Private Limited Company';
-    else if (panType === 'H') constitution = 'Hindu Undivided Family (HUF)';
-    else if (panType === 'T') constitution = 'Trust';
-
-    // Specific well-known mock profiles
-    if (gstin === '09ADMPA1980G1ZK') {
-      return {
-        success: true,
-        gstin,
-        legalName: 'SILIGURI BARDANA COMPANY',
-        tradeName: 'SILIGURI BARDANA COMPANY',
-        businessName: 'SILIGURI BARDANA COMPANY',
-        pan: 'ADMPA1980G',
-        status: 'Active',
-        registrationDate: '01/07/2017',
-        constitutionOfBusiness: 'Proprietorship',
-        taxpayerType: 'Regular',
-        address: '74/32, COLLECTOR GANJ, KANPUR, UTTAR PRADESH - 208001',
-        city: 'Kanpur',
-        district: 'Kanpur Nagar',
-        state: 'Uttar Pradesh',
-        pincode: '208001',
-        natureOfBusiness: ['Wholesale and Retail Trade', 'Freight Transport Services', 'Warehousing and Storage'],
-        verificationStatus: 'VERIFIED',
-        message: 'GSTIN verified successfully from authorized GST registry.'
-      };
-    }
-
-    if (gstin === '07AAAAA0000A1Z5') {
-      return {
-        success: true,
-        gstin,
-        legalName: 'DELHI FREIGHT LOGISTICS PRIVATE LIMITED',
-        tradeName: 'DELHI FREIGHT EXPRESS',
-        businessName: 'DELHI FREIGHT EXPRESS',
-        pan: 'AAAAA0000A',
-        status: 'Active',
-        registrationDate: '01/07/2017',
-        constitutionOfBusiness: 'Private Limited Company',
-        taxpayerType: 'Regular',
-        address: 'PLOT 12, OKHLA INDUSTRIAL AREA PHASE III, NEW DELHI, 110020',
-        city: 'NEW DELHI',
-        district: 'SOUTH DELHI',
-        state: 'Delhi',
-        pincode: '110020',
-        natureOfBusiness: ['Transport Services', 'Freight Forwarding', 'Logistics Operations'],
-        verificationStatus: 'VERIFIED',
-        message: 'GSTIN verified successfully from authorized GST registry.'
-      };
-    }
-
-    // Dynamic resolution based on OCR data if available, or state/pan
-    const ocrCompany = ocrData?.businessName || ocrData?.tradeName || ocrData?.legalName;
-    const companyName = ocrCompany
-      ? ocrCompany.toUpperCase().trim()
-      : `${stateName.toUpperCase()} FREIGHT CARRIERS ${constitution === 'Proprietorship' ? 'ENTERPRISES' : 'PRIVATE LIMITED'}`;
-
-    const city = ocrData?.city ? ocrData.city.trim() : stateName;
-    const pincode = ocrData?.pincode ? ocrData.pincode.trim() : '110001';
-    const address = ocrData?.address
-      ? cleanAndShortenAddress(ocrData.address).toUpperCase()
-      : `RAILWAY FREIGHT TERMINAL, GOODS SHED ROAD, ${stateName.toUpperCase()}`;
-
-    return {
-      success: true,
-      gstin,
-      legalName: companyName,
-      tradeName: companyName,
-      businessName: companyName,
-      pan,
-      status: 'Active',
-      registrationDate: '01/07/2017',
-      constitutionOfBusiness: constitution,
-      taxpayerType: 'Regular',
-      address,
-      city,
-      district: city,
-      state: stateName,
-      pincode,
-      natureOfBusiness: ['Freight Transport', 'Logistics Operations', 'Commercial Trading'],
-      verificationStatus: 'VERIFIED',
-      message: 'GSTIN verified successfully from authorized GST registry.'
-    };
-  }
-
-  /**
    * Verifies a 15-character GSTIN against the backend authorized GST verification service.
    * Uses session cache to prevent duplicate calls for the same GSTIN during a single session.
-   * If the backend verification service is unreachable, automatically falls back to deterministic
-   * simulated GST registry data so that Official GST Registry Record data is always displayed.
    */
-  verifyGstin(rawGstin: string, ocrData?: Partial<ExtractedGstinDetails>): Observable<GstVerificationResponse> {
+  verifyGstin(rawGstin: string): Observable<GstVerificationResponse> {
     if (!rawGstin) {
       return of({
         success: false,
@@ -230,27 +89,55 @@ export class GstVerificationService {
 
     // Check session cache first
     const cached = this.cache.get(gstin);
-    if (cached && cached.legalName) {
+    if (cached?.success && ['VERIFIED', 'CANCELLED', 'SUSPENDED'].includes(cached.verificationStatus)) {
       return of(cached);
     }
 
     return this.http.get<GstVerificationResponse>(`${this.API}/verify/${gstin}`, { withCredentials: true }).pipe(
-      map((res) => {
-        if (!res || !res.legalName || res.verificationStatus === 'SERVICE_UNAVAILABLE') {
-          return this.resolveMockGstDetails(gstin, ocrData);
+      map((res): GstVerificationResponse => {
+        if (!res) {
+          return {
+            success: false,
+            gstin,
+            verificationStatus: 'SERVICE_UNAVAILABLE' as const,
+            message: 'The authorized GST verification service returned no response.'
+          };
+        }
+        if (res.gstin && res.gstin.trim().toUpperCase() !== gstin) {
+          return {
+            success: false,
+            gstin,
+            verificationStatus: 'ERROR' as const,
+            message: 'The verification response did not match the requested GSTIN.'
+          };
         }
         return res;
       }),
       tap((res) => {
-        if (res && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
+        if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
           this.cache.set(gstin, res);
         }
       }),
-      catchError((err) => {
-        console.warn('Backend GST verification API unreachable or error, falling back to mock provider:', err);
-        const fallback = this.resolveMockGstDetails(gstin, ocrData);
-        this.cache.set(gstin, fallback);
-        return of(fallback);
+      catchError((err): Observable<GstVerificationResponse> => {
+        const errorBody: unknown = err?.error;
+        if (errorBody && typeof errorBody === 'object' && 'verificationStatus' in errorBody) {
+          const response = errorBody as Partial<GstVerificationResponse>;
+          const status = response.verificationStatus;
+          if (status === 'INVALID_GSTIN' || status === 'NOT_FOUND' || status === 'SERVICE_UNAVAILABLE' || status === 'ERROR') {
+            return of({
+              ...response,
+              success: response.success === true,
+              gstin: response.gstin || gstin,
+              verificationStatus: status
+            });
+          }
+        }
+        return of<GstVerificationResponse>({
+          success: false,
+          gstin,
+          verificationStatus: 'SERVICE_UNAVAILABLE',
+          message: err?.error?.message || 'The authorized GST verification service is unavailable. Please retry.'
+        });
       })
     );
   }
@@ -563,4 +450,3 @@ export class GstVerificationService {
       .trim();
   }
 }
-

@@ -17,6 +17,7 @@ class GstVerificationServiceTest {
                 new RestTemplateBuilder(),
                 true,
                 "mock",
+                true,
                 "https://api.sandbox.co.in/gsp/public/taxpayer/search",
                 "",
                 "",
@@ -118,6 +119,7 @@ class GstVerificationServiceTest {
                 new RestTemplateBuilder(),
                 false,
                 "mock",
+                true,
                 "https://api.sandbox.co.in/gsp/public/taxpayer/search",
                 "",
                 "",
@@ -130,6 +132,53 @@ class GstVerificationServiceTest {
         assertNotNull(response);
         assertFalse(response.isSuccess());
         assertEquals("SERVICE_UNAVAILABLE", response.getVerificationStatus());
+    }
+
+    @Test
+    void liveProviderWithoutCredentials_returnsUnavailableInsteadOfMockData() {
+        GstVerificationServiceImpl liveService = new GstVerificationServiceImpl(
+                new RestTemplateBuilder(),
+                true,
+                "gsp",
+                false,
+                "https://api.sandbox.co.in/gsp/public/taxpayer/search",
+                "",
+                "",
+                "",
+                5000,
+                10000
+        );
+
+        GstVerificationResponse response = liveService.verifyGstin("07AAAAA0000A1Z5");
+
+        assertFalse(response.isSuccess());
+        assertEquals("SERVICE_UNAVAILABLE", response.getVerificationStatus());
+        assertNull(response.getLegalName());
+        assertNull(response.getPan());
+    }
+
+    @Test
+    void mockProviderDisabled_doesNotReturnSyntheticRegistrationData() {
+        GstVerificationServiceImpl productionService = new GstVerificationServiceImpl(
+                new RestTemplateBuilder(),
+                true,
+                "mock",
+                false,
+                "https://api.sandbox.co.in/gsp/public/taxpayer/search",
+                "",
+                "",
+                "",
+                5000,
+                10000
+        );
+
+        GstVerificationResponse response = productionService.verifyGstin("19ADTPR9128E1ZV");
+
+        assertFalse(response.isSuccess());
+        assertEquals("SERVICE_UNAVAILABLE", response.getVerificationStatus());
+        assertNull(response.getLegalName());
+        assertNull(response.getTradeName());
+        assertNull(response.getPan());
     }
 
     @Test
@@ -185,5 +234,24 @@ class GstVerificationServiceTest {
         assertEquals("110001", res.getPincode());
         assertTrue(res.getAddress().contains("BARAKHAMBA ROAD"));
         assertTrue(res.getNatureOfBusiness().contains("Transport"));
+    }
+
+    @Test
+    void parseGspApiResponse_doesNotInventMissingRegistrationFields() {
+        GstVerificationResponse response = service.parseGspApiResponse(
+                "07AABCR1234D1Z5",
+                "{\"data\":{\"legal_name\":\"OFFICIAL COMPANY LIMITED\",\"address\":\"12 MAIN ROAD, DELHI\"}}"
+        );
+
+        assertTrue(response.isSuccess());
+        assertEquals("VERIFIED", response.getVerificationStatus());
+        assertEquals("OFFICIAL COMPANY LIMITED", response.getLegalName());
+        assertEquals("12 MAIN ROAD, DELHI", response.getAddress());
+        assertNull(response.getPan());
+        assertNull(response.getStatus());
+        assertNull(response.getState());
+        assertNull(response.getStateCode());
+        assertNull(response.getPincode());
+        assertNull(response.getRegistrationDate());
     }
 }

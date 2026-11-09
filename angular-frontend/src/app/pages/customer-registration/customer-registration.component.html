@@ -8,37 +8,14 @@
                     class="header-gstin-card"
                     [class.collapsed]="gstinCollapsed"
                     [class.is-expanded]="gstinCardExpanded"
-                    [class.is-dragging]="isDraggingGstinCard"
-                    [class.is-moved]="gstinCardPos.x !== 0 || gstinCardPos.y !== 0"
-                    [style.transform]="'translate3d(' + gstinCardPos.x + 'px, ' + gstinCardPos.y + 'px, 0)'"
                 >
-                    <div class="header-gstin-top" (mousedown)="onGstinDragStart($event)" (touchstart)="onGstinDragStart($event)" title="Drag to move State-wise GSTINs card">
+                    <div class="header-gstin-top">
                         <div class="header-gstin-title">
-                            <span class="gstin-drag-handle" title="Drag to move card" aria-label="Drag handle">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                    <circle cx="9" cy="5" r="1.75"/>
-                                    <circle cx="15" cy="5" r="1.75"/>
-                                    <circle cx="9" cy="12" r="1.75"/>
-                                    <circle cx="15" cy="12" r="1.75"/>
-                                    <circle cx="9" cy="19" r="1.75"/>
-                                    <circle cx="15" cy="19" r="1.75"/>
-                                </svg>
-                            </span>
                             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                             <span>State-wise GSTINs</span>
                             <span *ngIf="gstins.length" class="gstin-count-badge">{{ gstins.length }}</span>
                         </div>
                         <div class="header-gstin-top-actions">
-                            <button
-                                *ngIf="gstinCardPos.x !== 0 || gstinCardPos.y !== 0"
-                                type="button"
-                                class="header-gstin-reset-pos"
-                                (click)="resetGstinCardPosition($event)"
-                                title="Reset card position to original place"
-                                aria-label="Reset card position"
-                            >
-                                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                            </button>
                             <button
                                 type="button"
                                 class="header-gstin-expand-btn"
@@ -79,10 +56,10 @@
                                         [id]="'gstin-' + i"
                                         name="gstin"
                                         type="text"
-                                        [(ngModel)]="g.gstin"
+                                        [ngModel]="g.gstin"
                                         [ngModelOptions]="{ standalone: true }"
                                         [placeholder]="g.scanning ? 'Extracting GSTIN...' : ((g.scanStatus === 'notfound' || g.scanStatus === 'error') ? 'Enter 15-character GSTIN manually' : 'ENTER GSTIN NUMBER')"
-                                        (input)="handleGstinChange(i, { gstin: g.gstin })"
+                                        (ngModelChange)="handleGstinInput(i, $event)"
                                         (blur)="handleGstinBlur(i)"
                                         style="text-transform: uppercase;"
                                     />
@@ -153,7 +130,13 @@
                                 <!-- Verification Status Pills -->
                                 <small *ngIf="g.verificationState === 'verified'" class="gstin-registry-status verified">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                    GST Registry Verified (Active)
+                                    GST Registry Verified{{ g.verificationData?.status ? ' (' + g.verificationData.status + ')' : '' }}
+                                </small>
+                                <small *ngIf="g.verificationState === 'pending'" class="gstin-registry-status unavailable">
+                                    Complete a valid 15-character GSTIN to verify the updated registration details.
+                                </small>
+                                <small *ngIf="hasUnverifiedOcrValues(i)" class="gstin-registry-status unavailable">
+                                    Some registration fields were not returned by the official record and remain OCR-only, unverified values.
                                 </small>
                                 <small *ngIf="g.verificationState === 'discrepancy'" class="gstin-registry-status discrepancy">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -190,6 +173,9 @@
                                 <small *ngIf="g.verificationState === 'unavailable'" class="gstin-registry-status unavailable">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                                     Registry service unavailable
+                                </small>
+                                <small *ngIf="g.scanError && (g.verificationState === 'unavailable' || g.verificationState === 'notfound' || g.verificationState === 'error')" class="error">
+                                    {{ g.scanError }}
                                 </small>
                                 <small *ngIf="errors['gstin_' + i + '_gstin'] && g.scanStatus !== 'notfound' && g.scanStatus !== 'error'" class="error">
                                     {{ errors['gstin_' + i + '_gstin'] }}
