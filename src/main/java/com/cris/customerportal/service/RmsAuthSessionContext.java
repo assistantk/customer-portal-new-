@@ -11,7 +11,7 @@ import java.util.List;
  *
  * States:
  *   CREDENTIALS_VALIDATED  - user credentials accepted by ATVLDTUSER; waiting for designation selection.
- *   OTP_PENDING            - designation selected (SR-DCM confirmed); OTP dispatched; waiting for OTP entry.
+ *   OTP_PENDING            - an RMS-returned designation is selected; OTP dispatched; waiting for OTP entry.
  */
 public class RmsAuthSessionContext implements Serializable {
     private static final long serialVersionUID = 1L;

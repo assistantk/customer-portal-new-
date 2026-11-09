@@ -42,7 +42,7 @@ export class VerificationComponent implements OnInit, OnDestroy {
     this.routerEventsSubscription?.unsubscribe();
   }
 
-  setVerificationType(type: "customer" | "gstin"): void {
+  setVerificationType(type: "customer" | "gstin" | "agent" | "ownership"): void {
     this.lookupRequestId++;
     this.verificationType = type;
     this.code = "";
@@ -50,6 +50,12 @@ export class VerificationComponent implements OnInit, OnDestroy {
     this.error = "";
     this.verifiedSearchValue = "";
     this.loading = false;
+  }
+
+  onCodeInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.code = input.value.toUpperCase();
+    input.value = this.code;
   }
 
   getGstinList(c: any): string[] {
@@ -64,9 +70,16 @@ export class VerificationComponent implements OnInit, OnDestroy {
 
   verifyCode(e?: Event): void {
     if (e) e.preventDefault();
-    const trimmedCode = this.code.trim();
+    const trimmedCode = this.code.trim().toUpperCase();
     if (!trimmedCode) {
-      this.error = `Please enter a ${this.verificationType === "gstin" ? "GSTIN" : "Customer Code"}.`;
+      const field = this.verificationType === "gstin"
+        ? "GSTIN"
+        : this.verificationType === "agent"
+          ? "Handling Agent Code or Company Name"
+          : this.verificationType === "ownership"
+            ? "Ownership Code or Company Name"
+            : "Customer Code";
+      this.error = `Please enter a ${field}.`;
       return;
     }
 
@@ -78,52 +91,52 @@ export class VerificationComponent implements OnInit, OnDestroy {
     const requestType = this.verificationType;
     this.cdr.markForCheck();
 
-    if (requestType === "gstin") {
-      this.customerService.lookupCustomerByGstinJDBC(trimmedCode).pipe(
-        finalize(() => {
-          if (requestId !== this.lookupRequestId) return;
-          this.loading = false;
-          this.cdr.markForCheck();
-        })
-      ).subscribe({
-        next: (data) => {
-          if (requestId !== this.lookupRequestId) return;
-          this.customers = (Array.isArray(data) ? data : data == null ? [] : [data])
-            .filter((record) => record != null && typeof record === "object");
-          if (this.customers.length > 0) this.verifiedSearchValue = trimmedCode;
-          this.cdr.markForCheck();
-        },
-        error: (err) => {
-          if (requestId !== this.lookupRequestId) return;
-          console.error("Lookup error:", err);
-          this.error = err?.error?.message || err?.message || "Code not found.";
-          this.cdr.markForCheck();
+    const lookup$ = requestType === "gstin"
+      ? this.customerService.lookupCustomerByGstinJDBC(trimmedCode)
+      : requestType === "agent"
+        ? this.customerService.searchHandlingAgentsJDBC(trimmedCode)
+        : requestType === "ownership"
+          ? this.customerService.searchOwnershipCodesJDBC(trimmedCode)
+          : this.customerService.lookupOldCustomerJDBC(trimmedCode);
+
+    lookup$.pipe(
+      finalize(() => {
+        if (requestId !== this.lookupRequestId) return;
+        this.loading = false;
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
+      next: (data) => {
+        if (requestId !== this.lookupRequestId) return;
+        const records = Array.isArray(data) ? data : data == null ? [] : [data];
+        this.customers = records.filter((record) => record != null && typeof record === "object");
+        if (this.customers.length > 0) {
+          this.verifiedSearchValue = trimmedCode;
+        } else {
+          this.error = requestType === "ownership"
+            ? "No Ownership Code or Company Name found."
+            : requestType === "agent"
+              ? "No Handling Agent Code or Company Name found."
+              : "Code not found.";
         }
-      });
-    } else {
-      this.customerService.lookupOldCustomerJDBC(trimmedCode).pipe(
-        finalize(() => {
-          if (requestId !== this.lookupRequestId) return;
-          this.loading = false;
-          this.cdr.markForCheck();
-        })
-      ).subscribe({
-        next: (data) => {
-          if (requestId !== this.lookupRequestId) return;
-          this.customers = data != null && typeof data === "object" ? [data] : [];
-          if (this.customers.length > 0) this.verifiedSearchValue = trimmedCode;
-          this.cdr.markForCheck();
-        },
-        error: (err) => {
-          if (requestId !== this.lookupRequestId) return;
-          console.error("Lookup error:", err);
-          this.error = err?.error?.message || err?.message || "Code not found.";
-          this.cdr.markForCheck();
-        }
-      });
-    }
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        if (requestId !== this.lookupRequestId) return;
+        console.error("Lookup error:", err);
+        this.error = err?.error?.message || err?.message || "Code not found.";
+        this.cdr.markForCheck();
+      }
+    });
   }
 
+  getHandlingAgentCodes(customer: any): string[] {
+    const codes: unknown[] = Array.isArray(customer?.handlingAgentCodes) ? customer.handlingAgentCodes : [];
+    return Array.from(new Set<string>(codes
+      .filter((code): code is string => typeof code === "string")
+      .map((code) => code.trim())
+      .filter((code) => Boolean(code))));
+  }
 
   get hasVerificationResults(): boolean {
     return !!this.customers?.length && !!this.verifiedSearchValue && !this.loading;

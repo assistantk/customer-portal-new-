@@ -1,17 +1,22 @@
 // @vitest-environment jsdom
 import '@angular/compiler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChangeDetectorRef } from '@angular/core';
-import { FormBuilder } from '@angular/forms';
+import { ChangeDetectorRef, NgModule } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Subject, of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
 import { AuthService, RmsValidateUserResponse, RmsSelectDesignationResponse, AuthResponse } from '../../services/auth.service';
+
+@NgModule({
+  imports: [ReactiveFormsModule],
+  declarations: [LoginComponent]
+})
+export class LoginComponentTestModule {}
 
 describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
   let component: LoginComponent;
   let authServiceMock: any;
   let routerMock: any;
-  let activatedRouteMock: any;
   let cdrMock: ChangeDetectorRef;
   let fb: FormBuilder;
 
@@ -59,18 +64,12 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
       navigateByUrl: vi.fn()
     };
 
-    activatedRouteMock = {
-      snapshot: {
-        queryParams: { returnUrl: '/registration' }
-      }
-    };
     cdrMock = { markForCheck: vi.fn() } as unknown as ChangeDetectorRef;
 
     component = new LoginComponent(
       fb,
       authServiceMock as AuthService,
       routerMock,
-      activatedRouteMock,
       cdrMock
     );
 
@@ -133,7 +132,6 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
       fb,
       authServiceMock as AuthService,
       routerMock,
-      activatedRouteMock,
       cdrMock
     );
     reloadedComponent.ngOnInit();
@@ -397,7 +395,6 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
       fb,
       authServiceMock as AuthService,
       routerMock,
-      activatedRouteMock,
       cdrMock
     );
     freshComponent.ngOnInit();
@@ -416,7 +413,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
   });
 
 
-  it('initiates OTP only after the SR-DCM role is selected', () => {
+  it('initiates OTP after an available RMS designation is selected', () => {
     component.currentStep = 'DESIGNATION';
     component.availableDesignations = ['SR-DCM', 'Senior DCM', 'DCM'];
     component.designationForm.setValue({ designation: 'SR-DCM' });
@@ -434,21 +431,21 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.resendCooldown).toBe(60);
   });
 
-  it('blocks OTP generation when a role other than SR-DCM is selected', () => {
+  it('allows OTP generation when another returned designation is selected', () => {
     component.currentStep = 'DESIGNATION';
     component.availableDesignations = ['Senior DFM', 'Senior DCM', 'DCM'];
     component.designationForm.setValue({ designation: 'Senior DFM' });
     component.onSubmitDesignation();
 
-    expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('Senior DFM');
     expect(authServiceMock.generateOtp).not.toHaveBeenCalled();
     expect(authServiceMock.regenerateOtp).not.toHaveBeenCalled();
-    expect(component.currentStep).toBe('DESIGNATION');
-    expect(component.error).toContain('not permitted');
+    expect(component.currentStep).toBe('OTP');
+    expect(component.error).toBe('');
   });
 
-  // Scenario 6: An unauthorized designation cannot be submitted from the selection step
-  it('Scenario 6: blocks an unauthorized designation before requesting an OTP', () => {
+  // Scenario 6: Any designation returned by RMS can be submitted for OTP
+  it('Scenario 6: allows a returned non-SR-DCM designation to request an OTP', () => {
     component.validatedUser = {
       userId: 'SREEJU',
       divisionCode: 'TKD',
@@ -461,14 +458,14 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     component.onSubmitDesignation();
 
     expect(component.loading).toBe(false);
-    expect(component.currentStep).toBe('DESIGNATION');
-    expect(component.error).toContain('not permitted');
-    expect(authServiceMock.selectDesignation).not.toHaveBeenCalled();
+    expect(component.currentStep).toBe('OTP');
+    expect(component.error).toBe('');
+    expect(authServiceMock.selectDesignation).toHaveBeenCalledWith('DCM');
     expect(routerMock.navigate).not.toHaveBeenCalled();
   });
 
-  // Scenario 7: Successful OTP verification -> authorized user reaches home page
-  it('Scenario 7: completes OTP verification and redirects authorized user to returnUrl', () => {
+  // Scenario 7: Successful OTP verification sends every role to Home
+  it('Scenario 7: completes OTP verification and redirects the user to Home', () => {
     vi.useFakeTimers();
 
     component.currentStep = 'OTP';
@@ -493,7 +490,7 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.successMessage).toContain('Verification Successful');
 
     vi.advanceTimersByTime(350);
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith('/registration');
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith('/home');
 
     vi.useRealTimers();
   });

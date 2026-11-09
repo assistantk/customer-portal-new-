@@ -127,7 +127,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       ? gstins.map((gstin, index) => ({
         ...blankGstin,
         gstinId: `ownership-global-${index}`,
-        gstin,
+        gstin: gstin.toUpperCase(),
         state: getStateNameFromGstinCode(gstin.slice(0, 2)) || ''
       }))
       : [{ ...blankGstin }];
@@ -575,7 +575,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   onDeleteCodeChange(event: Event): void {
-    this.deleteCode = (event.target as HTMLInputElement).value;
+    this.deleteCode = (event.target as HTMLInputElement).value.toUpperCase();
     this.clearDeleteVerification();
   }
 
@@ -762,7 +762,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
                 this.form.ownershipPartyAddress = this.form.ownershipAddress;
                 this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
-                this.form.panNumber = resp.data.panNumber || '';
+                this.form.panNumber = (resp.data.panNumber || '').toUpperCase();
                 this.form.city = resp.data.city || '';
                 this.form.pincode = resp.data.pincode || '';
                 this.populateOwnershipGstins(resp.data.gstinNumbers || '');
@@ -855,6 +855,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   /* ===== Old User: lookup by customer / handling agent code ===== */
   triggerOldLookup(code: string, type: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    code = (code || '').toUpperCase();
     if (this.verifiedCustomerCode !== code.trim().toUpperCase()) {
       this.verifiedCustomerCode = null;
     }
@@ -1592,7 +1593,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const code = this.form.customerCode || this.form.ownershipCode || 'REGISTRATION';
     const gstins = (this.gstins || [])
       .filter((g) => g.gstin && g.gstin.trim() !== '')
-      .map((g) => ({ gstin: g.gstin.trim(), state: g.state }));
+      .map((g) => ({ gstin: g.gstin.trim().toUpperCase(), state: g.state }));
 
     const state = gstins.length > 0 ? gstins[0].state : '';
 
@@ -1693,7 +1694,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         }
       });
     } else if (this.mode === 'new') {
-      this.customerService.registerCustomer({ ...this.form, codeType: this.codeType }, this.gstins).pipe(
+      const payload: CustomerPayload = {
+        ...this.form,
+        customerCode: this.form.customerCode.toUpperCase(),
+        panNumber: this.form.panNumber.toUpperCase(),
+        codeType: this.codeType
+      };
+      const gstinEntries = this.gstins.map((gstin) => ({
+        ...gstin,
+        gstin: gstin.gstin.toUpperCase()
+      }));
+      this.customerService.registerCustomer(payload, gstinEntries).pipe(
         finalize(() => {
           this.loading = false;
           this.cdr.markForCheck();
@@ -1774,7 +1785,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                     this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
                     this.form.city = refreshed.city || this.form.city;
                     this.form.pincode = refreshed.pincode || refreshed.pcoCode || this.form.pincode;
-                    this.form.panNumber = refreshed.panNumber || this.form.panNumber;
+                    this.form.panNumber = (refreshed.panNumber || this.form.panNumber).toUpperCase();
                     this.form.email = refreshed.email || refreshed.emailId || this.form.email;
                     this.form.mobile = refreshed.mobile || refreshed.phoneNumber || this.form.mobile;
                     this.applyOldRecordDivision(refreshed);
@@ -1784,7 +1795,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                       const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
                         ...blankGstin,
                         gstinId: `old-${idx}`,
-                        gstin: g
+                        gstin: g.toUpperCase()
                       }));
                       this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
                     } else {
@@ -1945,7 +1956,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     this.gstins.forEach((gstin, index) => {
-      const status = this.getGstinPanStatus(gstin.gstin, value);
+      const status = this.getGstinPanStatus(gstin.gstin, this.form.panNumber);
       const field = `gstin_${index}_gstin`;
       if (status === 'GSTIN does not match the PAN number.') {
         this.errors[field] = 'GSTIN does not match the PAN number.';
@@ -2332,7 +2343,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         // 2. PAN Number
         if (panMismatch || (ocrPan && gstinDerivedPan && ocrPan !== gstinDerivedPan)) {
           this.errors['panNumber'] = 'Extracted PAN does not match the GSTIN.';
-          this.form.panNumber = ocrPan || gstinDerivedPan;
+          this.form.panNumber = (ocrPan || gstinDerivedPan).toUpperCase();
         } else if (!panRe.test(extractedPan)) {
           const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
           this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
@@ -2340,7 +2351,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.errors[`gstin_${index}_gstin`] = message;
           return;
         } else {
-          this.form.panNumber = extractedPan;
+          this.form.panNumber = extractedPan.toUpperCase();
           delete this.errors['panNumber'];
         }
 

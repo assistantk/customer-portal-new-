@@ -5,27 +5,43 @@
                 <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <div>
                     <h1>Verification Screen</h1>
-                    <p>Verify whether a code exists in the system</p>
+                    <p>Search and verify Global Customer, Handling Agent, and Ownership Codes</p>
                 </div>
             </div>
         </div>
 
-        <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 24px;">
-            <button 
-                type="button" 
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 24px;">
+            <button
+                type="button"
                 (click)="setVerificationType('customer')"
                 [style.background]="verificationType === 'customer' ? '#2563eb' : '#f8fafc'"
                 [style.color]="verificationType === 'customer' ? 'white' : '#475569'"
                 style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; cursor: pointer; font-weight: 500;">
                 Customer Code
             </button>
-            <button 
-                type="button" 
+            <button
+                type="button"
                 (click)="setVerificationType('gstin')"
                 [style.background]="verificationType === 'gstin' ? '#2563eb' : '#f8fafc'"
                 [style.color]="verificationType === 'gstin' ? 'white' : '#475569'"
                 style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; cursor: pointer; font-weight: 500;">
                 GSTIN
+            </button>
+            <button
+                type="button"
+                (click)="setVerificationType('agent')"
+                [style.background]="verificationType === 'agent' ? '#2563eb' : '#f8fafc'"
+                [style.color]="verificationType === 'agent' ? 'white' : '#475569'"
+                style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; cursor: pointer; font-weight: 500;">
+                Handling Agent Code
+            </button>
+            <button
+                type="button"
+                (click)="setVerificationType('ownership')"
+                [style.background]="verificationType === 'ownership' ? '#2563eb' : '#f8fafc'"
+                [style.color]="verificationType === 'ownership' ? 'white' : '#475569'"
+                style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; cursor: pointer; font-weight: 500;">
+                Ownership Code
             </button>
         </div>
 
@@ -36,21 +52,28 @@
         
         <div *ngIf="customers && customers.length > 0 && !loading" class="info-banner" style="background: #e7f7ed; color: #126c38; border-color: #16a34a;">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 
-            Code verified successfully. Found {{ customers.length }} record(s).
+            Code verified successfully. Found {{ customers?.length || 0 }} record(s).
         </div>
 
         <form (ngSubmit)="verifyCode($event)" class="grid">
             <div class="field full" style="max-width: 400px; margin: 0 auto 10px; text-align: center;">
                 <label for="customerCode">
-                    {{ verificationType === 'gstin' ? 'Enter GSTIN' : 'Enter Customer Code' }}
+                    {{ verificationType === 'gstin' ? 'Enter GSTIN' :
+                       verificationType === 'agent' ? 'Search Handling Agent Code or Company Name' :
+                       verificationType === 'ownership' ? 'Search Ownership Code or Company Name' :
+                       'Enter Customer Code' }}
                 </label>
                 <div class="control">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     <input 
                         id="customerCode" 
                         name="customerCode" 
-                        [(ngModel)]="code"
-                        [placeholder]="verificationType === 'gstin' ? 'Enter GSTIN' : 'Enter Customer Code'"
+                        [value]="code"
+                        (input)="onCodeInput($event)"
+                        [placeholder]="verificationType === 'gstin' ? 'Enter GSTIN' :
+                            verificationType === 'agent' ? 'Enter code or company name' :
+                            verificationType === 'ownership' ? 'Enter code or company name' :
+                            'Enter Customer Code'"
                         [disabled]="loading"
                     />
                 </div>
@@ -59,7 +82,11 @@
             <div class="full" style="text-align: center; margin-bottom: 20px;">
                 <button type="submit" class="submit" [disabled]="loading" style="padding: 8px 20px; height: auto;">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 6px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                    {{ loading ? 'Searching...' : (verificationType === 'gstin' ? 'Verify GSTIN' : 'Verify Customer Code') }}
+                    {{ loading ? 'Searching...' :
+                        verificationType === 'gstin' ? 'Verify GSTIN' :
+                        verificationType === 'agent' ? 'Search Handling Agent Code' :
+                        verificationType === 'ownership' ? 'Search Ownership Code' :
+                        'Verify Customer Code' }}
                 </button>
                 <button *ngIf="customers || error" type="button" class="reset" (click)="reset()" style="margin-left: 10px; padding: 8px 20px; height: auto;">
                     Reset
@@ -83,12 +110,56 @@
                     </button>
                 </div>
             </div>
-            <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div *ngIf="verificationType === 'ownership'" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 360px; white-space: nowrap;">
+                    <thead>
+                        <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Code</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let record of customers" style="border-bottom: 1px solid #e2e8f0;">
+                            <td style="padding: 12px 16px; font-family: monospace;">{{ record.ownershipCode || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ record.companyName || '-' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div *ngIf="verificationType === 'agent'" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+                    <thead>
+                        <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Handling Agent Code</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
+                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let agent of customers" style="border-bottom: 1px solid #e2e8f0;">
+                            <td style="padding: 12px 16px; font-family: monospace;">{{ agent.code || verifiedSearchValue }}</td>
+                            <td style="padding: 12px 16px; font-family: monospace;">{{ agent.gstinNumbers || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ agent.companyName || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ agent.address || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ agent.panNumber || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ agent.division || '-' }}</td>
+                            <td style="padding: 12px 16px;">{{ agent.creationDate || '-' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div *ngIf="verificationType === 'customer' || verificationType === 'gstin'"
+                 style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
                     <thead>
                         <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Global Customer Code</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
+                            <th *ngIf="verificationType === 'gstin'" style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Handling Agent Code</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
                             <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
@@ -99,8 +170,13 @@
                     <tbody>
                         <ng-container *ngFor="let c of customers; let i = index">
                             <tr *ngFor="let g of getGstinList(c); let gIdx = index" style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 12px 16px; font-family: monospace;">{{ c.customerCode || verifiedSearchValue || code }}</td>
+                                <td style="padding: 12px 16px; font-family: monospace;">
+                                    {{ c.customerCode || (verificationType === 'gstin' ? '-' : verifiedSearchValue || code) }}
+                                </td>
                                 <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+                                <td *ngIf="verificationType === 'gstin'" style="padding: 12px 16px; font-family: monospace;">
+                                    {{ getHandlingAgentCodes(c).join(', ') || 'No Handling Agent Code found' }}
+                                </td>
                                 <td style="padding: 12px 16px;">{{ c.companyName || '-' }}</td>
                                 <td style="padding: 12px 16px;">{{ c.address || '-' }}</td>
                                 <td style="padding: 12px 16px;">{{ c.panNumber || '-' }}</td>

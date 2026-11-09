@@ -61,6 +61,33 @@ describe('AuthService', () => {
     request.flush({ image: 'data:image/png;base64,captcha-image' });
   });
 
+  it('uses the existing POST logout endpoint and clears the authenticated user', () => {
+    service.setCurrentUser({ userId: 'RAILUSER' });
+    service.logout().subscribe((response) => expect(response.success).toBe(true));
+
+    const request = httpTestingController.expectOne('/api/auth/logout');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.withCredentials).toBe(true);
+    request.flush({ success: true });
+
+    expect(service.currentUser).toBeNull();
+    expect(sessionStorage.getItem('customer-portal.authenticated-user')).toBeNull();
+  });
+
+  it('clears local auth state when the server invalidates the session but RMS logout fails', () => {
+    service.setCurrentUser({ userId: 'RAILUSER' });
+    service.logout().subscribe({ error: () => undefined });
+
+    const request = httpTestingController.expectOne('/api/auth/logout');
+    request.flush(
+      { success: false, message: 'RMS logout failed.' },
+      { status: 502, statusText: 'Bad Gateway' }
+    );
+
+    expect(service.currentUser).toBeNull();
+    expect(sessionStorage.getItem('customer-portal.authenticated-user')).toBeNull();
+  });
+
   it('sends the entered CAPTCHA with login credentials', () => {
     service.login({ username: ' RAILUSER ', password: 'secret', captchaInput: 'AbCd23' }).subscribe();
 
@@ -155,7 +182,8 @@ describe('AuthService', () => {
     service.verifyOtp('78901').subscribe((res) => {
       expect(res.success).toBe(true);
       expect(service.currentUser?.userId).toBe('SREEJU');
-      expect(service.currentUser?.userRole).toBe('SR-DCM');
+      expect(service.currentUser?.userRole).toBe('DCM');
+      expect(service.currentUser?.designation).toBe('DCM');
     });
 
     const req = httpTestingController.expectOne('/api/auth/verify-otp');
@@ -163,7 +191,7 @@ describe('AuthService', () => {
     expect(req.request.body).toEqual({ otp: '78901' });
     req.flush({
       success: true,
-      data: { userId: 'SREEJU', userName: 'SREEJU KRISHNAN', userRole: 'SR-DCM' }
+      data: { userId: 'SREEJU', userName: 'SREEJU KRISHNAN', userRole: 'DCM', designation: 'DCM' }
     });
   });
 });

@@ -13,7 +13,7 @@
     <div class="denied-divider"></div>
 
     <p class="denied-message">
-      This website is available only to authorized <strong>Senior DCM (SR-DCM)</strong> users. Your selected designation does not have permission to access this application.
+      You are not authorized to access this page. This page is available only to users with the SR-DCM role.
     </p>
 
     <div class="policy-note">
@@ -22,16 +22,16 @@
         <line x1="12" y1="16" x2="12" y2="12"/>
         <line x1="12" y1="8" x2="12.01" y2="8"/>
       </svg>
-      <span>If you believe this is an error, please contact your CRIS Portal Administrator or Regional Senior DCM office.</span>
+      <span>Return to Home to continue using the portal.</span>
     </div>
 
     <div class="action-row">
-      <button type="button" class="btn-return-login" (click)="goBackToLogin()">
+      <button type="button" class="btn-return-login" (click)="goBackToHome()">
         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="19" y1="12" x2="5" y2="12"/>
           <polyline points="12 19 5 12 12 5"/>
         </svg>
-        Go Back to Login
+        Return to Home
       </button>
     </div>
   </div>

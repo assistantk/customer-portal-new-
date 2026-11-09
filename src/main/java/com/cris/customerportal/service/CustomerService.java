@@ -8,6 +8,8 @@ public interface CustomerService {
   String generateUniqueCode(String baseCode);
   com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
   java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin);
+  java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search);
+  java.util.List<java.util.Map<String, String>> searchOwnershipCodes(String search);
   String generateUniqueCodeJDBC(String companyName, String type);
   String registerNewEntryJDBC(java.util.Map<String, String> formData);
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);

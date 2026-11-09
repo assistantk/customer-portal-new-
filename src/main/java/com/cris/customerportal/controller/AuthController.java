@@ -40,6 +40,7 @@ public class AuthController {
     public static final String AUTH_SESSION_KEY = "AUTHENTICATED_USER";
     public static final String RMS_SESSION_CONTEXT_KEY = "RMS_AUTH_CONTEXT";
     public static final String RMS_LOGOUT_CONTEXT_KEY = "RMS_LOGOUT_CONTEXT";
+    private static final int AUTHENTICATED_SESSION_TIMEOUT_SECONDS = 4 * 60 * 60;
 
     private final CaptchaService captchaService;
     private final RmsAuthOrchestrator rmsAuthOrchestrator;
@@ -243,15 +244,6 @@ public class AuthController {
                     .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                     .body(body);
 
-        } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("Access denied: {}. Status: {}",
-                    DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.FORBIDDEN.value());
-            Map<String, Object> body = new HashMap<>();
-            body.put("success", false);
-            body.put("accessDenied", true);
-            body.put("message", "Access Restricted: This website is available only to users with the SR-DCM role.");
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
-
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS select-designation result: FAILED (invalid credentials/designation): {}. Status: {}",
                     DataMaskingUtil.maskSensitive(ex.getMessage()), HttpStatus.BAD_REQUEST.value());
@@ -324,11 +316,6 @@ public class AuthController {
                     .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                     .body(body);
 
-        } catch (RmsAuthOrchestrator.AccessDeniedException ex) {
-            LOGGER.warn("RMS resend-otp denied: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(errorBody(ex.getMessage()));
-
         } catch (RmsAuthOrchestrator.InvalidRmsCredentialsException ex) {
             LOGGER.info("RMS resend-otp rejected: {}", DataMaskingUtil.maskSensitive(ex.getMessage()));
             return ResponseEntity.badRequest()
@@ -398,6 +385,20 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         }
 
+        if (ctx.getStep() != RmsAuthSessionContext.Step.OTP_PENDING
+                || ctx.getDesignations() == null
+                || ctx.getDesignations().stream().noneMatch(
+                        designation -> designation != null
+                                && ctx.getSelectedDesignation() != null
+                                && designation.equalsIgnoreCase(ctx.getSelectedDesignation()))) {
+            LOGGER.info("RMS verify-otp result: FAILED (invalid authentication flow state). Status: {}",
+                    HttpStatus.BAD_REQUEST.value());
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("message", "Session expired or invalid flow. Please start over.");
+            return ResponseEntity.badRequest().body(body);
+        }
+
         String otp = requestDto != null ? requestDto.getOtp() : null;
 
         if (otp == null || otp.trim().isEmpty()) {
@@ -412,17 +413,14 @@ public class AuthController {
             String clientIp = extractClientIp(request);
             AuthUserDto authenticatedUser = rmsAuthOrchestrator.verifyOtp(ctx, otp.trim(), clientIp);
 
-            // Invalidate intermediate auth session to prevent fixation
+            // Rotate the session ID while retaining this browser's session and load-balancer affinity.
             session.removeAttribute(RMS_SESSION_CONTEXT_KEY);
-            session.invalidate();
-
-            // Create new fully-authenticated session
-            HttpSession newSession = request.getSession(true);
-            newSession.setAttribute(AUTH_SESSION_KEY, authenticatedUser);
+            request.changeSessionId();
+            session.setAttribute(AUTH_SESSION_KEY, authenticatedUser);
             if (ctx.getLoginRequest() != null) {
-                newSession.setAttribute(RMS_LOGOUT_CONTEXT_KEY, ctx.getLoginRequest());
+                session.setAttribute(RMS_LOGOUT_CONTEXT_KEY, ctx.getLoginRequest());
             }
-            newSession.setMaxInactiveInterval(3600); // 1 hour session
+            session.setMaxInactiveInterval(AUTHENTICATED_SESSION_TIMEOUT_SECONDS);
 
             LOGGER.info("User successfully verified OTP. Status: {}. Authenticated session established.",
                     HttpStatus.OK.value());
@@ -493,6 +491,8 @@ public class AuthController {
         }
 
         RmsLoginRequest logoutReq = (RmsLoginRequest) session.getAttribute(RMS_LOGOUT_CONTEXT_KEY);
+        session.invalidate();
+
         if (logoutReq != null && rmsAuthOrchestrator != null) {
             try {
                 String clientIp = extractClientIp(request);
@@ -511,11 +511,6 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
             }
         }
-
-        session.removeAttribute(RMS_LOGOUT_CONTEXT_KEY);
-        session.removeAttribute(AUTH_SESSION_KEY);
-        session.removeAttribute(RMS_SESSION_CONTEXT_KEY);
-        session.invalidate();
 
         Map<String, Object> body = new HashMap<>();
         body.put("success", true);

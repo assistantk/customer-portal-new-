@@ -6,6 +6,7 @@ import { NavigationEnd } from '@angular/router';
 import { VerificationComponent } from './verification.component';
 import { CustomerService } from '../../services/customer.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
+import { of } from 'rxjs';
 
 describe('VerificationComponent - PDF Generation Integration', () => {
   let component: VerificationComponent;
@@ -17,7 +18,11 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     mockCustomerService = {
       lookupCustomer: vi.fn(),
       lookupGSTIN: vi.fn(),
-      lookupGlobalCode: vi.fn()
+      lookupGlobalCode: vi.fn(),
+      lookupOldCustomerJDBC: vi.fn(),
+      lookupCustomerByGstinJDBC: vi.fn(),
+      searchHandlingAgentsJDBC: vi.fn(),
+      searchOwnershipCodesJDBC: vi.fn()
     };
     mockPdfGenerator = {
       generateVerificationPdf: vi.fn(),

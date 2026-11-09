@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { CommonModule } from '@angular/common';
+import { NgModule } from '@angular/core';
+import { RouterModule } from '@angular/router';
 import { of, throwError, Subject } from 'rxjs';
 import { LayoutComponent } from './layout.component';
+
+@NgModule({
+  imports: [CommonModule, RouterModule.forRoot([])],
+  declarations: [LayoutComponent]
+})
+export class LayoutComponentTestModule {}
 
 describe('LayoutComponent - Logout Behaviour', () => {
   let component: LayoutComponent;
@@ -80,5 +89,24 @@ describe('LayoutComponent - Logout Behaviour', () => {
     expect(notificationServiceMock.error).toHaveBeenCalledWith('Logout Failed', 'RMS logout rejected: RMS service unreachable.');
     expect(routerMock.navigate).not.toHaveBeenCalled();
   });
-});
 
+  it('shows restricted-access feedback when another valid role selects a protected navigation item', () => {
+    component.currentUser = { userId: 'USR1', userRole: 'DCM', designation: ' DCM ' };
+    const event = { preventDefault: vi.fn() } as unknown as MouseEvent;
+
+    expect(component.hasSrDcmAccess).toBe(false);
+    component.onRestrictedNavigation(event);
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(notificationServiceMock.error).toHaveBeenCalledWith(
+      'Access Restricted',
+      'You are not authorized to access this page. This page is available only to users with the SR-DCM role.'
+    );
+  });
+
+  it('recognizes the selected SR-DCM designation after trimming and case normalization', () => {
+    component.currentUser = { userId: 'USR1', userRole: 'DCM', designation: ' sr-dcm ' };
+
+    expect(component.hasSrDcmAccess).toBe(true);
+  });
+});

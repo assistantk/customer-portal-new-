@@ -578,7 +578,7 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.cdr.markForCheck();
 
-    const customerCode = this.generatedCode || generateCustomerCode(this.form.agentCompanyName);
+    const customerCode = (this.generatedCode || generateCustomerCode(this.form.agentCompanyName)).toUpperCase();
 
     const payload: CustomerPayload = {
       customerCode: customerCode.toUpperCase(),

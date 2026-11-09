@@ -15,6 +15,7 @@ public class GlobalAgentResponse {
     private String pcoCode;
     private String edMndFlag;
     private String division;
+    private String creationDate;
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
@@ -54,4 +55,7 @@ public class GlobalAgentResponse {
 
     public String getDivision() { return division; }
     public void setDivision(String division) { this.division = division; }
+
+    public String getCreationDate() { return creationDate; }
+    public void setCreationDate(String creationDate) { this.creationDate = creationDate; }
 }

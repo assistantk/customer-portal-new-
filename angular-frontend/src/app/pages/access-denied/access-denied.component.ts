@@ -1,6 +1,5 @@
 import { Component } from '@angular/core';
 import { Router } from '@angular/router';
-import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-access-denied',
@@ -10,15 +9,9 @@ import { AuthService } from '../../services/auth.service';
 })
 export class AccessDeniedComponent {
 
-  constructor(
-    private router: Router,
-    private authService: AuthService
-  ) {}
+  constructor(private router: Router) {}
 
-  goBackToLogin(): void {
-    this.authService.logout().subscribe({
-      next: () => this.router.navigate(['/login']),
-      error: () => this.router.navigate(['/login'])
-    });
+  goBackToHome(): void {
+    this.router.navigate(['/home']);
   }
 }

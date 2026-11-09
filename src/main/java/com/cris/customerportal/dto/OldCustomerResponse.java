@@ -1,5 +1,8 @@
 package com.cris.customerportal.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class OldCustomerResponse {
     private String customerCode;
     private String phoneNumber;
@@ -13,6 +16,7 @@ public class OldCustomerResponse {
     private String zone;
     private String division;
     private String creationDate;
+    private List<String> handlingAgentCodes = new ArrayList<>();
 
     public String getCity() { return city; }
     public void setCity(String city) { this.city = city; }
@@ -49,4 +53,9 @@ public class OldCustomerResponse {
 
     public String getGstinNumbers() { return gstinNumbers; }
     public void setGstinNumbers(String gstinNumbers) { this.gstinNumbers = gstinNumbers; }
+
+    public List<String> getHandlingAgentCodes() { return handlingAgentCodes; }
+    public void setHandlingAgentCodes(List<String> handlingAgentCodes) {
+        this.handlingAgentCodes = handlingAgentCodes == null ? new ArrayList<>() : new ArrayList<>(handlingAgentCodes);
+    }
 }

@@ -38,9 +38,7 @@ class AuthInterceptorTest {
     void optionsRequest_isAlwaysAllowedForCors() throws Exception {
         when(request.getMethod()).thenReturn("OPTIONS");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertTrue(allowed);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
     }
 
@@ -49,24 +47,54 @@ class AuthInterceptorTest {
         when(request.getSession(false)).thenReturn(null);
         when(request.getRequestURI()).thenReturn("/api/customers/lookup");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertFalse(allowed);
+        assertFalse(interceptor.preHandle(request, response, new Object()));
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         assertTrue(responseWriter.toString().contains("Authentication required"));
     }
 
     @Test
-    void authenticatedUser_accessStandardCustomerApi_isAllowed() throws Exception {
+    void authenticatedUser_withoutSrDcmDesignation_isRejectedFromCodeGenerationApi() throws Exception {
         AuthUserDto user = new AuthUserDto("USR1", "Standard User", "USER", "Y");
         when(request.getSession(false)).thenReturn(session);
         when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
         when(request.getRequestURI()).thenReturn("/api/customers/lookup");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
+        assertTrue(responseWriter.toString().contains(
+                "This page is available only to users with the SR-DCM role."));
+    }
 
-        assertTrue(allowed);
+    @Test
+    void authenticatedSrDcmUser_accessCodeGenerationAndVerificationApis_isAllowed() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation(" sr-dcm ");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/new-generate-code");
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void sameSrDcmUserCanAccessProtectedApisThroughIndependentSessions() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation("SR-DCM");
+        HttpSession secondSession = mock(HttpSession.class);
+        HttpServletRequest secondRequest = mock(HttpServletRequest.class);
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/lookup");
+        when(secondRequest.getMethod()).thenReturn("GET");
+        when(secondRequest.getSession(false)).thenReturn(secondSession);
+        when(secondSession.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(secondRequest.getRequestURI()).thenReturn("/api/customers/lookup");
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        assertTrue(interceptor.preHandle(secondRequest, response, new Object()));
+        verify(session, never()).invalidate();
+        verify(secondSession, never()).invalidate();
     }
 
     @Test
@@ -77,9 +105,7 @@ class AuthInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/customers/global-delete");
         when(request.getMethod()).thenReturn("DELETE");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertFalse(allowed);
+        assertFalse(interceptor.preHandle(request, response, new Object()));
         verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
         assertTrue(responseWriter.toString().contains("Administrator privileges required"));
     }
@@ -92,10 +118,20 @@ class AuthInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/customers/global-delete");
         when(request.getMethod()).thenReturn("DELETE");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertTrue(allowed);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
+    }
+
+    @Test
+    void roleFieldCannotOverrideTheSelectedSessionDesignation() throws Exception {
+        AuthUserDto user = new AuthUserDto("USR1", "Senior DCM", "SR-DCM", "Y");
+        user.setDesignation("DCM");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/ownership-submit");
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
     }
 
     @Test
@@ -106,9 +142,7 @@ class AuthInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/submit");
         when(request.getMethod()).thenReturn("POST");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertTrue(allowed);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
     }
 
@@ -120,9 +154,7 @@ class AuthInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/verify");
         when(request.getMethod()).thenReturn("POST");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertTrue(allowed);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
         verify(response, never()).setStatus(anyInt());
     }
 
@@ -132,9 +164,7 @@ class AuthInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/customers/delete-requests/verify");
         when(request.getMethod()).thenReturn("POST");
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
-
-        assertFalse(allowed);
+        assertFalse(interceptor.preHandle(request, response, new Object()));
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         assertTrue(responseWriter.toString().contains("Authentication required"));
     }

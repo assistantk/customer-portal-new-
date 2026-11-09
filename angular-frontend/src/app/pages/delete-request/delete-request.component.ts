@@ -122,7 +122,7 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
 
   onCodeChange(event?: Event): void {
     if (event) {
-      this.code = (event.target as HTMLInputElement).value;
+      this.code = (event.target as HTMLInputElement).value.toUpperCase();
     }
     this.clearVerification();
   }
