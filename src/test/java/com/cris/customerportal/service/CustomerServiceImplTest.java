@@ -2133,6 +2133,72 @@ class CustomerServiceImplTest {
         assertFalse(body.contains("SHOP NO 209, EDGE"));
     }
 
+    @Test
+    void updateOldCustomerJDBC_savesNewlyEnteredMissingPanAndGstin() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S OLD COMPANY");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ROAD");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn(null);
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn(null);
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("PATNA");
+
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "AB12",
+            "companyName", "M/S OLD COMPANY",
+            "address", "OLD ROAD",
+            "panNumber", "AAECR3577N",
+            "gstinNumbers", "27AAECR3577NLZE"
+        ));
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("MAVCUSTPANNUMB = 'AAECR3577N'"));
+        assertTrue(body.contains("MAVCUSTGSTNUMB = '27AAECR3577NLZE'"));
+    }
+
+    @Test
+    void updateOldCustomerJDBC_preventsAccidentalOverwriteOfExistingPanAndGstinWhenEmptyOrNullSupplied() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S OLD COMPANY");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ROAD");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAECR3577N");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAECR3577NLZE");
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("PATNA");
+
+        Map<String, String> payload = new HashMap<>();
+        payload.put("codeType", "global");
+        payload.put("customerCode", "AB12");
+        payload.put("companyName", "M/S OLD COMPANY");
+        payload.put("address", "NEW ROAD");
+        payload.put("panNumber", "");
+        payload.put("gstinNumbers", "null");
+
+        service(dataSource, mailSender).updateOldCustomerJDBC(payload);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'NEW ROAD'"));
+        assertFalse(body.contains("MAVCUSTPANNUMB = NULL"));
+        assertFalse(body.contains("MAVCUSTGSTNUMB = NULL"));
+    }
+
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
         CustomerServiceImpl service = new CustomerServiceImpl(
             mock(CustomerRepository.class),

@@ -189,6 +189,31 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
   gstinCollapsed = false;
+  isOldPanDisabled = false;
+  isOldGstDisabled = false;
+
+  get isPanDisabled(): boolean {
+    return this.mode === 'old' && this.isOldPanDisabled;
+  }
+
+  get isGstDisabled(): boolean {
+    return this.mode === 'old' && this.isOldGstDisabled;
+  }
+
+  isValueAvailable(val: any): boolean {
+    if (val === null || val === undefined) return false;
+    const str = String(val).trim();
+    return str.length > 0 && str.toLowerCase() !== 'null' && str.toLowerCase() !== 'undefined';
+  }
+
+  isGstAvailable(gstVal: any): boolean {
+    if (!this.isValueAvailable(gstVal)) return false;
+    const cleaned = String(gstVal).replace(/[\[\]"'\s]/g, '');
+    const tokens = cleaned.split(',').map(s => s.trim()).filter(s =>
+      s.length > 0 && s.toLowerCase() !== 'null' && s.toLowerCase() !== 'undefined' && s.toLowerCase() !== 'none'
+    );
+    return tokens.length > 0;
+  }
   ownershipLogoMissing = false;
   deleteCodeType: DeleteRequestCodeType | '' = '';
   deleteLogoMissing = false;
@@ -496,6 +521,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     this.verifiedCustomerCode = null;
     this.gstins = [{ ...blankGstin }];
+    this.isOldPanDisabled = false;
+    this.isOldGstDisabled = false;
     this.ocrDataMap.clear();
     this.activeCrossCheck = null;
     this.activeCrossCheckIndex = null;
@@ -560,10 +587,15 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const currentZone = this.form.zone;
+    const currentDivision = this.form.operatingDivision;
+
     this.cancelPendingAsyncOperations();
     this.resetFormState();
 
     this.mode = newMode;
+    this.form.zone = currentZone;
+    this.form.operatingDivision = currentDivision;
     this.resetFieldsPreservingZoneDivision();
     this.ownershipLogoMissing = false;
     this.deleteLogoMissing = false;
@@ -881,6 +913,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.form.email = '';
     this.form.mobile = '';
     this.gstins = [{ ...blankGstin }];
+    this.isOldPanDisabled = false;
+    this.isOldGstDisabled = false;
     this.lookupDone = false;
     this.lookupError = '';
     this.addressStatus = '';
@@ -914,18 +948,34 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
               this.form.city = customer.city || '';
               this.form.pincode = customer.pincode || customer.pcoCode || '';
-              this.form.panNumber = customer.panNumber || '';
               this.form.email = customer.email || customer.emailId || '';
               this.form.mobile = customer.mobile || customer.phoneNumber || '';
               this.applyOldRecordDivision(customer);
 
-              if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
-                const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
-                const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
-                  ...blankGstin,
-                  gstinId: `old-${idx}`,
-                  gstin: g
-                }));
+              const panAvailable = this.isValueAvailable(customer.panNumber);
+              const gstAvailable = this.isGstAvailable(customer.gstinNumbers);
+
+              this.isOldPanDisabled = panAvailable;
+              this.isOldGstDisabled = gstAvailable;
+
+              if (panAvailable) {
+                this.form.panNumber = customer.panNumber.trim().toUpperCase();
+              } else {
+                this.form.panNumber = '';
+              }
+
+              if (gstAvailable) {
+                const cleanGstins = (customer.gstinNumbers || '').replace(/[\[\]"'\s]/g, '');
+                const loadedGstins: GstinEntry[] = cleanGstins
+                  .split(',')
+                  .map((g: string) => g.trim())
+                  .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
+                  .map((g: string, idx: number) => ({
+                    ...blankGstin,
+                    gstinId: `old-${idx}`,
+                    gstin: g.toUpperCase(),
+                    state: getStateNameFromGstinCode(g.slice(0, 2)) || ''
+                  }));
                 this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
               } else {
                 this.gstins = [{ ...blankGstin }];
@@ -945,6 +995,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 ? 'Customer lookup timed out. Please try again.'
                 : err?.error?.message || err?.message || 'Error occurred while fetching customer data';
               this.gstins = [{ ...blankGstin }];
+              this.isOldPanDisabled = false;
+              this.isOldGstDisabled = false;
               this.cdr.markForCheck();
             }
           })
@@ -954,6 +1006,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.lookupLoading = false;
       this.verifiedCustomerCode = null;
       this.gstins = [{ ...blankGstin }];
+      this.isOldPanDisabled = false;
+      this.isOldGstDisabled = false;
     }
   }
 
@@ -981,6 +1035,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.oldCodeType = newType;
     this.form = { ...blank };
     this.gstins = [{ ...blankGstin }];
+    this.isOldPanDisabled = false;
+    this.isOldGstDisabled = false;
     this.lookupDone = false;
     this.lookupError = '';
     this.lookupLoading = false;
@@ -1683,13 +1739,28 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                     this.form.mobile = refreshed.mobile || refreshed.phoneNumber || this.form.mobile;
                     this.applyOldRecordDivision(refreshed);
 
-                    if (refreshed.gstinNumbers && refreshed.gstinNumbers.trim() !== '') {
-                      const cleanGstins = refreshed.gstinNumbers.replace(/[\[\]"\s]/g, '');
-                      const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
-                        ...blankGstin,
-                        gstinId: `old-${idx}`,
-                        gstin: g.toUpperCase()
-                      }));
+                    const panAvailable = this.isValueAvailable(refreshed.panNumber);
+                    const gstAvailable = this.isGstAvailable(refreshed.gstinNumbers);
+
+                    this.isOldPanDisabled = panAvailable;
+                    this.isOldGstDisabled = gstAvailable;
+
+                    if (panAvailable) {
+                      this.form.panNumber = (refreshed.panNumber || '').trim().toUpperCase();
+                    }
+
+                    if (gstAvailable) {
+                      const cleanGstins = (refreshed.gstinNumbers || '').replace(/[\[\]"'\s]/g, '');
+                      const loadedGstins: GstinEntry[] = cleanGstins
+                        .split(',')
+                        .map((g: string) => g.trim())
+                        .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
+                        .map((g: string, idx: number) => ({
+                          ...blankGstin,
+                          gstinId: `old-${idx}`,
+                          gstin: g.toUpperCase(),
+                          state: getStateNameFromGstinCode(g.slice(0, 2)) || ''
+                        }));
                       this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
                     } else {
                       this.gstins = [{ ...blankGstin }];
@@ -1725,10 +1796,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   addGstin(): void {
+    if (this.isGstDisabled) {
+      return;
+    }
     this.gstins.push({ ...blankGstin });
   }
 
   removeGstin(index: number): void {
+    if (this.isGstDisabled) {
+      return;
+    }
     for (let currentIndex = index; currentIndex < this.gstins.length; currentIndex++) {
       this.invalidateGstinVerification(currentIndex);
     }
@@ -1779,6 +1856,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {
+    if (this.isGstDisabled) return;
     const currentEntry = this.gstins[index];
     if (!currentEntry) return;
     const hasGstinUpdate = Object.prototype.hasOwnProperty.call(updates, 'gstin');
@@ -1824,6 +1902,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinInput(index: number, rawGstin: string): void {
+    if (this.isGstDisabled) return;
     const gstin = normalizeDocumentNumber(rawGstin);
     const previousGstin = normalizeDocumentNumber(this.gstins[index]?.gstin);
     if (previousGstin === gstin) return;
@@ -1850,7 +1929,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     } else {
       this.form.companyName = companyName;
     }
-    this.form.panNumber = pan;
+    if (!this.isPanDisabled) {
+      this.form.panNumber = pan;
+    }
     this.form.address = address;
     this.form.city = (ocr?.city || '').trim();
     this.form.pincode = (ocr?.pincode || '').trim();
@@ -1898,6 +1979,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinStateChange(index: number, state: string): void {
+    if (this.isGstDisabled) return;
     this.handleGstinChange(index, { state });
     const field = `gstin_${index}_state`;
     if (state && this.gstins.some((gstin, currentIndex) => currentIndex !== index && gstin.state === state)) {
@@ -1908,6 +1990,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handlePanChange(value: string, isManual = true): void {
+    if (this.isPanDisabled) {
+      return;
+    }
     if (isManual) {
       this.panManuallyEdited = true;
     }
@@ -2210,6 +2295,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
+    if (this.isGstDisabled) return;
     const input = e.target as HTMLInputElement;
     const selected = input?.files?.[0];
     if (input) {
