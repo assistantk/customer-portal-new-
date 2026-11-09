@@ -116,5 +116,26 @@ describe('VerificationComponent - PDF Generation Integration', () => {
 
     comp.ngOnDestroy();
   });
-});
 
+  it('searches and displays existing one-, two-, and three-character codes', () => {
+    mockCustomerService.lookupOldCustomerJDBC.mockReturnValue(of({ customerCode: 'A' }));
+    component.code = 'A';
+    component.verifyCode();
+    expect(mockCustomerService.lookupOldCustomerJDBC).toHaveBeenCalledWith('A');
+    expect(component.customers).toEqual([{ customerCode: 'A' }]);
+
+    mockCustomerService.searchHandlingAgentsJDBC.mockReturnValue(of([{ code: 'BD' }]));
+    component.setVerificationType('agent');
+    component.code = 'BD';
+    component.verifyCode();
+    expect(mockCustomerService.searchHandlingAgentsJDBC).toHaveBeenCalledWith('BD');
+    expect(component.customers).toEqual([{ code: 'BD' }]);
+
+    mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([{ ownershipCode: 'MCC' }]));
+    component.setVerificationType('ownership');
+    component.code = 'MCC';
+    component.verifyCode();
+    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('MCC');
+    expect(component.customers).toEqual([{ ownershipCode: 'MCC' }]);
+  });
+});

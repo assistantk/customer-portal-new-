@@ -84,15 +84,18 @@ describe('OwnershipCodeComponent', () => {
     component.ngOnDestroy();
   });
 
-  it('should lookup ownership code in Section 1', () => {
+  it('should lookup both ownership tables from the single ownership code field', () => {
     vi.useFakeTimers();
     component.handleOwnershipCodeChange('OWN1');
     expect(component.form.ownershipCode).toBe('OWN1');
+    expect(component.form.ownershipPartyCode).toBe('OWN1');
 
     vi.runAllTimers();
     expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('OWN1');
+    expect(customerServiceMock.lookupOwnershipPartyJDBC).toHaveBeenCalledWith('OWN1');
     expect(component.form.ownershipAddress).toBe('Test Address 1');
     expect(component.ownSection1Found).toBe(true);
+    expect(component.ownSection2Found).toBe(true);
     vi.useRealTimers();
   });
 
@@ -133,15 +136,13 @@ describe('OwnershipCodeComponent', () => {
     expect(component.form.pincode).toBe('110001');
   });
 
-  it('should wait for all four code characters before requesting ownership data', () => {
+  it.each(['A', 'BD', 'MCC', 'LONG4'])('looks up ownership records for existing code %s', (code) => {
     vi.useFakeTimers();
-    component.handleOwnershipCodeChange('OWN');
+    component.handleOwnershipCodeChange(code);
     vi.advanceTimersByTime(500);
-    expect(customerServiceMock.lookupOwnershipJDBC).not.toHaveBeenCalled();
-
-    component.handleOwnershipCodeChange('OWN1');
-    vi.advanceTimersByTime(500);
-    expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith('OWN1');
+    expect(customerServiceMock.lookupOwnershipJDBC).toHaveBeenCalledWith(code);
+    expect(customerServiceMock.lookupOwnershipPartyJDBC).toHaveBeenCalledWith(code);
+    vi.useRealTimers();
   });
 
   it('should expose backend lookup failures to the user', () => {
@@ -167,13 +168,14 @@ describe('OwnershipCodeComponent', () => {
     expect(component.errors['state']).toBeDefined();
     expect(component.errors['zone']).toBeDefined();
     expect(component.errors['operatingDivision']).toBeDefined();
-    // Section 2 fields are eliminated from the unified form
-    expect(component.errors['ownershipPartyCode']).toBeUndefined();
+    // The second table lookup is validated against the shared code field.
+    expect(component.errors['ownershipPartyCode']).toBeDefined();
     expect(component.errors['ownershipPartyAddress']).toBeUndefined();
   });
 
   it('should submit unified form and supply entered company info to both database operations', () => {
     component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
     component.form = {
       ownershipCode: 'OWN1',
       ownershipAddress: 'Address 1',
@@ -185,7 +187,9 @@ describe('OwnershipCodeComponent', () => {
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
       email: 'owner@example.com',
-      mobile: '9876543210'
+      mobile: '9876543210',
+      ownershipPartyCode: 'OWN1',
+      ownershipPartyAddress: 'Different party name'
     };
 
     component.submit();
@@ -200,6 +204,7 @@ describe('OwnershipCodeComponent', () => {
 
   it('should allow submission validation when city is blank or whitespace in unified form', () => {
     component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
     component.form = {
       ownershipCode: 'OWN1',
       ownershipAddress: 'Address 1',
@@ -211,7 +216,8 @@ describe('OwnershipCodeComponent', () => {
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
       email: '',
-      mobile: ''
+      mobile: '',
+      ownershipPartyCode: 'OWN1'
     };
 
     expect(component.validate()).toBe(true);
@@ -294,7 +300,7 @@ describe('OwnershipCodeComponent', () => {
         operatingDivision: 'Mumbai (CSTM)',
         email: 'test@example.com',
         mobile: '9876543210',
-        ownershipPartyCode: 'PRT1',
+        ownershipPartyCode: 'OWN1',
         ownershipPartyAddress: 'Valid Party Address'
       };
     }
@@ -311,10 +317,10 @@ describe('OwnershipCodeComponent', () => {
       expect(component.isFormValid).toBe(false);
 
       component.form.ownershipAddress = 'Valid Ownership Address';
-      component.form.ownershipPartyAddress = '   ';
+      component.form.ownershipPartyCode = 'PRT1';
       expect(component.isFormValid).toBe(false);
 
-      component.form.ownershipPartyAddress = 'Valid Party Address';
+      component.form.ownershipPartyCode = 'OWN1';
       component.form.panNumber = '          ';
       expect(component.isFormValid).toBe(false);
 

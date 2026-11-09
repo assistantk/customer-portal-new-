@@ -579,6 +579,40 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void updateOldCustomerJDBC_allowsOneCharacterCodeWithoutPadding() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("A");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("Old Name");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Old Address");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAECR3577N");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAECR3577NLZE");
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
+
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "A",
+            "companyName", "New Name",
+            "address", "Old Address",
+            "city", "Nagpur",
+            "panNumber", "AAECR3577N",
+            "gstinNumbers", "27AAECR3577NLZE"
+        ));
+
+        assertTrue(emailedBody(mailSender).contains("WHERE MAVGLBLCUSTCODE = 'A';"));
+        verify(lookupPs).setString(1, "A");
+        verify(lookupPs, never()).executeUpdate();
+        verify(connection, never()).prepareStatement(startsWith("UPDATE"));
+    }
+
+    @Test
     void updateOldCustomerJDBC_emailsSqlNullForEmptyCityInBothCustomerSections() throws SQLException {
         String[] cityValues = { null, "", "   ", "null" };
         for (String codeType : new String[] { "global", "handling_agent" }) {
@@ -864,14 +898,20 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement lookupPs = mock(PreparedStatement.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
         ResultSet lookupRs = mock(ResultSet.class);
+        ResultSet globalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
         when(lookupRs.next()).thenReturn(true);
         when(lookupRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("SCOR");
         when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("SOUTH COAST RAILWAYS");
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("SOUTH COAST RAILWAY");
 
         service(dataSource, mailSender).submitOwnershipJDBC("SCOR", "South Coast Railway", null, null);
 
@@ -889,14 +929,20 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement lookupPs = mock(PreparedStatement.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
         ResultSet lookupRs = mock(ResultSet.class);
+        ResultSet globalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
         when(lookupRs.next()).thenReturn(true);
         when(lookupRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("SHLA");
         when(lookupRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S SUSHILA TRANSPORT PVT LTD");
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("SUSHILA TRANSPORT PVT LTD");
 
         service(dataSource, mailSender).submitOwnershipJDBC(null, null, "SHLA", "Sushila Transport Pvt Ltd");
 
@@ -924,14 +970,16 @@ class CustomerServiceImplTest {
         ResultSet partyGlobalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString()))
-            .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
+            .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
         when(ownershipRs.next()).thenReturn(false);
-        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.next()).thenReturn(true, true);
         when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("O'BRIEN OWNERSHIP");
         when(partyRs.next()).thenReturn(false);
@@ -940,7 +988,7 @@ class CustomerServiceImplTest {
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("O'BRIEN OWNERSHIP");
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "AB12", "O'Brien ownership", "PT34", "m/s Party & Co");
+            "AB12", "Client-supplied name is ignored", "AB12", "Client-supplied name is ignored");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
@@ -977,14 +1025,16 @@ class CustomerServiceImplTest {
         ResultSet partyGlobalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString()))
-            .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
+            .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
         when(ownershipRs.next()).thenReturn(false);
-        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.next()).thenReturn(true, true);
         when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
             .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
@@ -1021,8 +1071,17 @@ class CustomerServiceImplTest {
         ResultSet partyGlobalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString()))
-            .thenReturn(ownershipLookup, partyLookup, partyGlobalLookup);
+        PreparedStatement ownershipGlobalLookup = mock(PreparedStatement.class);
+        ResultSet ownershipGlobalRs = mock(ResultSet.class);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
+            .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
+        when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
+        when(ownershipGlobalRs.next()).thenReturn(true);
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
+        when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
+            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
@@ -1043,15 +1102,11 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, times(1)).send(message.capture());
         String body = message.getValue().getText();
-        assertTrue(body.contains("UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = "
-            + "'M/S ALPS MINING SERVICES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ALPS';"));
+        assertFalse(body.contains("UPDATE MEMWGONOWNRSHIP"));
         assertTrue(body.contains(
             "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"));
-        assertTrue(body.indexOf("----------------------------------------1 UPDATE")
-            < body.indexOf("----------------------------------------2 INSERT"));
-        assertTrue(body.indexOf("UPDATE MEMWGONOWNRSHIP")
-            < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
-        assertEquals(1, body.split("UPDATE MEMWGONOWNRSHIP", -1).length - 1);
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRPRTY"));
+        assertEquals(0, body.split("UPDATE MEMWGONOWNRSHIP", -1).length - 1);
         assertEquals(1, body.split("INSERT INTO MEMWGONOWNRPRTY", -1).length - 1);
     }
 
@@ -1077,7 +1132,7 @@ class CustomerServiceImplTest {
         when(partyPs.executeQuery()).thenReturn(partyRs);
 
         when(globalRs.next()).thenReturn(true);
-        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABC1");
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("A");
         when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ABC PRIVATE LIMITED");
         when(globalRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("RAILWAY ROAD");
         when(globalRs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
@@ -1088,10 +1143,10 @@ class CustomerServiceImplTest {
         when(ownershipRs.next()).thenReturn(false);
         when(partyRs.next()).thenReturn(false);
 
-        Map<String, String> result = service(dataSource, mailSender).lookupOwnershipJDBC("ABC1");
+        Map<String, String> result = service(dataSource, mailSender).lookupOwnershipJDBC("A");
 
         assertNotNull(result);
-        assertEquals("ABC1", result.get("ownershipCode"));
+        assertEquals("A", result.get("ownershipCode"));
         assertEquals("ABC PRIVATE LIMITED", result.get("ownershipDesc"));
         assertEquals("RAILWAY ROAD", result.get("address"));
         assertEquals("ABCDE1234F", result.get("panNumber"));
@@ -1258,6 +1313,47 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void submitOwnershipJDBC_generatesInsertForMissingOwnershipAndUpdateForExistingParty() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement partyPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyPs);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(partyPs.executeQuery()).thenReturn(partyRs);
+
+        when(globalRs.next()).thenReturn(true, true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("LATEST COMPANY NAME");
+        when(ownershipRs.next()).thenReturn(false);
+        when(partyRs.next()).thenReturn(true);
+        when(partyRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("AB12");
+        when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("OLD COMPANY NAME");
+
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "AB12", "Untrusted submitted name", "AB12", "Untrusted submitted name");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S LATEST COMPANY NAME',NULL,'Y',SYSDATE,NULL);"));
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S LATEST COMPANY NAME' WHERE MAVWGONOWNRPRTYCODE = 'AB12';"));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
+        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP")
+            < body.indexOf("UPDATE MEMWGONOWNRPRTY"));
+    }
+
+    @Test
     void submitOwnershipJDBC_caseC_invalidGlobalCustomerCodePreventsSubmissionAndEmail() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
@@ -1283,6 +1379,30 @@ class CustomerServiceImplTest {
 
         assertTrue(ex.getMessage().contains("does not exist in the Ownership table or Global Customer table"));
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void lookupOwnershipJDBC_doesNotUseStaleOwnershipRecordWithoutGlobalCustomer() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("AB12");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("Stale Company Name");
+        when(globalRs.next()).thenReturn(false);
+
+        assertNull(service(dataSource, mailSender).lookupOwnershipJDBC("AB12"));
     }
 
     @Test
@@ -1349,8 +1469,10 @@ class CustomerServiceImplTest {
         ResultSet partyGlobalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString()))
-            .thenReturn(ownershipLookup, ownershipLookup, ownershipGlobalLookup, partyLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
+            .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
@@ -1505,7 +1627,7 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
-        when(connection.prepareStatement(anyString())).thenReturn(ownershipLookup, globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(ownershipRs.next()).thenReturn(false);
@@ -1518,7 +1640,7 @@ class CustomerServiceImplTest {
         assertEquals(
             "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.",
             error.getMessage());
-        verify(connection).prepareStatement(contains("FROM MEMWGONOWNRSHIP"));
+        verify(connection, never()).prepareStatement(contains("FROM MEMWGONOWNRSHIP"));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
@@ -1535,7 +1657,7 @@ class CustomerServiceImplTest {
             () -> service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Description", null, null));
 
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
-        verify(connection, never()).prepareStatement(contains("FROM MEMGLBLCUST"));
+        verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
     }
 
     @Test
@@ -1543,13 +1665,19 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement lookupPs = mock(PreparedStatement.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
         ResultSet lookupRs = mock(ResultSet.class);
+        ResultSet globalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(lookupPs);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
         when(lookupRs.next()).thenReturn(true);
         when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("Existing description");
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("Updated description");
 
         service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Updated description", null, null);
 

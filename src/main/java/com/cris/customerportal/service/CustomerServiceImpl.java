@@ -593,6 +593,9 @@ public class CustomerServiceImpl implements CustomerService {
  boolean isGlobal = "global".equals(type);
  String customerCode = firstValue(formData, "customerCode");
  if (customerCode == null) throw new IllegalArgumentException("Customer code is required");
+ if (!customerCode.trim().matches("(?i)[a-z0-9]+")) {
+  throw new IllegalArgumentException("Enter a valid Customer Code.");
+ }
 
   initDbColumns();
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
@@ -607,6 +610,9 @@ public class CustomerServiceImpl implements CustomerService {
   String divisionColumn = "MAVIMPLREMK";
   if (isGlobal) {
    oldCustomer = lookupOldCustomerByCode(customerCode);
+   if (oldCustomer.getCustomerCode() != null && !oldCustomer.getCustomerCode().trim().isEmpty()) {
+    customerCode = oldCustomer.getCustomerCode();
+   }
    keyColumn = "MAVGLBLCUSTCODE";
    nameColumn = "MAVGLBLCUSTNAME";
    addressColumn = "MAVGLBLCUSTADDRTEXT";
@@ -614,6 +620,9 @@ public class CustomerServiceImpl implements CustomerService {
    gstColumn = glblGstCol;
   } else {
    com.cris.customerportal.dto.GlobalAgentResponse agent = lookupHandlingAgentByCode(customerCode);
+   if (agent.getCode() != null && !agent.getCode().trim().isEmpty()) {
+    customerCode = agent.getCode();
+   }
    oldCustomer = new com.cris.customerportal.dto.OldCustomerResponse();
    oldCustomer.setCompanyName(agent.getCompanyName());
    oldCustomer.setAddress(agent.getAddress());
@@ -703,9 +712,9 @@ public class CustomerServiceImpl implements CustomerService {
   }
   if (assignments.isEmpty()) throw new IllegalArgumentException("No changes detected for this record.");
   String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
-      + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim().toUpperCase(Locale.ROOT)) + ";";
+      + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
   List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-  emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim().toUpperCase(Locale.ROOT), executableSql));
+  emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));
   dbaEmailService.sendDbaSqlEmail(emailRequests);
  }
 
@@ -824,11 +833,6 @@ public class CustomerServiceImpl implements CustomerService {
    return globalCustomer;
   }
 
-  if (existing != null) {
-   existing.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
-   return existing;
-  }
-
   return null;
  }
 
@@ -859,14 +863,29 @@ public class CustomerServiceImpl implements CustomerService {
       hasOwnership, hasParty);
   if (!hasOwnership && !hasParty) throw new IllegalArgumentException("At least one ownership code is required.");
 
+  String normalizedOwnershipCode = hasOwnership ? normalizeOwnershipCode(ownershipCode) : null;
+  String normalizedPartyCode = hasParty ? normalizeOwnershipCode(partyCode) : null;
+  if (hasOwnership) {
+   Map<String, String> globalCustomer = lookupGlobalCustomerForOwnership(normalizedOwnershipCode);
+   if (globalCustomer == null) throw invalidOwnershipCode();
+   ownershipDesc = globalCustomer.get("ownershipDesc");
+  }
+  if (hasParty) {
+   if (hasOwnership && normalizedOwnershipCode.equals(normalizedPartyCode)) {
+    partyDesc = ownershipDesc;
+   } else {
+    Map<String, String> globalCustomer = lookupGlobalCustomerForOwnershipParty(normalizedPartyCode);
+    if (globalCustomer == null) throw invalidOwnershipCode();
+    partyDesc = globalCustomer.get("partyDesc");
+   }
+  }
+
   List<DbaEmailService.SqlRequest> statements = new ArrayList<>();
-  boolean ownershipInsertSubmitted = false;
   String ownershipSql = null;
   if (hasOwnership) {
    ownershipSql = generateOwnershipSql(ownershipCode, ownershipDesc);
    logGeneratedOwnershipSql("MEMWGONOWNRSHIP", ownershipSql);
    if (ownershipSql != null) {
-    ownershipInsertSubmitted = ownershipSql.startsWith("INSERT");
     statements.add(new DbaEmailService.SqlRequest(
         ownershipSql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRSHIP",
@@ -874,46 +893,17 @@ public class CustomerServiceImpl implements CustomerService {
         ownershipSql));
    }
   }
-  if (ownershipInsertSubmitted) {
-   String partySql = generateOwnershipPartySql(ownershipCode, ownershipDesc);
-   logGeneratedOwnershipSql("MEMWGONOWNRPRTY", partySql);
-   if (partySql == null || !partySql.startsWith("INSERT")) {
-    throw new IllegalArgumentException(
-        "Cannot create both ownership records because the ownership party record already exists.");
-   }
-   statements.add(new DbaEmailService.SqlRequest(
-       "INSERT",
-       "MEMWGONOWNRPRTY",
-       ownershipCode.trim().toUpperCase(Locale.ROOT),
-       partySql));
-  } else if (hasParty) {
-   String sql = generateOwnershipPartySql(partyCode, partyDesc);
+  if (hasParty || (ownershipSql != null && ownershipSql.startsWith("INSERT"))) {
+   String resolvedPartyCode = hasParty ? partyCode : ownershipCode;
+   String resolvedPartyDesc = hasParty ? partyDesc : ownershipDesc;
+   String sql = generateOwnershipPartySql(resolvedPartyCode, resolvedPartyDesc);
    logGeneratedOwnershipSql("MEMWGONOWNRPRTY", sql);
    if (sql != null) {
-    if (hasOwnership && ownershipSql == null && (sql.startsWith("INSERT") || sql.startsWith("UPDATE"))) {
-     String unchangedOwnershipUpdate = generateOwnershipUpdateSql(ownershipCode, ownershipDesc);
-     statements.add(0, new DbaEmailService.SqlRequest(
-         "UPDATE",
-         "MEMWGONOWNRSHIP",
-         ownershipCode.trim().toUpperCase(Locale.ROOT),
-         unchangedOwnershipUpdate));
-     logGeneratedOwnershipSql("MEMWGONOWNRSHIP", unchangedOwnershipUpdate);
-    }
     statements.add(new DbaEmailService.SqlRequest(
         sql.startsWith("INSERT") ? "INSERT" : "UPDATE",
         "MEMWGONOWNRPRTY",
-        partyCode.trim().toUpperCase(Locale.ROOT),
+        resolvedPartyCode.trim().toUpperCase(Locale.ROOT),
         sql));
-   } else if (hasOwnership && ownershipSql != null && ownershipSql.startsWith("UPDATE")) {
-    if (lookupExistingOwnershipPartyRecord(normalizeOwnershipCode(partyCode)) != null) {
-     String unchangedPartyUpdate = generateOwnershipPartyUpdateSql(partyCode, partyDesc);
-     statements.add(new DbaEmailService.SqlRequest(
-         "UPDATE",
-         "MEMWGONOWNRPRTY",
-         partyCode.trim().toUpperCase(Locale.ROOT),
-         unchangedPartyUpdate));
-     logGeneratedOwnershipSql("MEMWGONOWNRPRTY", unchangedPartyUpdate);
-    }
    }
   }
 
@@ -941,9 +931,6 @@ public class CustomerServiceImpl implements CustomerService {
   if (existing != null) {
    if (!isCompanyNameDifferent(existing.get("ownershipDesc"), ownershipDesc)) return null;
    return generateOwnershipUpdateSql(normalizedCode, ownershipDesc);
-  }
-  if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
-   throw invalidOwnershipCode();
   }
   return "INSERT INTO MEMWGONOWNRSHIP VALUES("
       + formatSqlValue(normalizedCode) + ","
@@ -1042,11 +1029,6 @@ public class CustomerServiceImpl implements CustomerService {
    return globalCustomer;
   }
 
-  if (existingParty != null) {
-   existingParty.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
-   return existingParty;
-  }
-
   return null;
  }
 
@@ -1082,9 +1064,6 @@ public class CustomerServiceImpl implements CustomerService {
    if (Objects.equals(normalizeOracleValue(existing.get("partyDesc")), normalizeOracleValue(partyDesc))) return null;
    return "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(partyDesc)
        + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizedCode) + ";";
-  }
-  if (lookupGlobalCustomerForOwnershipParty(normalizedCode) == null) {
-   throw invalidOwnershipCode();
   }
   return "INSERT INTO MEMWGONOWNRPRTY VALUES("
       + formatSqlValue(normalizedCode) + ","
@@ -1127,7 +1106,7 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String normalizeOwnershipCode(String code) {
-  if (code == null || !code.trim().matches("(?i)[a-z0-9]{4}")) {
+  if (code == null || !code.trim().matches("(?i)[a-z0-9]+")) {
    throw new IllegalArgumentException(
        "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.");
   }
