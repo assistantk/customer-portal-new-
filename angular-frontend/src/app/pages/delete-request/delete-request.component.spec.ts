@@ -1,5 +1,7 @@
+import '@angular/compiler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { of, Subject, throwError } from 'rxjs';
+import { NavigationEnd } from '@angular/router';
 import { CustomerService } from '../../services/customer.service';
 import { DeleteRequestComponent } from './delete-request.component';
 
@@ -20,7 +22,7 @@ describe('DeleteRequestComponent', () => {
 
   it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
     expect(component.codeType).toBe('');
-    expect(component.pageTitle).toBe('Delete Request');
+    expect(component.pageTitle).toBe('Disable Code');
     expect(component.currentLogo).toBe('assets/portal-logo.webp');
     expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
@@ -34,7 +36,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Global Customer Code logo and heading when Global Code is selected', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
 
-    expect(component.pageTitle).toBe('Global Customer Code Deletion Request');
+    expect(component.pageTitle).toBe('Global Customer Code - Disable Code');
     expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
   });
@@ -42,7 +44,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Handling Agent logo and heading when Handling Agent Code is selected', () => {
     component.codeType = 'HANDLING_AGENT';
 
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
   });
@@ -100,7 +102,7 @@ describe('DeleteRequestComponent', () => {
     expect(component.verificationMessage).toBe('');
     expect(component.errorMessage).toBe('');
     expect(component.successMessage).toBe('');
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
 
     component.sendRequest();
@@ -203,5 +205,28 @@ describe('DeleteRequestComponent', () => {
     expect(component.submitting).toBe(false);
     expect(component.errorMessage).toBe('Email delivery failed');
     expect(component.verifiedRecord).not.toBeNull();
+  });
+
+  it('resets code, companyName, and verified fields on navigation event', () => {
+    const routerEvents = new Subject<any>();
+    const comp = new DeleteRequestComponent(
+      customerService as unknown as CustomerService,
+      { events: routerEvents.asObservable() } as any
+    );
+    comp.ngOnInit();
+
+    comp.codeType = 'GLOBAL_CUSTOMER';
+    comp.code = 'AEIP';
+    comp.companyName = 'Example Company';
+    comp.verificationMessage = 'Found';
+
+    routerEvents.next(new NavigationEnd(1, '/delete-request', '/delete-request'));
+
+    expect(comp.code).toBe('');
+    expect(comp.companyName).toBe('');
+    expect(comp.verificationMessage).toBe('');
+    expect(comp.codeType).toBe('');
+
+    comp.ngOnDestroy();
   });
 });

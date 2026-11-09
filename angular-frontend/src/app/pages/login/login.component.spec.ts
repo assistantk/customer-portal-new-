@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import '@angular/compiler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChangeDetectorRef, NgModule } from '@angular/core';
@@ -20,6 +21,17 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
   let fb: FormBuilder;
 
   beforeEach(() => {
+    if (typeof sessionStorage === 'undefined') {
+      const storage: Record<string, string> = {};
+      (globalThis as any).sessionStorage = {
+        getItem: (k: string) => storage[k] ?? null,
+        setItem: (k: string, v: string) => { storage[k] = String(v); },
+        removeItem: (k: string) => { delete storage[k]; },
+        clear: () => { Object.keys(storage).forEach((k) => delete storage[k]); },
+        key: (i: number) => Object.keys(storage)[i] ?? null,
+        length: 0
+      };
+    }
     sessionStorage.clear();
     fb = new FormBuilder();
 

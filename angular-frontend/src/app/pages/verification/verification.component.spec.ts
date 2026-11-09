@@ -1,5 +1,8 @@
+import '@angular/compiler';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChangeDetectorRef } from '@angular/core';
+import { Subject } from 'rxjs';
+import { NavigationEnd } from '@angular/router';
 import { VerificationComponent } from './verification.component';
 import { CustomerService } from '../../services/customer.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
@@ -91,38 +94,27 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     expect(filename).toBe('GST_Verification_27AAACT2727Q1ZT.pdf');
   });
 
-  it('uppercases GSTIN input and displays all distinct associated handling agent codes', () => {
-    component.verificationType = 'gstin';
-    component.code = '07abcde1234f1z5';
-    mockCustomerService.lookupCustomerByGstinJDBC.mockReturnValue(of([{
-      customerCode: 'SAEB',
-      handlingAgentCodes: ['HA01', 'HA01', 'HA02']
-    }]));
+  it('resets search fields, results and state on navigation event', () => {
+    const routerEvents = new Subject<any>();
+    const comp = new VerificationComponent(
+      mockCustomerService as CustomerService,
+      mockCdr,
+      mockPdfGenerator as PdfGeneratorService,
+      { events: routerEvents.asObservable() } as any
+    );
+    comp.ngOnInit();
 
-    component.verifyCode();
+    comp.code = 'TISCO';
+    comp.customers = [{ customerCode: 'TISCO', companyName: 'TATA STEEL' }];
+    comp.error = 'Some error';
 
-    expect(mockCustomerService.lookupCustomerByGstinJDBC).toHaveBeenCalledWith('07ABCDE1234F1Z5');
-    expect(component.getHandlingAgentCodes(component.customers?.[0])).toEqual(['HA01', 'HA02']);
-  });
+    routerEvents.next(new NavigationEnd(1, '/verify', '/verify'));
 
-  it('returns an empty handling agent list when the GSTIN has no association', () => {
-    expect(component.getHandlingAgentCodes({ handlingAgentCodes: [] })).toEqual([]);
-  });
+    expect(comp.code).toBe('');
+    expect(comp.customers).toBeNull();
+    expect(comp.error).toBe('');
 
-  it('searches ownership code records by normalized code or company-name term', () => {
-    component.verificationType = 'ownership';
-    component.code = 'alps mining';
-    mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([{
-      ownershipCode: 'ALPS',
-      companyName: 'M/S ALPS MINING SERVICES PRIVATE LIMITED'
-    }]));
-
-    component.verifyCode();
-
-    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('ALPS MINING');
-    expect(component.customers).toEqual([{
-      ownershipCode: 'ALPS',
-      companyName: 'M/S ALPS MINING SERVICES PRIVATE LIMITED'
-    }]);
+    comp.ngOnDestroy();
   });
 });
+

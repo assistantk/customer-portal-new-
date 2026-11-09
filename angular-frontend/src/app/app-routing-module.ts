@@ -12,14 +12,13 @@ import { AccessDeniedComponent } from './pages/access-denied/access-denied.compo
 import { AuthGuard, NonAuthGuard, SrDcmAccessGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  { path: '', redirectTo: 'login', pathMatch: 'full' },
-  { path: 'login', component: LoginComponent, canActivate: [NonAuthGuard] },
+  // { path: '', redirectTo: 'registration', pathMatch: 'full' },
+  // { path: 'login', component: LoginComponent },
   { path: 'access-denied', component: AccessDeniedComponent },
   { path: 'signup', redirectTo: 'register' },
   {
     path: '',
     component: LayoutComponent,
-    canActivate: [AuthGuard],
     children: [
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', component: HomeComponent },
@@ -37,11 +36,11 @@ const routes: Routes = [
       { path: 'verify', component: VerificationComponent, canActivate: [SrDcmAccessGuard] }
     ]
   },
-  { path: '**', redirectTo: 'login' }
+  { path: '**', redirectTo: 'registration' }
 ];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes, { useHash: true })],
+  imports: [RouterModule.forRoot(routes, { useHash: true, onSameUrlNavigation: 'reload' })],
   exports: [RouterModule]
 })
 export class AppRoutingModule { }

@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 import { BehaviorSubject, of, throwError, Subject } from 'rxjs';
 
 describe('CustomerRegistrationComponent - Submission and Loading State', () => {
@@ -14,6 +17,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
   let cdrMock: ChangeDetectorRef;
   let authUserSubject: BehaviorSubject<any>;
   let authServiceMock: any;
+  let gstVerificationServiceMock: any;
 
   beforeEach(() => {
     customerServiceMock = {
@@ -733,7 +737,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.form.city).toBe('');
       expect(component.form.pincode).toBe('');
       expect(component.gstins[0].gstin).toBe('');
-      expect(component.errors['gstin_0_gstin']).toContain('GSTIN could not be extracted');
+      expect(component.errors['gstin_0_gstin']).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
     });
 
     it('discards results of older OCR requests when a newer upload is initiated', async () => {
@@ -800,6 +804,33 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.form.address = ' 123 MAIN ST,  APT 4B, NEW DELHI ';
       component.handleAddressBlur();
       expect(component.form.address).toBe('123 MAIN ST,APT 4B,NEW DELHI');
+    });
+
+    it('allows typing multiple words and spaces continuously in the GST input field without restriction', () => {
+      component.gstins = [{ gstin: '', state: '' }];
+
+      // 1. User can type continuous characters and multiple words with spaces
+      component.handleGstinChange(0, { gstin: 'FIRST WORD SECOND WORD 12345' });
+      expect(component.gstins[0].gstin).toBe('FIRST WORD SECOND WORD 12345');
+      // No validation error during typing
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+
+      // 2. Spaces and partial editing are retained without being stripped
+      component.handleGstinChange(0, { gstin: '27 ABCDE ' });
+      expect(component.gstins[0].gstin).toBe('27 ABCDE ');
+
+      // 3. Validation occurs on blur
+      component.handleGstinBlur(0);
+      expect(component.errors['gstin_0_gstin']).toBe('Enter a valid 15-character GSTIN.');
+
+      // 4. Typing again clears the validation error
+      component.handleGstinChange(0, { gstin: '27ABCDE1234F1Z5' });
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+
+      // 5. Validating on blur with matching PAN passes
+      component.form.panNumber = 'ABCDE1234F';
+      component.handleGstinBlur(0);
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
     });
 
     it('allows address that exceeds 100 characters with comma spaces but fits within 100 characters when normalized', () => {
@@ -894,6 +925,134 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.deleteErrorMessage)
         .toBe('Access denied. Administrator privileges required.');
     });
+
+    it('Global Code lookup fetches full details and displays Verification screen table structure', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+      customerServiceMock.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      }));
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'ACME01',
+        companyName: 'Acme Logistics',
+        address: '100 Industrial Area, Delhi',
+        panNumber: 'AAACA1234D',
+        gstinNumbers: '07AAACA1234D1Z5',
+        division: 'DELHI',
+        creationDate: '2025-03-01'
+      }));
+
+      component.verifyDeleteCode();
+
+      expect(component.deleteRecordDetails).toEqual({
+        customerCode: 'ACME01',
+        companyName: 'Acme Logistics',
+        address: '100 Industrial Area, Delhi',
+        panNumber: 'AAACA1234D',
+        gstinNumbers: '07AAACA1234D1Z5',
+        division: 'DELHI',
+        creationDate: '2025-03-01'
+      });
+      expect(component.getDeleteGstinList(component.deleteRecordDetails)).toEqual(['07AAACA1234D1Z5']);
+      expect(component.deleteVerificationMessage).toContain('Please enter the exact company name shown above');
+    });
+
+    it('Handling Agent Code lookup fetches full details and populates agent details', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'HANDLING_AGENT';
+      component.deleteCode = 'HNDG01';
+      customerServiceMock.verifyDeleteRequest.mockReturnValue(of({
+        success: true,
+        found: true,
+        code: 'HNDG01',
+        companyName: 'Handling Solutions Corp'
+      }));
+      customerServiceMock.lookupHandlingAgentJDBC.mockReturnValue(of({
+        code: 'HNDG01',
+        companyName: 'Handling Solutions Corp',
+        address: '200 Cargo Hub, Mumbai',
+        panNumber: 'BBBCB5678E',
+        gstinNumbers: '27BBBCB5678E1Z9',
+        division: 'MUMBAI',
+        creationDate: '2025-03-10'
+      }));
+
+      component.verifyDeleteCode();
+
+      expect(component.deleteRecordDetails.companyName).toBe('Handling Solutions Corp');
+      expect(component.deleteRecordDetails.division).toBe('MUMBAI');
+      expect(component.getDeleteGstinList(component.deleteRecordDetails)).toEqual(['27BBBCB5678E1Z9']);
+    });
+
+    it('validates company name strictly: disables Delete Request on partial or mismatch, enables on exact match', () => {
+      component.mode = 'delete';
+      component.verifiedDeleteRecord = {
+        codeType: 'GLOBAL_CUSTOMER',
+        code: 'ACME01',
+        companyName: 'Acme Logistics'
+      };
+
+      // Empty
+      component.deleteCompanyName = '';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Partial
+      component.deleteCompanyName = 'Acme';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Case mismatch
+      component.deleteCompanyName = 'acme logistics';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Incorrect
+      component.deleteCompanyName = 'Another Company';
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+
+      // Exact match
+      component.deleteCompanyName = 'Acme Logistics';
+      expect(component.isDeleteCompanyNameMatched()).toBe(true);
+
+      // Exact match with whitespace trimming allowed
+      component.deleteCompanyName = '  Acme Logistics  ';
+      expect(component.isDeleteCompanyNameMatched()).toBe(true);
+    });
+
+    it('clears previous verification result and record details when code changes', () => {
+      component.mode = 'delete';
+      component.deleteCode = 'ACME01';
+      component.verifiedDeleteRecord = { codeType: 'GLOBAL_CUSTOMER', code: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteRecordDetails = { customerCode: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteCompanyName = 'Acme Logistics';
+
+      component.onDeleteCodeChange({ target: { value: 'ACME02' } } as unknown as Event);
+
+      expect(component.verifiedDeleteRecord).toBeNull();
+      expect(component.deleteRecordDetails).toBeNull();
+      expect(component.deleteCompanyName).toBe('');
+      expect(component.isDeleteCompanyNameMatched()).toBe(false);
+    });
+
+    it('clears all unsaved lookup and confirmation data when leaving Disable Code mode', () => {
+      component.mode = 'delete';
+      component.deleteCodeType = 'GLOBAL_CUSTOMER';
+      component.deleteCode = 'ACME01';
+      component.verifiedDeleteRecord = { codeType: 'GLOBAL_CUSTOMER', code: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteRecordDetails = { customerCode: 'ACME01', companyName: 'Acme Logistics' };
+      component.deleteCompanyName = 'Acme Logistics';
+
+      component.switchMode('new');
+
+      expect(component.mode).toBe('new');
+      expect(component.deleteCodeType).toBe('');
+      expect(component.deleteCode).toBe('');
+      expect(component.verifiedDeleteRecord).toBeNull();
+      expect(component.deleteRecordDetails).toBeNull();
+      expect(component.deleteCompanyName).toBe('');
+    });
   });
 
   describe('Code Type Toggle & Dynamic Logo Switching', () => {
@@ -953,6 +1112,803 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('HANDLING_AGENT');
       expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
+    });
+
+    it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+      const routerEvents = new Subject<any>();
+      const zoneDivisionService = new ZoneDivisionService();
+      zoneDivisionService.setSelection('Northern Railway (NR)', 'Delhi (DLI)', true);
+
+      const navRouter = {
+        navigate: vi.fn(),
+        events: routerEvents.asObservable()
+      } as any;
+
+      const testComponent = new CustomerRegistrationComponent(
+        customerServiceMock,
+        panOcrServiceMock,
+        notificationService,
+        cdrMock,
+        navRouter,
+        undefined,
+        authServiceMock,
+        zoneDivisionService
+      );
+      testComponent.ngOnInit();
+
+      testComponent.form.companyName = 'Delhi Logistics Pvt Ltd';
+      testComponent.form.panNumber = 'ABCDE1234F';
+      testComponent.form.address = 'Connaught Place';
+      testComponent.form.city = 'New Delhi';
+      testComponent.form.pincode = '110001';
+      testComponent.form.email = 'delhi@logistics.com';
+      testComponent.form.mobile = '9876543210';
+
+      expect(testComponent.form.companyName).toBe('Delhi Logistics Pvt Ltd');
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      // Simulate navigation event
+      routerEvents.next(new NavigationEnd(1, '/registration', '/registration?reset=true'));
+
+      // Normal text fields should be cleared
+      expect(testComponent.form.companyName).toBe('');
+      expect(testComponent.form.panNumber).toBe('');
+      expect(testComponent.form.address).toBe('');
+      expect(testComponent.form.city).toBe('');
+      expect(testComponent.form.pincode).toBe('');
+      expect(testComponent.form.email).toBe('');
+      expect(testComponent.form.mobile).toBe('');
+
+      // Zone and Division MUST be preserved
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      testComponent.ngOnDestroy();
+    });
+
+    it('preserves zone and division when switching modes between new, old, and ownership', () => {
+      component.mode = 'new';
+      component.form.zone = 'Western Railway (WR)';
+      component.form.operatingDivision = 'Mumbai Central (BCT)';
+      component.form.companyName = 'Western Traders';
+      component.form.address = 'Marine Drive';
+
+      // Switch mode to old
+      component.switchMode('old');
+
+      // Text fields cleared
+      expect(component.form.companyName).toBe('');
+      expect(component.form.address).toBe('');
+
+      // Zone and Division preserved
+      expect(component.form.zone).toBe('Western Railway (WR)');
+      expect(component.form.operatingDivision).toBe('Mumbai Central (BCT)');
+    });
+  });
+
+  describe('Submit Request conditional button disabling and validation', () => {
+    describe('New Mode', () => {
+      beforeEach(() => {
+        component.mode = 'new';
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          operatingDivision: '',
+          zone: '',
+          email: '',
+          mobile: '',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.gstins = [];
+      });
+
+      function setupValidNewForm() {
+        component.form = {
+          companyName: 'Valid New Company',
+          customerCode: 'VNEW',
+          address: '123 Valid Street',
+          city: 'Mumbai',
+          pincode: '400001',
+          panNumber: 'ABCDE1234F',
+          operatingDivision: 'Mumbai (CSTM)',
+          zone: 'Central Railway (CR)',
+          email: 'valid@example.com',
+          mobile: '9876543210',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.codeChecking = false;
+        component.gstins = [
+          {
+            state: 'Maharashtra',
+            gstin: '27ABCDE1234F1Z5',
+            file: null,
+            existingFileName: 'valid_gstin.pdf',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      }
+
+      it('is disabled by default when new mode is opened', () => {
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('rejects whitespace-only values in mandatory fields', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.companyName = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.companyName = 'Valid New Company';
+        component.form.address = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.address = '123 Valid Street';
+        component.form.panNumber = '          ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.panNumber = 'ABCDE1234F';
+        component.form.zone = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.zone = 'Central Railway (CR)';
+        component.form.operatingDivision = '   ';
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables Submit Request when all required fields are correctly filled', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('immediately disables Submit Request if a previously valid field becomes invalid', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.handlePanChange('INVALID');
+        expect(component.isFormValid).toBe(false);
+
+        component.handlePanChange('ABCDE1234F');
+        expect(component.isFormValid).toBe(true);
+
+        component.handlePincodeChange('123');
+        expect(component.isFormValid).toBe(false);
+
+        component.handlePincodeChange('400001');
+        expect(component.isFormValid).toBe(true);
+
+        component.form.email = 'not-an-email';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.email = 'test@example.com';
+        expect(component.isFormValid).toBe(true);
+
+        component.form.mobile = '12345';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.mobile = '9876543210';
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('prevents submission when Enter is pressed on an invalid form', () => {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn()
+        } as unknown as Event;
+
+        component.submit(mockEvent);
+
+        expect(mockEvent.preventDefault).toHaveBeenCalled();
+        expect(customerServiceMock.registerCustomer).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Old Mode', () => {
+      beforeEach(() => {
+        component.mode = 'old';
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          operatingDivision: '',
+          zone: '',
+          email: '',
+          mobile: '',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.gstins = [
+          {
+            gstinId: null,
+            state: '',
+            stateCode: '',
+            gstin: '',
+            file: null,
+            existingFileName: '',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      });
+
+      function setupValidOldForm() {
+        component.form = {
+          companyName: 'Old Legacy Company',
+          customerCode: 'OLD1',
+          address: '456 Railway Road',
+          city: 'Mumbai',
+          pincode: '400001',
+          panNumber: 'ABCDE1234F',
+          operatingDivision: 'Mumbai (CSTM)',
+          zone: 'Central Railway (CR)',
+          email: 'old@example.com',
+          mobile: '9876543210',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.lookupLoading = false;
+        component.lookupDone = true;
+        component.lookupError = '';
+        component.verifiedCustomerCode = 'OLD1';
+        component.gstins = [
+          {
+            state: 'Maharashtra',
+            gstin: '27ABCDE1234F1Z5',
+            file: null,
+            existingFileName: '',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      }
+
+      it('is disabled by default when old mode is opened', () => {
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables Submit Request when valid old customer record is verified and fields filled', () => {
+        setupValidOldForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('immediately disables if verified customer code is cleared or modified', () => {
+        setupValidOldForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.customerCode = 'DIFF';
+        expect(component.isFormValid).toBe(false);
+      });
+    });
+
+    describe('Ownership Mode', () => {
+      function setupValidOwnershipForm() {
+        component.mode = 'ownership';
+        component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+        component.ownSection1Loading = false;
+        component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
+        component.ownSection2Loading = false;
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          ownershipCode: 'OWN1',
+          ownershipAddress: 'Valid Ownership Address',
+          ownershipPartyCode: 'PRT1',
+          ownershipPartyAddress: 'Valid Party Address'
+        };
+      }
+
+      it('is disabled by default when ownership mode is opened', () => {
+        component.mode = 'ownership';
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables when ownership code and party code are verified and addresses present', () => {
+        setupValidOwnershipForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('disables when mandatory ownership address is empty or whitespace', () => {
+        setupValidOwnershipForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.ownershipAddress = '   ';
+        expect(component.isFormValid).toBe(false);
+      });
+    });
+  });
+
+  describe('GSTIN Verification and Automatic Data Fetching', () => {
+    beforeEach(() => {
+      gstVerificationServiceMock = {
+        verifyGstin: vi.fn().mockImplementation((gstin: string) => of({
+          success: true,
+          gstin,
+          legalName: 'RELIANCE INDUSTRIES LIMITED',
+          tradeName: 'RELIANCE',
+          businessName: 'RELIANCE INDUSTRIES LIMITED',
+          pan: gstin.substring(2, 12),
+          status: 'Active',
+          registrationDate: '01/07/2017',
+          constitutionOfBusiness: 'Public Limited Company',
+          taxpayerType: 'Regular',
+          address: '3RD FLOOR, MAKER CHAMBER IV, 222 NARIMAN POINT, MUMBAI, 400021',
+          city: 'MUMBAI',
+          state: 'Maharashtra',
+          pincode: '400021',
+          verificationStatus: 'VERIFIED'
+        })),
+        compareOcrAndVerified: vi.fn().mockImplementation((ocr, verified) => {
+          const comparisons = [
+            {
+              field: 'gstin',
+              label: 'GSTIN',
+              ocrValue: ocr.gstin || '',
+              verifiedValue: verified.gstin || '',
+              status: ocr.gstin === verified.gstin ? 'match' : 'mismatch',
+              autoCorrected: false
+            },
+            {
+              field: 'companyName',
+              label: 'Legal / Trade Name',
+              ocrValue: ocr.businessName || ocr.tradeName || ocr.legalName || '',
+              verifiedValue: verified.businessName || verified.legalName || verified.tradeName || '',
+              status: (ocr.legalName === verified.legalName) ? 'match' : 'mismatch',
+              autoCorrected: true
+            }
+          ];
+          const hasDiscrepancies = comparisons.some((c: any) => c.status === 'mismatch');
+          return {
+            gstin: verified.gstin,
+            verificationStatus: verified.verificationStatus,
+            registrationStatus: verified.status || 'Active',
+            hasDiscrepancies,
+            discrepancyCount: hasDiscrepancies ? 1 : 0,
+            matchCount: hasDiscrepancies ? 1 : 2,
+            comparisons,
+            verifiedData: verified,
+            ocrData: ocr
+          };
+        })
+      };
+
+      component = new CustomerRegistrationComponent(
+        customerServiceMock as CustomerService,
+        panOcrServiceMock as PanOcrService,
+        notificationService,
+        cdrMock,
+        undefined,
+        undefined,
+        authServiceMock,
+        undefined,
+        gstVerificationServiceMock
+      );
+    });
+
+    it('should automatically initiate GSTIN verification after successful OCR and populate form fields', async () => {
+      component.mode = 'new';
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '27AAACR7157R1ZR',
+        stateName: 'Maharashtra',
+        address: 'MAKER CHAMBERS IV, NARIMAN POINT',
+        city: 'MUMBAI',
+        pincode: '400021',
+        tradeName: 'RELIANCE',
+        legalName: 'RELIANCE INDUSTRIES LIMITED',
+        businessName: 'RELIANCE INDUSTRIES LIMITED',
+        pan: 'AAACR7157R',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'gst-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR', expect.anything());
+      expect(component.form.companyName).toBe('RELIANCE');
+      expect(component.form.panNumber).toBe('AAACR7157R');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      expect(component.gstins[0].verificationData?.status).toBe('Active');
+    });
+
+    it('should detect discrepancies between OCR data and GST registry, flagging discrepancy state', async () => {
+      component.mode = 'new';
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '27AAACR7157R1ZR',
+        stateName: 'Maharashtra',
+        address: 'TAMPERED ADDRESS STREET 99',
+        city: 'MUMBAI',
+        pincode: '400021',
+        tradeName: 'ALTERED TRADERS',
+        legalName: 'ALTERED LEGAL NAME PRIVATE LIMITED',
+        businessName: 'ALTERED BUSINESS',
+        pan: 'AAACR7157R',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'tampered-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      expect(component.gstins[0].verificationState).toBe('discrepancy');
+      expect(component.gstins[0].crossCheckResult?.hasDiscrepancies).toBe(true);
+      expect(component.activeCrossCheck).toBeDefined();
+    });
+
+    it('should allow manual GSTIN verification via verifyGstinAtIndex', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('27AAACR7157R1ZR');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      expect(component.form.companyName).toBe('RELIANCE');
+      expect(component.form.panNumber).toBe('AAACR7157R');
+    });
+
+    it('should reject manual verification if GSTIN format is invalid', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = 'INVALID_GST';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).not.toHaveBeenCalled();
+      expect(component.errors['gstin_0_gstin']).toBe('Enter a valid 15-character GSTIN.');
+    });
+
+    it('should flag cancelled GSTINs and set verificationState to cancelled', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27CANCL1234F1Z5',
+        legalName: 'CANCELLED BUSINESS PVT LTD',
+        status: 'Cancelled',
+        verificationStatus: 'CANCELLED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27CANCL1234F1Z5';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('cancelled');
+    });
+
+    it('should flag suspended GSTINs and set verificationState to suspended', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27SUSPN1234F1Z5',
+        legalName: 'SUSPENDED BUSINESS PVT LTD',
+        status: 'Suspended',
+        verificationStatus: 'SUSPENDED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27SUSPN1234F1Z5';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('suspended');
+    });
+
+    it('should enforce 40-character limit with a warning message without silent truncation', () => {
+      const longName = 'RELIANCE INDUSTRIAL INFRASTRUCTURE TRANSPORT LOGISTICS SERVICE LIMITED';
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '27AAACR7157R1ZR',
+        legalName: longName,
+        businessName: longName,
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.mode = 'new';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe(longName);
+      expect(component.errors['companyName']).toContain('Company name exceeds the maximum allowed length of 40 characters');
+    });
+
+    it('should preserve user manual edits when auto-filling verified data', () => {
+      component.mode = 'new';
+      component.handleNewCompanyNameChange('My Manually Entered Company', true);
+
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe('My Manually Entered Company');
+    });
+
+    it('should gracefully handle verification service failure without breaking form submission', () => {
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: false,
+        gstin: '27AAACR7157R1ZR',
+        verificationStatus: 'SERVICE_UNAVAILABLE',
+        message: 'GST verification service unreachable.'
+      }));
+
+      component.mode = 'new';
+      component.form.companyName = 'Existing Preserved Company';
+      component.gstins[0].gstin = '27AAACR7157R1ZR';
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.gstins[0].verificationState).toBe('unavailable');
+      expect(component.form.companyName).toBe('Existing Preserved Company');
+    });
+
+    it('should toggle and dismiss cross-check inspection panel', () => {
+      component.gstins[0].verificationData = {
+        success: true,
+        gstin: '27AAACR7157R1ZR',
+        legalName: 'TEST CORP',
+        verificationStatus: 'VERIFIED'
+      };
+
+      component.toggleCrossCheckView(0);
+      expect(component.activeCrossCheckIndex).toBe(0);
+
+      component.dismissCrossCheck();
+      expect(component.activeCrossCheckIndex).toBeNull();
+      expect(component.activeCrossCheck).toBeNull();
+    });
+
+    it('Scenario B: should display fallback error message when OCR fails to detect GSTIN and allow manual entry and verification', async () => {
+      component.mode = 'new';
+      // Simulate OCR failing to extract a valid GSTIN
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '',
+        stateName: '',
+        address: '',
+        city: '',
+        pincode: '',
+        tradeName: '',
+        legalName: '',
+        businessName: '',
+        pan: '',
+        panMismatch: false,
+        companyNameTooLong: false
+      });
+
+      const fakeFile = new File(['dummy-content'], 'unclear-gst-cert.pdf', { type: 'application/pdf' });
+      const fakeEvent = { target: { files: [fakeFile], value: '' } } as unknown as Event;
+
+      await component.handleGstinFileChange(0, fakeEvent);
+
+      // Verify exact fallback message is shown and scanStatus is set
+      expect(component.gstins[0].scanStatus).toBe('notfound');
+      expect(component.gstins[0].scanError).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
+      expect(component.errors['gstin_0_gstin']).toBe('GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.');
+
+      // Now user manually enters the 15-character GSTIN
+      component.handleGstinChange(0, { gstin: '09ADMPA1980G1ZK' });
+      expect(component.gstins[0].gstin).toBe('09ADMPA1980G1ZK');
+
+      // User clicks "Verify GSTIN"
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '09ADMPA1980G1ZK',
+        tradeName: 'SILIGURI BARDANA CO',
+        legalName: 'SILIGURI BARDANA COMPANY PRIVATE LIMITED',
+        businessName: 'SILIGURI BARDANA COMPANY',
+        pan: 'ADMPA1980G',
+        address: '74/32, Collector Ganj, Kanpur, Uttar Pradesh, 208001',
+        city: 'Kanpur',
+        pincode: '208001',
+        state: 'Uttar Pradesh',
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      const successSpy = vi.spyOn(notificationService, 'success');
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(gstVerificationServiceMock.verifyGstin).toHaveBeenCalledWith('09ADMPA1980G1ZK');
+      expect(component.gstins[0].verificationState).toBe('verified');
+      // Preference: Trade Name is preferred over Legal Name
+      expect(component.form.companyName).toBe('SILIGURI BARDANA CO');
+      expect(component.form.panNumber).toBe('ADMPA1980G');
+      expect(component.form.city).toBe('Kanpur');
+      expect(component.form.pincode).toBe('208001');
+      expect(component.form.address).toBe('74/32,Collector Ganj,Kanpur,Uttar Pradesh,208001');
+      expect(successSpy).toHaveBeenCalledWith('GSTIN Verified', 'Official GST registration details retrieved and form populated.');
+      expect(component.errors['gstin_0_gstin']).toBeUndefined();
+    });
+
+    it('should fall back to Legal Business Name when Trade Name is empty', () => {
+      component.mode = 'new';
+      component.gstins[0].gstin = '09ADMPA1980G1ZK';
+
+      gstVerificationServiceMock.verifyGstin.mockReturnValue(of({
+        success: true,
+        gstin: '09ADMPA1980G1ZK',
+        tradeName: '',
+        legalName: 'LEGAL ENTERPRISE PVT LTD',
+        businessName: 'LEGAL ENTERPRISE',
+        pan: 'ADMPA1980G',
+        status: 'Active',
+        verificationStatus: 'VERIFIED'
+      }));
+
+      component.verifyGstinAtIndex(0, false);
+
+      expect(component.form.companyName).toBe('LEGAL ENTERPRISE PVT LTD');
+    });
+  });
+
+  describe('Form Data Isolation and Section Navigation', () => {
+    it('clears all unsaved form values and dynamic GSTINs when switching modes', () => {
+      authServiceMock.currentUser = { divisionCode: 'TKD' };
+      authUserSubject.next(authServiceMock.currentUser);
+      component.ngOnInit();
+
+      component.switchMode('new');
+      component.form.companyName = 'Acme Steel Works';
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.address = '123 Industrial Area, Block B';
+      component.form.customerCode = 'ACME';
+      component.form.state = 'Maharashtra';
+      component.addGstin();
+      component.gstins[0].gstin = '27ABCDE1234F1Z5';
+      component.gstins[0].state = 'Maharashtra';
+      component.errors['companyName'] = 'Sample error';
+
+      // Switch to 'old' mode
+      component.switchMode('old');
+
+      // Old mode form should be completely clean
+      expect(component.form.companyName).toBe('');
+      expect(component.form.panNumber).toBe('');
+      expect(component.form.address).toBe('');
+      expect(component.form.customerCode).toBe('');
+      expect(component.gstins.length).toBe(1);
+      expect(component.gstins[0].gstin).toBe('');
+      expect(component.errors).toEqual({});
+
+      // Entering data in 'old' mode
+      component.form.customerCode = 'OLD1';
+      component.form.companyName = 'Old Corporation';
+
+      // Switch back to 'new' mode
+      component.switchMode('new');
+      expect(component.form.companyName).toBe('');
+      expect(component.form.customerCode).toBe('');
+      // Login division default is reapplied
+      expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    });
+
+    it('cancels pending async timers and clears lookup state on mode switch', () => {
+      component.switchMode('old');
+      component.lookupLoading = true;
+      component.lookupError = 'Previous lookup error';
+      component.verifiedCustomerCode = 'TEST';
+
+      component.switchMode('ownership');
+
+      expect(component.lookupLoading).toBe(false);
+      expect(component.lookupError).toBe('');
+      expect(component.verifiedCustomerCode).toBeNull();
+    });
+  });
+
+  describe('Submit Request Validation and Enablement (isFormValid)', () => {
+    it('isFormValid returns false by default for an empty form', () => {
+      component.switchMode('new');
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects company name that is whitespace or > 40 chars', () => {
+      component.switchMode('new');
+      component.form.companyName = '   ';
+      expect(component.isFormValid()).toBe(false);
+
+      component.form.companyName = 'A'.repeat(41);
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects invalid PAN format or length', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Valid Company';
+      component.form.address = 'Valid Address 123';
+      component.form.customerCode = 'VALI';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27ABCDE1234F1Z5',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'cert.pdf', { type: 'application/pdf' })
+      }];
+
+      // 9 chars
+      component.form.panNumber = 'ABCDE1234';
+      expect(component.isFormValid()).toBe(false);
+
+      // 11 chars
+      component.form.panNumber = 'ABCDE1234FA';
+      expect(component.isFormValid()).toBe(false);
+
+      // invalid format
+      component.form.panNumber = '12345ABCDE';
+      expect(component.isFormValid()).toBe(false);
+    });
+
+    it('isFormValid rejects GSTIN if length != 15 or does not match PAN', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Valid Company';
+      component.form.address = 'Valid Address 123';
+      component.form.customerCode = 'VALI';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.form.panNumber = 'ABCDE1234F';
+
+      // GSTIN length 14
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27ABCDE1234F1Z',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'cert.pdf', { type: 'application/pdf' })
+      }];
+      expect(component.isFormValid()).toBe(false);
+
+      // GSTIN with different PAN: 27XYZWE1234F1Z5 vs ABCDE1234F
+      component.gstins[0].gstin = '27XYZWE1234F1Z5';
+      expect(component.isFormValid()).toBe(false);
+
+      // Correct matching GSTIN
+      component.gstins[0].gstin = '27ABCDE1234F1Z5';
+      expect(component.isFormValid()).toBe(true);
+    });
+
+    it('isFormValid returns true when all mandatory fields and validations pass', () => {
+      component.switchMode('new');
+      component.form.companyName = 'Tata Steel Limited';
+      component.form.address = 'Bombay House, 24 Homi Mody Street';
+      component.form.customerCode = 'TATA';
+      component.form.zone = 'Northern Railway (NR)';
+      component.form.operatingDivision = 'Tughlakabad / Delhi Area (TKD)';
+      component.form.panNumber = 'AAACT2727Q';
+      component.gstins = [{
+        ...component.gstins[0],
+        gstin: '27AAACT2727Q1ZW',
+        state: 'Maharashtra',
+        file: new File(['dummy'], 'gst_cert.pdf', { type: 'application/pdf' })
+      }];
+
+      expect(component.isFormValid()).toBe(true);
     });
   });
 });

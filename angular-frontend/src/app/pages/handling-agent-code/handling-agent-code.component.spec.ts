@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { HandlingAgentCodeComponent } from './handling-agent-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { BehaviorSubject, of } from 'rxjs';
+import { ZoneDivisionService } from '../../services/zone-division.service';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 
 describe('HandlingAgentCodeComponent', () => {
   let component: HandlingAgentCodeComponent;
@@ -148,6 +151,29 @@ describe('HandlingAgentCodeComponent', () => {
     expect(component.errors['gstin']).toBeUndefined();
   });
 
+  it('allows users to type multiple characters, words, and spaces continuously in GST input without restriction', () => {
+    component.handleGstinChange('FIRST WORD SECOND WORD 12345');
+    expect(component.form.gstin).toBe('FIRST WORD SECOND WORD 12345');
+    expect(component.errors['gstin']).toBeUndefined();
+
+    // Supports trailing spaces without stripping them while typing
+    component.handleGstinChange('TEST WORD ');
+    expect(component.form.gstin).toBe('TEST WORD ');
+
+    // Validates only on blur or submit
+    component.handleGstinBlur();
+    expect(component.errors['gstin']).toBe('Enter a valid 15-character GSTIN.');
+
+    // Clears error as soon as user types again
+    component.handleGstinChange('27ABCDE1234F1Z5');
+    expect(component.errors['gstin']).toBeUndefined();
+
+    // Validates correctly on blur with valid GSTIN matching PAN
+    component.form.panNumber = 'ABCDE1234F';
+    component.handleGstinBlur();
+    expect(component.errors['gstin']).toBeUndefined();
+  });
+
   it('should submit registration successfully', () => {
     component.form = {
       agentCompanyName: 'Super Logistics Private Limited',
@@ -182,5 +208,137 @@ describe('HandlingAgentCodeComponent', () => {
   it('should navigate to /registration when navigateToHome is called', () => {
     component.navigateToHome();
     expect(routerMock.navigate).toHaveBeenCalledWith(['/registration']);
+  });
+
+  it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+    const routerEvents = new Subject<any>();
+    const zoneDivisionService = new ZoneDivisionService();
+    zoneDivisionService.setSelection('Central Railway (CR)', 'Mumbai (CSTM)', true);
+
+    const testComponent = new HandlingAgentCodeComponent(
+      customerServiceMock as CustomerService,
+      notificationService,
+      { navigate: vi.fn(), events: routerEvents.asObservable() } as any,
+      cdrMock,
+      authServiceMock,
+      zoneDivisionService
+    );
+    testComponent.ngOnInit();
+
+    testComponent.form.agentCompanyName = 'Handling Logistics Ltd';
+    testComponent.form.panNumber = 'ABCDE1234F';
+    testComponent.form.address = '456 Freight Road';
+    testComponent.form.email = 'handling@logistics.com';
+    testComponent.form.mobile = '9876543210';
+    testComponent.form.city = 'Pune';
+    testComponent.form.pincode = '411001';
+
+    expect(testComponent.form.agentCompanyName).toBe('Handling Logistics Ltd');
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    // Simulate navigation event
+    routerEvents.next(new NavigationEnd(1, '/registration/handling-agent', '/registration/handling-agent'));
+
+    // Text fields must be cleared
+    expect(testComponent.form.agentCompanyName).toBe('');
+    expect(testComponent.form.panNumber).toBe('');
+    expect(testComponent.form.address).toBe('');
+    expect(testComponent.form.email).toBe('');
+    expect(testComponent.form.mobile).toBe('');
+    expect(testComponent.form.city).toBe('');
+    expect(testComponent.form.pincode).toBe('');
+
+    // Zone and Division MUST be preserved
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    testComponent.ngOnDestroy();
+  });
+
+  describe('Submit Request Button & Conditional Validation', () => {
+    it('keeps Submit Request disabled by default on initial open', () => {
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('remains disabled when mandatory fields contain whitespace only', () => {
+      component.form = {
+        agentCompanyName: '   ',
+        panNumber: '   ',
+        gstin: '',
+        address: '   ',
+        city: '',
+        pincode: '   ',
+        state: '   ',
+        zone: '   ',
+        operatingDivision: '   ',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = '   ';
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('enables Submit Request when all mandatory fields are valid', () => {
+      component.form = {
+        agentCompanyName: 'Fast Track Logistics',
+        panNumber: 'ABCDE1234F',
+        gstin: '',
+        address: '456 Express Highway',
+        city: '',
+        pincode: '411001',
+        state: 'Maharashtra',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Pune (PUNE)',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = 'FAST';
+      expect(component.isFormValid).toBe(true);
+    });
+
+    it('immediately disables button when a valid required field is invalidated', () => {
+      component.form = {
+        agentCompanyName: 'Fast Track Logistics',
+        panNumber: 'ABCDE1234F',
+        gstin: '',
+        address: '456 Express Highway',
+        city: '',
+        pincode: '411001',
+        state: 'Maharashtra',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Pune (PUNE)',
+        email: '',
+        mobile: ''
+      };
+      component.generatedCode = 'FAST';
+      expect(component.isFormValid).toBe(true);
+
+      // Invalidate company name
+      component.handleNameChange('');
+      expect(component.isFormValid).toBe(false);
+
+      // Restore company name, enter mismatched GSTIN
+      component.handleNameChange('Fast Track Logistics');
+      component.generatedCode = 'FAST';
+      component.codeChecking = false;
+      expect(component.isFormValid).toBe(true);
+
+      component.handleGstinChange('27AAAAA0000A1Z5'); // PAN mismatch
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('prevents form submission via Enter key or direct submit() when invalid', () => {
+      component.form.agentCompanyName = '';
+      const event = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      } as any;
+
+      component.submit(event);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(customerServiceMock.registerCustomer).not.toHaveBeenCalled();
+      expect(component.notice).toContain('Validation Error');
+    });
   });
 });

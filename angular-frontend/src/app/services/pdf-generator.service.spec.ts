@@ -6,6 +6,7 @@ import {
   RegistrationPdfData
 } from './pdf-generator.service';
 import { AuthService, AuthUserData } from './auth.service';
+import { OFFICIAL_SIGNATURE_ASPECT_RATIO } from './signature-asset';
 
 class MockAuthService {
   private user: AuthUserData | null = null;
@@ -455,7 +456,7 @@ describe('PdfGeneratorService', () => {
 
       // Download verification PDF
       const doc = service.generateVerificationPdf(data);
-      const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => {});
+      const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => doc as any);
       doc.save('test_verification.pdf');
       expect(saveSpy).toHaveBeenCalledWith('test_verification.pdf');
     });
@@ -718,7 +719,7 @@ describe('PdfGeneratorService', () => {
 
       it('ensures registration download saves the PDF with embedded image', () => {
         const doc = service.generateRegistrationPdf({ code: 'DOWN', companyName: 'DOWN CORP' });
-        const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => {});
+        const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => doc as any);
         service.downloadRegistrationPdf({ code: 'DOWN', companyName: 'DOWN CORP' }, 'custom.pdf');
         expect(saveSpy).toBeDefined();
       });
@@ -749,7 +750,7 @@ describe('PdfGeneratorService', () => {
           columns: ['customerCode'],
           rows: [['TEST']]
         });
-        const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => {});
+        const saveSpy = vi.spyOn(doc, 'save').mockImplementation(() => doc as any);
         service.downloadVerificationPdf({
           searchType: 'Code',
           searchValue: 'TEST',
