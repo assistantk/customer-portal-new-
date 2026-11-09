@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { CustomerRegistrationComponent } from './customer-registration.component';
 import { CustomerService } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 import { BehaviorSubject, of, throwError, Subject } from 'rxjs';
 
 describe('CustomerRegistrationComponent - Submission and Loading State', () => {
@@ -1096,6 +1099,338 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.codeType).toBe('HANDLING_AGENT');
       expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     });
+
+    it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+      const routerEvents = new Subject<any>();
+      const zoneDivisionService = new ZoneDivisionService();
+      zoneDivisionService.setSelection('Northern Railway (NR)', 'Delhi (DLI)', true);
+
+      const navRouter = {
+        navigate: vi.fn(),
+        events: routerEvents.asObservable()
+      } as any;
+
+      const testComponent = new CustomerRegistrationComponent(
+        customerServiceMock,
+        panOcrServiceMock,
+        notificationService,
+        cdrMock,
+        navRouter,
+        undefined,
+        authServiceMock,
+        zoneDivisionService
+      );
+      testComponent.ngOnInit();
+
+      testComponent.form.companyName = 'Delhi Logistics Pvt Ltd';
+      testComponent.form.panNumber = 'ABCDE1234F';
+      testComponent.form.address = 'Connaught Place';
+      testComponent.form.city = 'New Delhi';
+      testComponent.form.pincode = '110001';
+      testComponent.form.email = 'delhi@logistics.com';
+      testComponent.form.mobile = '9876543210';
+
+      expect(testComponent.form.companyName).toBe('Delhi Logistics Pvt Ltd');
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      // Simulate navigation event
+      routerEvents.next(new NavigationEnd(1, '/registration', '/registration?reset=true'));
+
+      // Normal text fields should be cleared
+      expect(testComponent.form.companyName).toBe('');
+      expect(testComponent.form.panNumber).toBe('');
+      expect(testComponent.form.address).toBe('');
+      expect(testComponent.form.city).toBe('');
+      expect(testComponent.form.pincode).toBe('');
+      expect(testComponent.form.email).toBe('');
+      expect(testComponent.form.mobile).toBe('');
+
+      // Zone and Division MUST be preserved
+      expect(testComponent.form.zone).toBe('Northern Railway (NR)');
+      expect(testComponent.form.operatingDivision).toBe('Delhi (DLI)');
+
+      testComponent.ngOnDestroy();
+    });
+
+    it('preserves zone and division when switching modes between new, old, and ownership', () => {
+      component.mode = 'new';
+      component.form.zone = 'Western Railway (WR)';
+      component.form.operatingDivision = 'Mumbai Central (BCT)';
+      component.form.companyName = 'Western Traders';
+      component.form.address = 'Marine Drive';
+
+      // Switch mode to old
+      component.switchMode('old');
+
+      // Text fields cleared
+      expect(component.form.companyName).toBe('');
+      expect(component.form.address).toBe('');
+
+      // Zone and Division preserved
+      expect(component.form.zone).toBe('Western Railway (WR)');
+      expect(component.form.operatingDivision).toBe('Mumbai Central (BCT)');
+    });
+  });
+
+  describe('Submit Request conditional button disabling and validation', () => {
+    describe('New Mode', () => {
+      beforeEach(() => {
+        component.mode = 'new';
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          operatingDivision: '',
+          zone: '',
+          email: '',
+          mobile: '',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.gstins = [];
+      });
+
+      function setupValidNewForm() {
+        component.form = {
+          companyName: 'Valid New Company',
+          customerCode: 'VNEW',
+          address: '123 Valid Street',
+          city: 'Mumbai',
+          pincode: '400001',
+          panNumber: 'ABCDE1234F',
+          operatingDivision: 'Mumbai (CSTM)',
+          zone: 'Central Railway (CR)',
+          email: 'valid@example.com',
+          mobile: '9876543210',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.codeChecking = false;
+        component.gstins = [
+          {
+            state: 'Maharashtra',
+            gstin: '27ABCDE1234F1Z5',
+            file: null,
+            existingFileName: 'valid_gstin.pdf',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      }
+
+      it('is disabled by default when new mode is opened', () => {
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('rejects whitespace-only values in mandatory fields', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.companyName = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.companyName = 'Valid New Company';
+        component.form.address = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.address = '123 Valid Street';
+        component.form.panNumber = '          ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.panNumber = 'ABCDE1234F';
+        component.form.zone = '   ';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.zone = 'Central Railway (CR)';
+        component.form.operatingDivision = '   ';
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables Submit Request when all required fields are correctly filled', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('immediately disables Submit Request if a previously valid field becomes invalid', () => {
+        setupValidNewForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.handlePanChange('INVALID');
+        expect(component.isFormValid).toBe(false);
+
+        component.handlePanChange('ABCDE1234F');
+        expect(component.isFormValid).toBe(true);
+
+        component.handlePincodeChange('123');
+        expect(component.isFormValid).toBe(false);
+
+        component.handlePincodeChange('400001');
+        expect(component.isFormValid).toBe(true);
+
+        component.form.email = 'not-an-email';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.email = 'test@example.com';
+        expect(component.isFormValid).toBe(true);
+
+        component.form.mobile = '12345';
+        expect(component.isFormValid).toBe(false);
+
+        component.form.mobile = '9876543210';
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('prevents submission when Enter is pressed on an invalid form', () => {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn()
+        } as unknown as Event;
+
+        component.submit(mockEvent);
+
+        expect(mockEvent.preventDefault).toHaveBeenCalled();
+        expect(customerServiceMock.registerCustomer).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Old Mode', () => {
+      beforeEach(() => {
+        component.mode = 'old';
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          operatingDivision: '',
+          zone: '',
+          email: '',
+          mobile: '',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.gstins = [
+          {
+            gstinId: null,
+            state: '',
+            stateCode: '',
+            gstin: '',
+            file: null,
+            existingFileName: '',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      });
+
+      function setupValidOldForm() {
+        component.form = {
+          companyName: 'Old Legacy Company',
+          customerCode: 'OLD1',
+          address: '456 Railway Road',
+          city: 'Mumbai',
+          pincode: '400001',
+          panNumber: 'ABCDE1234F',
+          operatingDivision: 'Mumbai (CSTM)',
+          zone: 'Central Railway (CR)',
+          email: 'old@example.com',
+          mobile: '9876543210',
+          codeType: 'GLOBAL',
+          ownershipCode: '',
+          ownershipAddress: '',
+          ownershipPartyCode: '',
+          ownershipPartyAddress: ''
+        };
+        component.lookupLoading = false;
+        component.lookupDone = true;
+        component.lookupError = '';
+        component.verifiedCustomerCode = 'OLD1';
+        component.gstins = [
+          {
+            state: 'Maharashtra',
+            gstin: '27ABCDE1234F1Z5',
+            file: null,
+            existingFileName: '',
+            scanning: false,
+            scanStatus: 'idle',
+            scanError: ''
+          }
+        ];
+      }
+
+      it('is disabled by default when old mode is opened', () => {
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables Submit Request when valid old customer record is verified and fields filled', () => {
+        setupValidOldForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('immediately disables if verified customer code is cleared or modified', () => {
+        setupValidOldForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.customerCode = 'DIFF';
+        expect(component.isFormValid).toBe(false);
+      });
+    });
+
+    describe('Ownership Mode', () => {
+      function setupValidOwnershipForm() {
+        component.mode = 'ownership';
+        component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
+        component.ownSection1Loading = false;
+        component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
+        component.ownSection2Loading = false;
+        component.form = {
+          companyName: '',
+          customerCode: '',
+          address: '',
+          city: '',
+          pincode: '',
+          panNumber: '',
+          ownershipCode: 'OWN1',
+          ownershipAddress: 'Valid Ownership Address',
+          ownershipPartyCode: 'PRT1',
+          ownershipPartyAddress: 'Valid Party Address'
+        };
+      }
+
+      it('is disabled by default when ownership mode is opened', () => {
+        component.mode = 'ownership';
+        expect(component.isFormValid).toBe(false);
+      });
+
+      it('enables when ownership code and party code are verified and addresses present', () => {
+        setupValidOwnershipForm();
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('disables when mandatory ownership address is empty or whitespace', () => {
+        setupValidOwnershipForm();
+        expect(component.isFormValid).toBe(true);
+
+        component.form.ownershipAddress = '   ';
+        expect(component.isFormValid).toBe(false);
+      });
+    });
   });
 
   describe('GSTIN Verification and Automatic Data Fetching', () => {
@@ -1160,6 +1495,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         undefined,
         undefined,
         authServiceMock,
+        undefined,
         gstVerificationServiceMock
       );
     });

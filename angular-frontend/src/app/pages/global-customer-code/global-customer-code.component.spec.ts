@@ -1,9 +1,12 @@
+import '@angular/compiler';
 import { ChangeDetectorRef } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NavigationEnd } from '@angular/router';
 import { GlobalCustomerCodeComponent } from './global-customer-code.component';
 import { CustomerService } from '../../services/customer.service';
 import { NotificationService } from '../../services/notification.service';
-import { BehaviorSubject, of } from 'rxjs';
+import { ZoneDivisionService } from '../../services/zone-division.service';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 
 describe('GlobalCustomerCodeComponent', () => {
   let component: GlobalCustomerCodeComponent;
@@ -183,5 +186,131 @@ describe('GlobalCustomerCodeComponent', () => {
   it('should navigate to /registration when navigateToHome is called', () => {
     component.navigateToHome();
     expect(routerMock.navigate).toHaveBeenCalledWith(['/registration']);
+  });
+
+  it('resets all text fields on screen navigation while preserving zone and operating division', () => {
+    const routerEvents = new Subject<any>();
+    const zoneDivisionService = new ZoneDivisionService();
+    zoneDivisionService.setSelection('Central Railway (CR)', 'Mumbai (CSTM)', true);
+
+    const testComponent = new GlobalCustomerCodeComponent(
+      customerServiceMock as CustomerService,
+      notificationService,
+      { navigate: vi.fn(), events: routerEvents.asObservable() } as any,
+      cdrMock,
+      authServiceMock,
+      zoneDivisionService
+    );
+    testComponent.ngOnInit();
+
+    testComponent.form.companyName = 'Acme Corp';
+    testComponent.form.panNumber = 'ABCDE1234F';
+    testComponent.form.address = '123 Test Road';
+    testComponent.form.email = 'test@corp.com';
+    testComponent.form.mobile = '9876543210';
+    testComponent.form.city = 'Mumbai';
+    testComponent.form.pincode = '400001';
+
+    expect(testComponent.form.companyName).toBe('Acme Corp');
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    // Simulate navigation event
+    routerEvents.next(new NavigationEnd(1, '/registration/global-code', '/registration/global-code'));
+
+    // Text fields must be cleared
+    expect(testComponent.form.companyName).toBe('');
+    expect(testComponent.form.panNumber).toBe('');
+    expect(testComponent.form.address).toBe('');
+    expect(testComponent.form.email).toBe('');
+    expect(testComponent.form.mobile).toBe('');
+    expect(testComponent.form.city).toBe('');
+    expect(testComponent.form.pincode).toBe('');
+
+    // Zone and Division MUST be preserved
+    expect(testComponent.form.zone).toBe('Central Railway (CR)');
+    expect(testComponent.form.operatingDivision).toBe('Mumbai (CSTM)');
+
+    testComponent.ngOnDestroy();
+  });
+
+  describe('Submit Request Button & Conditional Validation', () => {
+    it('keeps Submit Request disabled by default on initial open', () => {
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('remains disabled when mandatory fields contain whitespace only', () => {
+      component.form = {
+        customerCode: 'ABCD',
+        companyName: '   ',
+        panNumber: '   ',
+        state: '   ',
+        address: '   ',
+        city: '',
+        pincode: '   ',
+        zone: '   ',
+        operatingDivision: '   ',
+        email: '',
+        mobile: ''
+      };
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('enables Submit Request when all mandatory fields are valid', () => {
+      component.form = {
+        customerCode: 'ABCD',
+        companyName: 'Acme Logistics',
+        panNumber: 'ABCDE1234F',
+        state: 'Maharashtra',
+        address: '101 Transport Hub',
+        city: '',
+        pincode: '400001',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Mumbai (CSTM)',
+        email: '',
+        mobile: ''
+      };
+      expect(component.isFormValid).toBe(true);
+    });
+
+    it('immediately disables button when a valid required field is invalidated', () => {
+      component.form = {
+        customerCode: 'ABCD',
+        companyName: 'Acme Logistics',
+        panNumber: 'ABCDE1234F',
+        state: 'Maharashtra',
+        address: '101 Transport Hub',
+        city: '',
+        pincode: '400001',
+        zone: 'Central Railway (CR)',
+        operatingDivision: 'Mumbai (CSTM)',
+        email: '',
+        mobile: ''
+      };
+      expect(component.isFormValid).toBe(true);
+
+      // Invalidate PAN
+      component.handlePanChange('INVALID');
+      expect(component.isFormValid).toBe(false);
+
+      // Restore PAN, invalidate company name
+      component.handlePanChange('ABCDE1234F');
+      expect(component.isFormValid).toBe(true);
+      component.handleCompanyNameChange('');
+      expect(component.isFormValid).toBe(false);
+    });
+
+    it('prevents form submission via Enter key or direct submit() when invalid', () => {
+      component.form.companyName = '';
+      const event = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn()
+      } as any;
+
+      component.submit(event);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(customerServiceMock.registerCustomer).not.toHaveBeenCalled();
+      expect(component.notice).toContain('Validation Error');
+    });
   });
 });

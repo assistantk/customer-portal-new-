@@ -1,5 +1,8 @@
+import '@angular/compiler';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChangeDetectorRef } from '@angular/core';
+import { Subject } from 'rxjs';
+import { NavigationEnd } from '@angular/router';
 import { VerificationComponent } from './verification.component';
 import { CustomerService } from '../../services/customer.service';
 import { PdfGeneratorService } from '../../services/pdf-generator.service';
@@ -34,7 +37,7 @@ describe('VerificationComponent - PDF Generation Integration', () => {
   });
 
   it('correctly passes recordDate from creationDate to pdfGeneratorService on preview', () => {
-    component.verificationType = 'code';
+    component.verificationType = 'customer';
     component.verifiedSearchValue = 'TISCO';
     component.customers = [{
       customerCode: 'TISCO',
@@ -53,7 +56,7 @@ describe('VerificationComponent - PDF Generation Integration', () => {
   });
 
   it('correctly passes recordDate and formatted filename on download', () => {
-    component.verificationType = 'code';
+    component.verificationType = 'customer';
     component.verifiedSearchValue = 'TISCO';
     component.customers = [{
       customerCode: 'TISCO',
@@ -84,6 +87,29 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     const [calledData, filename] = mockPdfGenerator.downloadVerificationPdf.mock.calls[0];
     expect(calledData.recordDate).toBeNull();
     expect(filename).toBe('GST_Verification_27AAACT2727Q1ZT.pdf');
+  });
+
+  it('resets search fields, results and state on navigation event', () => {
+    const routerEvents = new Subject<any>();
+    const comp = new VerificationComponent(
+      mockCustomerService as CustomerService,
+      mockCdr,
+      mockPdfGenerator as PdfGeneratorService,
+      { events: routerEvents.asObservable() } as any
+    );
+    comp.ngOnInit();
+
+    comp.code = 'TISCO';
+    comp.customers = [{ customerCode: 'TISCO', companyName: 'TATA STEEL' }];
+    comp.error = 'Some error';
+
+    routerEvents.next(new NavigationEnd(1, '/verify', '/verify'));
+
+    expect(comp.code).toBe('');
+    expect(comp.customers).toBeNull();
+    expect(comp.error).toBe('');
+
+    comp.ngOnDestroy();
   });
 });
 

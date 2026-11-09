@@ -34,6 +34,7 @@
                             maxlength="4"
                             [value]="form.ownershipCode"
                             (input)="handleOwnershipCodeChange($any($event.target).value)"
+                            (blur)="onFieldBlur('ownershipCode')"
                             placeholder="ENTER OWNERSHIP CODE"
                             style="text-transform: uppercase;"
                         />
@@ -63,8 +64,9 @@
                             [readonly]="true"
                             tabindex="-1"
                             [(ngModel)]="form.ownershipAddress"
-                            placeholder="Company Name (auto-fetched from Global Customer)"
-                            class="readonly-input"
+                            (input)="touchedFields['ownershipAddress'] = true; validateField('ownershipAddress')"
+                            (blur)="onFieldBlur('ownershipAddress')"
+                            placeholder="Enter ownership address"
                         />
                     </div>
                     <small *ngIf="errors['ownershipAddress']" class="error-msg">{{ errors['ownershipAddress'] }}</small>
@@ -84,6 +86,7 @@
                             maxlength="10"
                             [value]="form.panNumber"
                             (input)="handlePanChange($any($event.target).value)"
+                            (blur)="onFieldBlur('panNumber')"
                             placeholder="ENTER 10-CHARACTER PAN NO."
                             style="text-transform: uppercase;"
                         />
@@ -107,6 +110,7 @@
                             maxlength="100"
                             [(ngModel)]="form.address"
                             (input)="handleAddressInput(form.address)"
+                            (blur)="onFieldBlur('address')"
                             placeholder="Enter complete business address"
                         />
                     </div>
@@ -150,7 +154,8 @@
                             inputmode="numeric"
                             maxlength="6"
                             [(ngModel)]="form.pincode"
-                            (input)="errors['pincode'] = ''"
+                            (input)="handlePincodeChange(form.pincode)"
+                            (blur)="onFieldBlur('pincode')"
                             placeholder="Enter pincode"
                         />
                     </div>
@@ -168,7 +173,8 @@
                             id="state"
                             name="state"
                             [(ngModel)]="form.state"
-                            (change)="errors['state'] = ''"
+                            (ngModelChange)="handleStateChange($event)"
+                            (blur)="onFieldBlur('state')"
                         >
                             <option value="">Select state</option>
                             <option *ngFor="let s of INDIAN_STATES" [value]="s">{{ s }}</option>
@@ -285,7 +291,8 @@
                             name="email"
                             type="email"
                             [(ngModel)]="form.email"
-                            (input)="errors['email'] = ''"
+                            (input)="handleEmailChange(form.email)"
+                            (blur)="onFieldBlur('email')"
                             placeholder="Enter email address"
                         />
                     </div>
@@ -308,11 +315,66 @@
                             inputmode="numeric"
                             maxlength="10"
                             [(ngModel)]="form.mobile"
-                            (input)="errors['mobile'] = ''"
+                            (input)="handleMobileChange(form.mobile)"
+                            (blur)="onFieldBlur('mobile')"
                             placeholder="Enter 10-digit number"
                         />
                     </div>
                     <small *ngIf="errors['mobile']" class="error-msg">{{ errors['mobile'] }}</small>
+                </div>
+            </div>
+
+            <!-- Section 2: Ownership Details -->
+            <div class="section-title">Ownership Details</div>
+
+            <div class="form-row row-two-cols">
+                <!-- Ownership Party Code -->
+                <div class="field-group">
+                    <label for="ownershipPartyCode">Ownership Code <span class="req">*</span></label>
+                    <div class="input-control" [class.has-error]="errors['ownershipPartyCode'] || ownSection2Duplicate">
+                        <span class="icon-slot">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        </span>
+                        <input
+                            id="ownershipPartyCode"
+                            name="ownershipPartyCode"
+                            type="text"
+                            maxlength="4"
+                            [value]="form.ownershipPartyCode"
+                            (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
+                            (blur)="onFieldBlur('ownershipPartyCode')"
+                            placeholder="ENTER OWNERSHIP CODE"
+                            style="text-transform: uppercase;"
+                        />
+                        <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14" class="field-status error-icon" title="Duplicate code" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true" width="14" height="14" class="field-status ok-icon" title="Record found in database" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <small *ngIf="errors['ownershipPartyCode']" class="error-msg">{{ errors['ownershipPartyCode'] }}</small>
+                    <small *ngIf="ownSection2LookupError" class="error-msg">{{ ownSection2LookupError }}</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error-msg">This Ownership Code already exists in database.</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'" class="success-msg">Existing ownership record found - changes will be sent as an UPDATE request.</small>
+                    <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'" class="success-msg">Global Customer record found - a new ownership INSERT request can be submitted.</small>
+                </div>
+
+                <!-- Ownership Party Address -->
+                <div class="field-group">
+                    <label for="ownershipPartyAddress">Ownership Address <span class="req">*</span></label>
+                    <div class="input-control" [class.has-error]="errors['ownershipPartyAddress']">
+                        <span class="icon-slot">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                        </span>
+                        <input
+                            id="ownershipPartyAddress"
+                            name="ownershipPartyAddress"
+                            type="text"
+                            [(ngModel)]="form.ownershipPartyAddress"
+                            (input)="errors['ownershipPartyAddress'] = ''"
+                            (blur)="onFieldBlur('ownershipPartyAddress')"
+                            placeholder="Enter ownership address"
+                        />
+                    </div>
+                    <small *ngIf="errors['ownershipPartyAddress']" class="error-msg">{{ errors['ownershipPartyAddress'] }}</small>
                 </div>
             </div>
 
@@ -322,7 +384,7 @@
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                     <span>Reset</span>
                 </button>
-                <button type="submit" class="btn-submit" [disabled]="!isFormValid() || loading">
+                <button type="submit" class="btn-submit" [disabled]="loading || !isFormValid">
                     <svg *ngIf="loading" width="15" height="15" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <svg *ngIf="!loading" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     <span>{{ loading ? 'Submitting...' : 'Submit Request' }}</span>

@@ -58,6 +58,7 @@
                             [value]="form.companyName"
                             maxlength="40"
                             (input)="handleCompanyNameChange($any($event.target).value)"
+                            (blur)="onFieldBlur('companyName')"
                             placeholder="Enter company name"
                         />
                     </div>
@@ -78,6 +79,7 @@
                             maxlength="10"
                             [value]="form.panNumber"
                             (input)="handlePanChange($any($event.target).value)"
+                            (blur)="onFieldBlur('panNumber')"
                             placeholder="ENTER 10-CHARACTER PAN NO."
                             style="text-transform: uppercase;"
                         />
@@ -99,7 +101,8 @@
                             id="state"
                             name="state"
                             [(ngModel)]="form.state"
-                            (change)="errors['state'] = ''"
+                            (ngModelChange)="handleStateChange($event)"
+                            (blur)="onFieldBlur('state')"
                         >
                             <option value="">Select state</option>
                             <option *ngFor="let s of INDIAN_STATES" [value]="s">{{ s }}</option>
@@ -125,6 +128,7 @@
                             maxlength="100"
                             [(ngModel)]="form.address"
                             (input)="handleAddressInput(form.address)"
+                            (blur)="onFieldBlur('address')"
                             placeholder="Enter complete business address"
                         />
                     </div>
@@ -168,7 +172,8 @@
                             inputmode="numeric"
                             maxlength="6"
                             [(ngModel)]="form.pincode"
-                            (input)="errors['pincode'] = ''"
+                            (input)="handlePincodeChange(form.pincode)"
+                            (blur)="onFieldBlur('pincode')"
                             placeholder="Enter pincode"
                         />
                     </div>
@@ -283,7 +288,8 @@
                             name="email"
                             type="email"
                             [(ngModel)]="form.email"
-                            (input)="errors['email'] = ''"
+                            (input)="handleEmailChange(form.email)"
+                            (blur)="onFieldBlur('email')"
                             placeholder="Enter email address"
                         />
                     </div>
@@ -304,7 +310,8 @@
                             inputmode="numeric"
                             maxlength="10"
                             [(ngModel)]="form.mobile"
-                            (input)="errors['mobile'] = ''"
+                            (input)="handleMobileChange(form.mobile)"
+                            (blur)="onFieldBlur('mobile')"
                             placeholder="Enter 10-digit number"
                         />
                     </div>
@@ -318,7 +325,7 @@
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                     <span>Reset</span>
                 </button>
-                <button type="submit" class="btn-submit" [disabled]="!isFormValid() || loading">
+                <button type="submit" class="btn-submit" [disabled]="loading || !isFormValid">
                     <svg *ngIf="loading" width="15" height="15" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <svg *ngIf="!loading" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     <span>{{ loading ? 'Submitting...' : 'Submit Request' }}</span>
