@@ -111,40 +111,6 @@
                                 <input #fileInput class="hidden" type="file" accept=".pdf,.jpg,.jpeg,.jpe,.png"
                                     (change)="handleGstinFileChange(i, $event)" [disabled]="isGstDisabled" />
 
-                                <!-- GSTIN Action Row: Verify & View Details -->
-                                <div class="gstin-action-row"
-                                    *ngIf="g.gstin || g.scanStatus === 'notfound' || g.scanStatus === 'error' || g.file">
-                                    <button type="button" class="gstin-verify-action-btn"
-                                        [disabled]="g.scanning || g.verificationState === 'verifying' || !g.gstin || g.gstin.length !== 15 || isGstDisabled"
-                                        (click)="verifyGstinAtIndex(i, false)"
-                                        [title]="g.verificationState === 'verifying' ? 'Verifying with GST Registry...' : 'Verify GSTIN with Authorized Registry'">
-                                        <svg *ngIf="g.verificationState === 'verifying'" width="12" height="12"
-                                            class="spin" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                        </svg>
-                                        <svg *ngIf="g.verificationState !== 'verifying'" width="12" height="12"
-                                            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                            <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                                        </svg>
-                                        <span>{{ g.verificationState === 'verifying' ? 'Verifying...' : 'Verify GSTIN'
-                                            }}</span>
-                                    </button>
-
-                                    <button *ngIf="g.verificationData" type="button" class="gstin-inspect-btn"
-                                        [class.has-discrepancy]="g.verificationState === 'discrepancy'"
-                                        [class.active-view]="activeCrossCheckIndex === i"
-                                        (click)="toggleCrossCheckView(i)">
-                                        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                            <circle cx="12" cy="12" r="3" />
-                                        </svg>
-                                        <span>{{ activeCrossCheckIndex === i ? 'Hide Details' : (g.verificationState ===
-                                            'discrepancy' ? 'View Discrepancies' : 'View Registry') }}</span>
-                                    </button>
-                                </div>
-
                                 <small *ngIf="g.scanning" class="gstin-scan-status scanning">
                                     <svg width="12" height="12" class="spin" fill="none" stroke="currentColor"
                                         stroke-width="2" viewBox="0 0 24 24">
@@ -166,124 +132,7 @@
                                         <circle cx="12" cy="12" r="10" />
                                         <line x1="12" y1="8" x2="12" y2="12" />
                                         <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg> GSTIN could not be detected. Please enter your GSTIN manually to fetch your
-                                    registered details.
-                                </small>
-
-                                <!-- Verification Status Pills -->
-                                <small *ngIf="g.verificationState === 'verified'"
-                                    class="gstin-registry-status verified">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                                        <polyline points="22 4 12 14.01 9 11.01" />
-                                    </svg>
-                                    GST Registry Verified{{ g.verificationData?.status ? ' (' +
-                                    g.verificationData.status + ')' : '' }}
-                                </small>
-                                <small *ngIf="g.verificationState === 'pending'"
-                                    class="gstin-registry-status unavailable">
-                                    Complete a valid 15-character GSTIN to verify the updated registration details.
-                                </small>
-                                <small *ngIf="hasUnverifiedOcrValues(i)" class="gstin-registry-status unavailable">
-                                    Some registration fields were not returned by the official record and remain
-                                    OCR-only, unverified values.
-                                </small>
-                                <small *ngIf="g.verificationState === 'discrepancy'"
-                                    class="gstin-registry-status discrepancy">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <path
-                                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                                        <line x1="12" y1="9" x2="12" y2="13" />
-                                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                                    </svg>
-                                    Discrepancies Detected ({{ g.crossCheckResult?.discrepancyCount || 0 }})
-                                </small>
-                                <small *ngIf="g.verificationState === 'cancelled'"
-                                    class="gstin-registry-status cancelled">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="15" y1="9" x2="9" y2="15" />
-                                        <line x1="9" y1="9" x2="15" y2="15" />
-                                    </svg>
-                                    GSTIN Cancelled in Registry
-                                </small>
-                                <small *ngIf="g.verificationState === 'suspended'"
-                                    class="gstin-registry-status suspended">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    GSTIN Suspended in Registry
-                                </small>
-                                <small *ngIf="g.verificationState === 'notfound'"
-                                    class="gstin-registry-status notfound">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    GSTIN Not Found in Registry
-                                </small>
-                                <small *ngIf="g.verificationState === 'invalid'" class="gstin-registry-status notfound">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    Invalid GSTIN Format
-                                </small>
-                                <small *ngIf="g.verificationState === 'unavailable'"
-                                    class="gstin-registry-status unavailable">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    GST Registry Service Unavailable
-                                </small>
-                                <small *ngIf="g.verificationState === 'suspended'"
-                                    class="gstin-registry-status suspended">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <path
-                                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                                        <line x1="12" y1="9" x2="12" y2="13" />
-                                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                                    </svg>
-                                    GSTIN Suspended in Registry
-                                </small>
-                                <small *ngIf="g.verificationState === 'notfound'"
-                                    class="gstin-registry-status notfound">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    GSTIN Not Found in Registry
-                                </small>
-                                <small *ngIf="g.verificationState === 'unavailable'"
-                                    class="gstin-registry-status unavailable">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                        viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <line x1="12" y1="8" x2="12" y2="12" />
-                                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                                    </svg>
-                                    Registry service unavailable
-                                </small>
-                                <small
-                                    *ngIf="g.scanError && (g.verificationState === 'unavailable' || g.verificationState === 'notfound' || g.verificationState === 'error')"
-                                    class="error">
-                                    {{ g.scanError }}
+                                    </svg> {{ g.scanError || 'GSTIN could not be detected. Please enter your GSTIN manually.' }}
                                 </small>
                                 <small
                                     *ngIf="errors['gstin_' + i + '_gstin'] && g.scanStatus !== 'notfound' && g.scanStatus !== 'error'"
@@ -379,7 +228,7 @@
                             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                             <circle cx="8.5" cy="7" r="4" />
                             <polyline points="17 11 19 13 23 9" />
-                        </svg> Old Entry
+                        </svg> Update Code
                     </button>
                     <button type="button" class="mode-tab mode-tab-new" [class.active]="mode === 'new'"
                         (click)="switchMode('new')">
@@ -434,214 +283,13 @@
 
         <div class="header-main-divider" aria-hidden="true"></div>
 
-        <!-- === GSTIN Verification & Cross-Verification Inspection Panel (ClearTax UX) === -->
-        <section
-            *ngIf="activeCrossCheckIndex !== null && gstins[activeCrossCheckIndex] && gstins[activeCrossCheckIndex].verificationData as vData"
-            class="gst-registry-card" aria-label="GSTIN Verification and Registry Details">
-            <!-- Header -->
-            <div class="gst-card-header">
-                <div class="gst-card-title-group">
-                    <div class="gst-title-badge-wrap">
-                        <span class="gst-pill-badge gstin-code">{{ vData.gstin }}</span>
-                        <span class="gst-status-badge" [class.badge-active]="vData.status === 'Active'"
-                            [class.badge-cancelled]="vData.status === 'Cancelled'"
-                            [class.badge-suspended]="vData.status === 'Suspended'">
-                            {{ vData.status || vData.verificationStatus }}
-                        </span>
-                        <span *ngIf="vData.taxpayerType" class="gst-pill-badge taxpayer-type">
-                            {{ vData.taxpayerType }}
-                        </span>
-                    </div>
-                    <h3 class="gst-card-heading">
-                        {{ vData.businessName || vData.legalName || 'GST Registration Details' }}
-                    </h3>
-                </div>
-                <button type="button" class="gst-card-close-btn" (click)="dismissCrossCheck()"
-                    title="Close Inspection Panel" aria-label="Close">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
-            </div>
-
-            <!-- Alert Banner based on status / discrepancies -->
-            <div *ngIf="vData.status === 'Cancelled'" class="gst-banner banner-danger">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="15" y1="9" x2="9" y2="15" />
-                    <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-                <div>
-                    <strong>CAUTION: GSTIN is Cancelled in Government Registry</strong>
-                    <p>This registration has been marked as Cancelled. Please confirm validity before generating freight
-                        customer codes.</p>
-                </div>
-            </div>
-
-            <div *ngIf="vData.status === 'Suspended'" class="gst-banner banner-warning">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path
-                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <div>
-                    <strong>WARNING: GSTIN Registration Suspended</strong>
-                    <p>This taxpayer registration is currently suspended in the official GST records.</p>
-                </div>
-            </div>
-
-            <div *ngIf="activeCrossCheck?.hasDiscrepancies && vData.status === 'Active'"
-                class="gst-banner banner-warning">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path
-                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <div>
-                    <strong>Discrepancies Detected with Uploaded Certificate ({{ activeCrossCheck?.discrepancyCount }}
-                        differences)</strong>
-                    <p>The application form has been synchronized with official registry data. Please inspect the
-                        differences below for potential certificate modification, tampering, or scanning errors.</p>
-                </div>
-            </div>
-
-            <div *ngIf="!activeCrossCheck?.hasDiscrepancies && vData.status === 'Active'"
-                class="gst-banner banner-success">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <div>
-                    <strong>Certificate Successfully Cross-Verified against GST Registry</strong>
-                    <p>All extracted details match authorized government records. Form fields have been populated with
-                        verified data.</p>
-                </div>
-            </div>
-
-            <!-- Tabular Comparison Matrix -->
-            <div *ngIf="activeCrossCheck?.comparisons?.length" class="gst-comparison-wrap">
-                <h4 class="gst-section-subtitle">
-                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <polyline points="9 11 12 14 22 4" />
-                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                    </svg>
-                    Certificate OCR vs. Authorized GST Registry Comparison
-                </h4>
-                <div class="gst-table-responsive">
-                    <table class="gst-comparison-table">
-                        <thead>
-                            <tr>
-                                <th>Field</th>
-                                <th>Uploaded PDF Certificate (OCR)</th>
-                                <th>Official GST Registry</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr *ngFor="let c of activeCrossCheck?.comparisons"
-                                [class.row-discrepancy]="c.status === 'mismatch'"
-                                [class.row-match]="c.status === 'match'">
-                                <td class="col-label"><strong>{{ c.label }}</strong></td>
-                                <td class="col-ocr">
-                                    <span *ngIf="c.ocrValue">{{ c.ocrValue }}</span>
-                                    <span *ngIf="!c.ocrValue" class="text-muted">Not extracted</span>
-                                </td>
-                                <td class="col-verified">
-                                    <span *ngIf="c.verifiedValue"><strong>{{ c.verifiedValue }}</strong></span>
-                                    <span *ngIf="!c.verifiedValue" class="text-muted">—</span>
-                                </td>
-                                <td class="col-status">
-                                    <span *ngIf="c.status === 'match'" class="status-pill pill-match">
-                                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                        Match
-                                    </span>
-                                    <span *ngIf="c.status === 'mismatch'" class="status-pill pill-mismatch">
-                                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <circle cx="12" cy="12" r="10" />
-                                            <line x1="12" y1="8" x2="12" y2="12" />
-                                            <line x1="12" y1="16" x2="12.01" y2="16" />
-                                        </svg>
-                                        Discrepancy
-                                    </span>
-                                    <span *ngIf="c.status === 'verified_only'" class="status-pill pill-autofill">
-                                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                                        </svg>
-                                        Auto-Populated
-                                    </span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- ClearTax Inspired Registry Records Grid -->
-            <div class="gst-details-grid-wrap">
-                <h4 class="gst-section-subtitle">
-                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <line x1="3" y1="9" x2="21" y2="9" />
-                        <line x1="9" y1="21" x2="9" y2="9" />
-                    </svg>
-                    Official GST Registry Record
-                </h4>
-                <div class="gst-details-grid">
-                    <div class="gst-detail-item">
-                        <span class="detail-label">Legal Name of Business</span>
-                        <span class="detail-value">{{ vData.legalName || '—' }}</span>
-                    </div>
-                    <div class="gst-detail-item">
-                        <span class="detail-label">Trade Name</span>
-                        <span class="detail-value">{{ vData.tradeName || vData.legalName || '—' }}</span>
-                    </div>
-                    <div class="gst-detail-item">
-                        <span class="detail-label">PAN Number</span>
-                        <span class="detail-value font-mono">{{ vData.pan || '—' }}</span>
-                    </div>
-                    <div class="gst-detail-item">
-                        <span class="detail-label">Constitution of Business</span>
-                        <span class="detail-value">{{ vData.constitutionOfBusiness || '—' }}</span>
-                    </div>
-                    <div class="gst-detail-item">
-                        <span class="detail-label">Registration Date</span>
-                        <span class="detail-value">{{ vData.registrationDate || '—' }}</span>
-                    </div>
-                    <div class="gst-detail-item">
-                        <span class="detail-label">State / Jurisdiction</span>
-                        <span class="detail-value">{{ (vData.district ? vData.district + ', ' : '') + (vData.state ||
-                            '—') }}</span>
-                    </div>
-                    <div class="gst-detail-item full-span">
-                        <span class="detail-label">Principal Place of Business</span>
-                        <span class="detail-value">{{ vData.address || '—' }}</span>
-                    </div>
-                    <div *ngIf="vData.natureOfBusiness?.length" class="gst-detail-item full-span">
-                        <span class="detail-label">Nature of Business Activities</span>
-                        <span class="detail-value">
-                            <span *ngFor="let activity of vData.natureOfBusiness" class="activity-chip">{{ activity
-                                }}</span>
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <ng-container *ngIf="mode !== 'delete'; else deleteRequestMode">
             <!-- === Main Form: 3-column grid === -->
             <div class="grid">
                 <!-- Row 1: Code | Address/Name | PAN -->
                 <div *ngIf="mode === 'old' || mode === 'ownership'" class="field">
                     <label [attr.for]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'">
-                        {{ mode === 'ownership' ? 'Ownership Code' : (codeType === 'HANDLING_AGENT' ? 'Handling Agent
+                        {{ mode === 'ownership' ? 'Company Code' : (codeType === 'HANDLING_AGENT' ? 'Handling Agent
                         Code' : 'Customer Code') }} <b>*</b>
                     </label>
                     <div *ngIf="mode === 'old'" class="code-type-toggle">
@@ -676,10 +324,10 @@
                         <input [id]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'"
                             [name]="mode === 'ownership' ? 'ownershipCode' : 'customerCode'"
                             [value]="mode === 'ownership' ? (form.ownershipCode || '') : form.customerCode"
-                            [placeholder]="mode === 'ownership' ? 'Enter ownership code' : (codeType === 'HANDLING_AGENT' ? 'Enter handling agent code' : 'Enter customer code')"
+                            [placeholder]="mode === 'ownership' ? 'Enter company code' : (codeType === 'HANDLING_AGENT' ? 'Enter handling agent code' : 'Enter customer code')"
                             (input)="mode === 'ownership' ? handleOwnershipCodeChange($any($event.target).value) : handleOldCodeChange($any($event.target).value)"
                             (blur)="onFieldBlur(mode === 'ownership' ? 'ownershipCode' : 'customerCode')"
-                            style="text-transform: uppercase;" maxlength="4" />
+                            style="text-transform: uppercase;" />
                         <!-- Ownership Section 1 status icons -->
                         <svg *ngIf="mode === 'ownership' && ownSection1Loading" width="14" height="14"
                             class="spin field-status" fill="none" stroke="currentColor" stroke-width="2"
@@ -725,6 +373,8 @@
                         errors['ownershipCode'] }}</small>
                     <small *ngIf="mode === 'ownership' && ownSection1LookupError" class="error">{{
                         ownSection1LookupError }}</small>
+                    <small *ngIf="mode === 'ownership' && ownSection2LookupError" class="error">{{
+                        ownSection2LookupError }}</small>
                     <small *ngIf="mode !== 'ownership' && errors['customerCode']" class="error">{{
                         errors['customerCode'] }}</small>
                     <small
@@ -781,8 +431,7 @@
                             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
                             <line x1="7" y1="7" x2="7.01" y2="7" />
                         </svg>
-                        <input id="customerCode" name="customerCode" [value]="form.customerCode" readonly
-                            [placeholder]="codeType === 'HANDLING_AGENT' ? 'Auto-generated from agent/company name' : 'Auto-generated from company name'" />
+                        <input id="customerCode" name="customerCode" [value]="form.customerCode" readonly />
                         <span class="code-status">
                             <svg *ngIf="codeChecking" width="14" height="14" class="spin" fill="none"
                                 stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -848,8 +497,7 @@
                             <line x1="10" y1="18" x2="14" y2="18" />
                         </svg>
                         <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress"
-                            (input)="errors['ownershipAddress'] = ''" (blur)="onFieldBlur('ownershipAddress')"
-                            placeholder="Enter ownership address" />
+                            readonly (blur)="onFieldBlur('ownershipAddress')" />
                     </div>
                     <small *ngIf="errors['ownershipAddress']" class="error">{{ errors['ownershipAddress'] }}</small>
                 </div>
@@ -871,7 +519,6 @@
                         </svg>
                         <input id="companyName" name="companyName" [value]="form.companyName"
                             [attr.maxlength]="form.companyName && form.companyName.length > 40 ? null : 40"
-                            [placeholder]="codeType === 'HANDLING_AGENT' ? 'Enter agent/company name' : 'Enter company name'"
                             (input)="handleNewCompanyNameChange($any($event.target).value)"
                             (blur)="onFieldBlur('companyName')" />
                     </div>
@@ -892,7 +539,6 @@
                             <polyline points="10 9 9 9 8 9" />
                         </svg>
                         <input id="panNumber" name="panNumber" [value]="form.panNumber" maxlength="10"
-                            placeholder="Enter 10-character PAN No."
                             (input)="handlePanChange($any($event.target).value)" (blur)="onFieldBlur('panNumber')"
                             style="text-transform: uppercase;" [disabled]="isPanDisabled" [readonly]="isPanDisabled" />
                     </div>
@@ -909,7 +555,7 @@
                             <circle cx="12" cy="10" r="3" />
                         </svg>
                         <input id="address" name="address" [(ngModel)]="form.address"
-                            placeholder="Enter complete business address" (input)="handleAddressInput()"
+                            (input)="handleAddressInput()"
                             (blur)="handleAddressBlur()" (paste)="handleAddressPaste($event)" />
                     </div>
                     <small *ngIf="errors['address']" class="error">{{ errors['address'] }}</small>
@@ -917,14 +563,6 @@
                         [style.color]="normalizedAddressLength > 90 ? (normalizedAddressLength > 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)'"
                         style="font-size: 0.75rem; margin-top: 2px; display: block; text-align: right;">
                         {{ normalizedAddressLength }}/100 characters
-                    </small>
-                    <small *ngIf="!errors['address'] && addressStatus === 'verified'" class="address-status success"
-                        style="color: var(--success, #16a34a); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
-                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                            viewBox="0 0 24 24">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                            <polyline points="22 4 12 14.01 9 11.01" />
-                        </svg> Verified against GSTIN document
                     </small>
                     <small *ngIf="!errors['address'] && addressStatus === 'auto-filled'" class="address-status success"
                         style="color: var(--success, #16a34a); font-size: 0.8rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
@@ -964,7 +602,7 @@
                             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                             <circle cx="12" cy="10" r="3" />
                         </svg>
-                        <input id="city" name="city" [(ngModel)]="form.city" placeholder="Enter city" />
+                        <input id="city" name="city" [(ngModel)]="form.city" />
                     </div>
                 </div>
 
@@ -979,7 +617,7 @@
                         </svg>
                         <input id="pincode" name="pincode" [(ngModel)]="form.pincode"
                             (input)="handlePincodeChange(form.pincode)" (blur)="onFieldBlur('pincode')"
-                            inputmode="numeric" maxlength="6" placeholder="Enter pincode" />
+                            inputmode="numeric" maxlength="6" />
                     </div>
                     <small *ngIf="errors['pincode']" class="error">{{ errors['pincode'] }}</small>
                 </div>
@@ -1010,7 +648,7 @@
                                 <circle cx="11" cy="11" r="8" />
                                 <path d="m21 21-4.3-4.3" />
                             </svg>
-                            <input type="search" aria-label="Search zones" placeholder="Search zone"
+                            <input type="search" aria-label="Search zones"
                                 [(ngModel)]="zoneSearchTerm" [ngModelOptions]="{standalone: true}"
                                 (click)="$event.stopPropagation()" />
                         </div>
@@ -1054,101 +692,6 @@
                     <small *ngIf="errors['operatingDivision']" class="error">{{ errors['operatingDivision'] }}</small>
                 </div>
 
-            </div>
-
-            <!-- === Ownership Details (Section 2: Ownership Party Code) - shown only in ownership mode === -->
-            <div *ngIf="mode === 'ownership'" class="gstins-container" style="margin-top: 16px;">
-                <div class="gstins-header">
-                    <h3>Ownership Details</h3>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem 0;">
-                    <!-- Ownership Party Code -->
-                    <div class="field">
-                        <label for="ownershipPartyCode">Ownership Code <b>*</b></label>
-                        <div class="control" [class.invalid]="errors['ownershipPartyCode'] || ownSection2Duplicate">
-                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                                viewBox="0 0 24 24">
-                                <path
-                                    d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                                <line x1="7" y1="7" x2="7.01" y2="7" />
-                            </svg>
-                            <input id="ownershipPartyCode" name="ownershipPartyCode" maxlength="4"
-                                [value]="form.ownershipPartyCode || ''" placeholder="ENTER OWNERSHIP CODE"
-                                (input)="handleOwnershipPartyCodeChange($any($event.target).value)"
-                                (blur)="onFieldBlur('ownershipPartyCode')" style="text-transform: uppercase;" />
-                            <svg *ngIf="ownSection2Loading" width="14" height="14" class="spin field-status" fill="none"
-                                stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                            </svg>
-                            <svg *ngIf="!ownSection2Loading && ownSection2Duplicate" width="14" height="14"
-                                class="field-status" style="color: var(--danger,#dc2626);"
-                                title="Duplicate: already exists in Ownership Party Code records" fill="none"
-                                stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="12" y1="8" x2="12" y2="12" />
-                                <line x1="12" y1="16" x2="12.01" y2="16" />
-                            </svg>
-                            <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === true"
-                                width="14" height="14" class="field-status code-ok"
-                                title="Found in Ownership Party Code records" fill="none" stroke="currentColor"
-                                stroke-width="2" viewBox="0 0 24 24">
-                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                                <polyline points="22 4 12 14.01 9 11.01" />
-                            </svg>
-                            <svg *ngIf="!ownSection2Loading && !ownSection2Duplicate && ownSection2Found === false"
-                                width="14" height="14" class="field-status" style="color: var(--warning,#ca8a04);"
-                                title="New code - will INSERT" fill="none" stroke="currentColor" stroke-width="2"
-                                viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="12" y1="8" x2="12" y2="12" />
-                                <line x1="12" y1="16" x2="12.01" y2="16" />
-                            </svg>
-                        </div>
-                        <small *ngIf="errors['ownershipPartyCode']" class="error">{{ errors['ownershipPartyCode']
-                            }}</small>
-                        <small *ngIf="ownSection2LookupError" class="error">{{ ownSection2LookupError }}</small>
-                        <small *ngIf="!errors['ownershipPartyCode'] && ownSection2Duplicate" class="error"
-                            style="display: flex; align-items: center; gap: 4px;">
-                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
-                                viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="12" y1="8" x2="12" y2="12" />
-                                <line x1="12" y1="16" x2="12.01" y2="16" />
-                            </svg> This Ownership Party Code already exists in Ownership Party Code records. Duplicate
-                            entries are not allowed.
-                        </small>
-                        <small
-                            *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'EXISTING_OWNERSHIP_RECORD'"
-                            style="color: var(--success,#16a34a); font-size: 0.78rem;">Existing ownership record found -
-                            changes will be sent as an UPDATE request.</small>
-                        <small
-                            *ngIf="!errors['ownershipPartyCode'] && ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER'"
-                            style="color: var(--success,#16a34a); font-size: 0.78rem;">Global Customer record found - a
-                            new ownership INSERT request can be submitted.</small>
-                    </div>
-
-                    <!-- Ownership Party Address -->
-                    <div class="field">
-                        <label for="ownershipPartyAddress">Ownership Address <b>*</b></label>
-                        <div class="control" [class.invalid]="errors['ownershipPartyAddress']">
-                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                                viewBox="0 0 24 24">
-                                <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
-                                <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-                                <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
-                                <line x1="10" y1="6" x2="14" y2="6" />
-                                <line x1="10" y1="10" x2="14" y2="10" />
-                                <line x1="10" y1="14" x2="14" y2="14" />
-                                <line x1="10" y1="18" x2="14" y2="18" />
-                            </svg>
-                            <input id="ownershipPartyAddress" name="ownershipPartyAddress"
-                                [(ngModel)]="form.ownershipPartyAddress" (input)="errors['ownershipPartyAddress'] = ''"
-                                (blur)="onFieldBlur('ownershipPartyAddress')" placeholder="Enter ownership address" />
-                        </div>
-                        <small *ngIf="errors['ownershipPartyAddress']" class="error">{{ errors['ownershipPartyAddress']
-                            }}</small>
-                    </div>
-                </div>
             </div>
 
             <!-- OCR Auto-fill Notification -->
@@ -1303,7 +846,7 @@
                                 [value]="deleteCompanyName" (input)="onDeleteCompanyNameChange($event)"
                                 (keydown.enter)="sendDeleteRequest(); $event.preventDefault()"
                                 [disabled]="deleteSubmitting" autocomplete="organization"
-                                placeholder="Enter exact company name to confirm" required />
+                                required />
                         </div>
                     </div>
                     <button class="submit" type="button" (click)="sendDeleteRequest()"

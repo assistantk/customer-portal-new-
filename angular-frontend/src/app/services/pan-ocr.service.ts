@@ -415,7 +415,7 @@ function trimUnrelatedBusinessValue(value: string): string {
   return value
     .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
     .replace(/\b(?:null|n\/a|na|not\s+applicable|not\s+available)\b/gi, '')
-    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
+    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
     .replace(/\s*\d+\s*[\.\)\(\{\}\[\]:\-\s]*$/g, '')
     .replace(/^[\d\s\.\)\(\{\}\[\]:\-]+/g, '')
     .replace(/^(?:government\s+of\s+india|registration\s+certificate)\s*[:\-]?\s*/gi, '')
@@ -442,13 +442,13 @@ function extractFieldValue(text: string, labelPattern: RegExp, nextFieldPattern:
 
 function extractLegalName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:legal|regal|1egal|iegal|leal)\s+name(?:\s+of\s+business)?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
 function extractTradeName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
@@ -757,6 +757,9 @@ export class PanOcrService {
       }
     }
     if (pageLimitExceeded) throw new Error(`PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
+    if (isPdf && !pdf) {
+      throw new Error('Unable to open this PDF for OCR. Please upload a valid, unprotected PDF or convert it to an image.');
+    }
 
     let details: ExtractedGstinDetails = {};
     if (pageRecords.length > 0) {
@@ -837,7 +840,12 @@ export class PanOcrService {
     }
 
     if (pdf) await pdf.destroy();
-    if (ocrFailed) throw ocrError;
+    if (ocrFailed) {
+      const errorMessage = ocrError instanceof Error ? ocrError.message : '';
+      throw new Error(errorMessage
+        ? `Document OCR failed: ${errorMessage}`
+        : 'Document OCR failed. Please try again or upload a clearer document.');
+    }
     return {
       ...details,
       stateName: details.state || getStateNameFromGstinCode(details.stateCode),
