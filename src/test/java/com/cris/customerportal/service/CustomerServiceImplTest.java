@@ -936,6 +936,236 @@ class CustomerServiceImplTest {
     }
 
     @Test
+    void lookupOwnershipJDBC_fetchesCompanyNameAndDetailsFromGlobalCustomer() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement partyPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyPs);
+
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(partyPs.executeQuery()).thenReturn(partyRs);
+
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABC1");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ABC PRIVATE LIMITED");
+        when(globalRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("RAILWAY ROAD");
+        when(globalRs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+        when(globalRs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
+        when(globalRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("DELHI");
+        when(globalRs.getString("MAVPCOCODE")).thenReturn("110001");
+
+        when(ownershipRs.next()).thenReturn(false);
+        when(partyRs.next()).thenReturn(false);
+
+        Map<String, String> result = service(dataSource, mailSender).lookupOwnershipJDBC("ABC1");
+
+        assertNotNull(result);
+        assertEquals("ABC1", result.get("ownershipCode"));
+        assertEquals("ABC PRIVATE LIMITED", result.get("ownershipDesc"));
+        assertEquals("RAILWAY ROAD", result.get("address"));
+        assertEquals("ABCDE1234F", result.get("panNumber"));
+        assertEquals("07ABCDE1234F1Z5", result.get("gstinNumbers"));
+        assertEquals("DELHI", result.get("city"));
+        assertEquals("110001", result.get("pincode"));
+        assertEquals("NEW_RECORD_FROM_GLOBAL_CUSTOMER", result.get("recordSource"));
+    }
+
+    @Test
+    void lookupOwnershipJDBC_returnsUpdatedGlobalCustomerCompanyNameEvenWhenOwnershipAlreadyExists() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement partyPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyPs);
+
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(partyPs.executeQuery()).thenReturn(partyRs);
+
+        // Global Customer has the latest updated company name
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABC1");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ABC TECHNOLOGIES PRIVATE LIMITED");
+        when(globalRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("TECH PARK");
+        when(globalRs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+
+        // Existing ownership record contains the older name
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ABC1");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
+
+        when(partyRs.next()).thenReturn(true);
+        when(partyRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("ABC1");
+        when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
+
+        Map<String, String> result = service(dataSource, mailSender).lookupOwnershipJDBC("ABC1");
+
+        assertNotNull(result);
+        assertEquals("ABC1", result.get("ownershipCode"));
+        // Company name is fetched from MEMGLBLCUST (source of truth), not the older ownership description
+        assertEquals("ABC TECHNOLOGIES PRIVATE LIMITED", result.get("ownershipDesc"));
+        assertEquals("EXISTING_OWNERSHIP_RECORD", result.get("recordSource"));
+    }
+
+    @Test
+    void submitOwnershipJDBC_caseA_generatesIndependentUpdateQueriesForBothTablesWhenGlobalCompanyNameChanged() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement partyPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyPs);
+
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(partyPs.executeQuery()).thenReturn(partyRs);
+
+        // Global Customer has updated company name
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABC1");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ABC TECHNOLOGIES PRIVATE LIMITED");
+
+        // Both Ownership records exist with old name
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ABC1");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
+
+        when(partyRs.next()).thenReturn(true);
+        when(partyRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("ABC1");
+        when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
+
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
+            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
+
+        String body = emailedBody(mailSender);
+        // Verify UPDATE for MEMWGONOWNRSHIP
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"
+        ));
+        // Verify UPDATE for MEMWGONOWNRPRTY
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"
+        ));
+        // Verify no INSERT statements generated for existing records
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
+
+        // Verify original DBA email structure and ordering preserved
+        assertTrue(body.contains(
+            "----------------------------------------1 UPDATE---------------------------\n\n"
+            + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"));
+        assertTrue(body.contains(
+            "----------------------------------------2 UPDATE---------------------------\n\n"
+            + "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"));
+        assertTrue(body.indexOf("----------------------------------------1 UPDATE") < body.indexOf("----------------------------------------2 UPDATE"));
+    }
+
+    @Test
+    void submitOwnershipJDBC_caseB_generatesUpdateForExistingAndInsertForMissing() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        PreparedStatement partyPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet partyRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyPs);
+
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(partyPs.executeQuery()).thenReturn(partyRs);
+
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABC1");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("ABC TECHNOLOGIES PRIVATE LIMITED");
+
+        // Ownership record exists with older name
+        when(ownershipRs.next()).thenReturn(true);
+        when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ABC1");
+        when(ownershipRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
+
+        // Party record is missing
+        when(partyRs.next()).thenReturn(false);
+
+        service(dataSource, mailSender).submitOwnershipJDBC(
+            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
+            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"
+        ));
+        assertTrue(body.contains(
+            "INSERT INTO MEMWGONOWNRPRTY VALUES('ABC1','M/S ABC TECHNOLOGIES PRIVATE LIMITED');"
+        ));
+        assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
+        assertTrue(body.indexOf("UPDATE MEMWGONOWNRSHIP") < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
+    }
+
+    @Test
+    void submitOwnershipJDBC_caseC_invalidGlobalCustomerCodePreventsSubmissionAndEmail() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement globalPs = mock(PreparedStatement.class);
+        PreparedStatement ownershipPs = mock(PreparedStatement.class);
+        ResultSet globalRs = mock(ResultSet.class);
+        ResultSet ownershipRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipPs);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
+        when(ownershipPs.executeQuery()).thenReturn(ownershipRs);
+        when(ownershipRs.next()).thenReturn(false);
+        when(globalPs.executeQuery()).thenReturn(globalRs);
+        when(globalRs.next()).thenReturn(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).submitOwnershipJDBC(
+                "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED",
+                "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED")
+        );
+
+        assertTrue(ex.getMessage().contains("does not exist in the Ownership table or Global Customer table"));
+        verify(mailSender, never()).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
     void dbaEmailServiceSendsOneOrderedCombinedOwnershipInsertEmail() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
@@ -1063,22 +1293,29 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement ownershipLookup = mock(PreparedStatement.class);
+        PreparedStatement globalLookup = mock(PreparedStatement.class);
         ResultSet ownershipRs = mock(ResultSet.class);
+        ResultSet globalRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
-        when(connection.prepareStatement(anyString())).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
+        when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(ownershipRs.next()).thenReturn(true);
         when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("AB12");
         when(ownershipRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("Existing ownership record");
+        when(globalRs.next()).thenReturn(true);
+        when(globalRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("Global Customer Company");
 
         Map<String, String> result = service(dataSource, mailSender).lookupOwnershipJDBC("ab12");
 
         assertEquals("EXISTING_OWNERSHIP_RECORD", result.get("recordSource"));
-        assertEquals("Existing ownership record", result.get("ownershipDesc"));
-        verify(connection, times(1)).prepareStatement(anyString());
+        assertEquals("Global Customer Company", result.get("ownershipDesc"));
         verify(ownershipLookup).setString(1, "AB12");
+        verify(globalLookup).setString(1, "AB12");
     }
 
     @Test
@@ -1092,7 +1329,8 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
-        when(connection.prepareStatement(anyString())).thenReturn(ownershipLookup, globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(ownershipRs.next()).thenReturn(false);
@@ -1104,8 +1342,6 @@ class CustomerServiceImplTest {
 
         assertEquals("NEW_RECORD_FROM_GLOBAL_CUSTOMER", result.get("recordSource"));
         assertEquals("Global Customer Company", result.get("ownershipDesc"));
-        verify(connection).prepareStatement(contains("FROM MEMWGONOWNRSHIP"));
-        verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
         verify(ownershipLookup).setString(1, "AB12");
         verify(globalLookup).setString(1, "AB12");
     }
@@ -1121,7 +1357,8 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
-        when(connection.prepareStatement(anyString())).thenReturn(partyLookup, globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(partyRs.next()).thenReturn(false);
@@ -1133,8 +1370,6 @@ class CustomerServiceImplTest {
 
         assertEquals("NEW_RECORD_FROM_GLOBAL_CUSTOMER", result.get("recordSource"));
         assertEquals("Global Party Company", result.get("partyDesc"));
-        verify(connection).prepareStatement(contains("FROM MEMWGONOWNRPRTY"));
-        verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
         verify(partyLookup).setString(1, "PT34");
         verify(globalLookup).setString(1, "PT34");
     }
@@ -1653,6 +1888,95 @@ class CustomerServiceImplTest {
         String body = captor.getValue().getText();
         assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
         assertFalse(body.contains("SHOP NO 209, EDGE"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsMismatchedPanAndGstin() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "22XYZAB9999K1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("does not match PAN number"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsInvalidGstinFormat() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "INVALIDGSTIN"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("valid 15-character GSTIN numbers"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_rejectsInvalidPanFormat() {
+        DataSource dataSource = mock(DataSource.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "G101",
+                "companyName", "TEST CO",
+                "address", "Valid Address",
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "INVALIDPAN",
+                "gstinNumbers", "22ABCDE1234F1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("valid PAN number"));
+    }
+
+    @Test
+    void updateOldCustomerJDBC_rejectsMismatchedPanAndGstinWhenGstinChanged() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupRs.next()).thenReturn(true);
+        Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
+        when(lookupRs.getString(anyString())).thenAnswer(inv -> originalRecord.get(inv.getArgument(0)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+            service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S OLD COMPANY",
+                "address", "OLD ROAD,MARKET AREA",
+                "city", "PATNA",
+                "pincode", "800001",
+                "panNumber", "AAAAA1111A",
+                "gstinNumbers", "27XYZAB9999K1Z5"
+            ))
+        );
+        assertTrue(ex.getMessage().contains("does not match PAN number"));
     }
 
     @Test

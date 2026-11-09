@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.io.IOException;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
@@ -369,23 +370,33 @@ public class CustomerServiceImpl implements CustomerService {
   if (pincode != null && !pincode.trim().isEmpty() && !pincode.trim().matches("^[1-9][0-9]{5}$")) {
    throw new IllegalArgumentException("Invalid pincode");
   }
-  if (!formData.get("panNumber").trim().toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+  String rawPan = formData.get("panNumber");
+  if (rawPan == null || !rawPan.replaceAll("\\s+", "").toUpperCase(Locale.ROOT).matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
    throw new IllegalArgumentException("Enter a valid PAN number.");
   }
+  String pan = rawPan.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+
+  String rawGstins = formData.get("gstinNumbers");
+  if (rawGstins == null || rawGstins.trim().isEmpty()) {
+   throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
+  }
   List<String> gstinNumbers = new ArrayList<>();
-  for (String g : formData.get("gstinNumbers").split(",")) {
-   String trimmed = g.trim();
+  for (String g : rawGstins.split(",")) {
+   String trimmed = g.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
    if (!trimmed.isEmpty()) gstinNumbers.add(trimmed);
   }
-  boolean anyInvalidGstin = false;
-  for (String g : gstinNumbers) {
-   if (!g.toUpperCase(Locale.ROOT).matches("^[A-Z0-9]{15}$")) {
-    anyInvalidGstin = true;
-    break;
-   }
-  }
-  if (gstinNumbers.isEmpty() || anyInvalidGstin) {
+  if (gstinNumbers.isEmpty()) {
    throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers.");
+  }
+  Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$");
+  for (String g : gstinNumbers) {
+   if (!gstinPattern.matcher(g).matches()) {
+    throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + g);
+   }
+   String gstinPan = g.substring(2, 12);
+   if (!gstinPan.equals(pan)) {
+    throw new IllegalArgumentException("GSTIN " + g + " does not match PAN number " + pan);
+   }
   }
   String email = formData.get("email");
   if (email != null && !email.trim().isEmpty() && !email.trim().matches("^\\S+@\\S+\\.\\S+$")) {
@@ -534,8 +545,46 @@ public class CustomerServiceImpl implements CustomerService {
   }
   requested.put(addressColumn, updateAddress);
   requested.put(cityColumn, normalizeNullableValue(formData.get("city")));
-  requested.put(panColumn, normalizeNullableValue(formData.get("panNumber")));
-  requested.put(gstColumn, normalizeNullableValue(formData.get("gstinNumbers")));
+
+  String rawPan = formData.get("panNumber");
+  String panVal = normalizeNullableValue(rawPan);
+  if (panVal != null) {
+   panVal = panVal.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if (!panVal.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+    throw new IllegalArgumentException("Enter a valid PAN number.");
+   }
+  }
+  requested.put(panColumn, panVal);
+
+  String rawGst = formData.get("gstinNumbers");
+  String gstVal = normalizeNullableValue(rawGst);
+  boolean gstinChanged = gstVal != null && !Objects.equals(
+      normalizeUpdateComparisonValue(gstColumn, oldCustomer.getGstinNumbers()),
+      normalizeUpdateComparisonValue(gstColumn, gstVal)
+  );
+  if (gstVal != null && !gstVal.isEmpty()) {
+   Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$");
+   List<String> cleanGstins = new ArrayList<>();
+   for (String g : gstVal.split(",")) {
+    String trimmed = g.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+    if (trimmed.isEmpty()) continue;
+    if (!gstinPattern.matcher(trimmed).matches()) {
+     throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + trimmed);
+    }
+    if (gstinChanged) {
+     String comparePan = panVal != null ? panVal : (oldCustomer.getPanNumber() != null ? oldCustomer.getPanNumber().replaceAll("\\s+", "").toUpperCase(Locale.ROOT) : null);
+     if (comparePan != null && comparePan.matches("^[A-Z]{5}[0-9]{4}[A-Z]$")) {
+      String gstinPan = trimmed.substring(2, 12);
+      if (!gstinPan.equals(comparePan)) {
+       throw new IllegalArgumentException("GSTIN " + trimmed + " does not match PAN number " + comparePan);
+      }
+     }
+    }
+    cleanGstins.add(trimmed);
+   }
+   gstVal = String.join(",", cleanGstins);
+  }
+  requested.put(gstColumn, gstVal);
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
    requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
@@ -666,16 +715,22 @@ public class CustomerServiceImpl implements CustomerService {
  public java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode) {
   String normalizedCode = normalizeOwnershipCode(ownershipCode);
   Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
+  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnership(normalizedCode);
+
+  if (globalCustomer != null) {
+   globalCustomer.put("recordSource", existing != null ? "EXISTING_OWNERSHIP_RECORD" : "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
+   if (existing != null) {
+    globalCustomer.put("existingOwnershipDesc", existing.get("ownershipDesc"));
+   }
+   return globalCustomer;
+  }
+
   if (existing != null) {
    existing.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
    return existing;
   }
 
-  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnership(normalizedCode);
-  if (globalCustomer != null) {
-   globalCustomer.put("recordSource", "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
-  }
-  return globalCustomer;
+  return null;
  }
 
  public void saveOwnershipJDBC(String ownershipCode, String ownershipDesc) {
@@ -701,7 +756,7 @@ public class CustomerServiceImpl implements CustomerService {
  public void submitOwnershipJDBC(String ownershipCode, String ownershipDesc, String partyCode, String partyDesc) {
   boolean hasOwnership = ownershipCode != null && !ownershipCode.trim().isEmpty();
   boolean hasParty = partyCode != null && !partyCode.trim().isEmpty();
-  log.info("CustomerServiceImpl.submitOwnershipJDBC: Ownership INSERT request received ownershipCodePresent={} partyCodePresent={}",
+  log.info("CustomerServiceImpl.submitOwnershipJDBC: Ownership request received ownershipCodePresent={} partyCodePresent={}",
       hasOwnership, hasParty);
   if (!hasOwnership && !hasParty) throw new IllegalArgumentException("At least one ownership code is required.");
 
@@ -736,7 +791,7 @@ public class CustomerServiceImpl implements CustomerService {
    String sql = generateOwnershipPartySql(partyCode, partyDesc);
    logGeneratedOwnershipSql("MEMWGONOWNRPRTY", sql);
    if (sql != null) {
-    if (hasOwnership && ownershipSql == null && sql.startsWith("INSERT")) {
+    if (hasOwnership && ownershipSql == null && (sql.startsWith("INSERT") || sql.startsWith("UPDATE"))) {
      String unchangedOwnershipUpdate = generateOwnershipUpdateSql(ownershipCode, ownershipDesc);
      statements.add(0, new DbaEmailService.SqlRequest(
          "UPDATE",
@@ -750,8 +805,19 @@ public class CustomerServiceImpl implements CustomerService {
         "MEMWGONOWNRPRTY",
         partyCode.trim().toUpperCase(Locale.ROOT),
         sql));
+   } else if (hasOwnership && ownershipSql != null && ownershipSql.startsWith("UPDATE")) {
+    if (lookupExistingOwnershipPartyRecord(normalizeOwnershipCode(partyCode)) != null) {
+     String unchangedPartyUpdate = generateOwnershipPartyUpdateSql(partyCode, partyDesc);
+     statements.add(new DbaEmailService.SqlRequest(
+         "UPDATE",
+         "MEMWGONOWNRPRTY",
+         partyCode.trim().toUpperCase(Locale.ROOT),
+         unchangedPartyUpdate));
+     logGeneratedOwnershipSql("MEMWGONOWNRPRTY", unchangedPartyUpdate);
+    }
    }
   }
+
   if (statements.isEmpty()) throw new IllegalArgumentException("No changes detected for the ownership records.");
   String tables = statements.stream()
       .map(DbaEmailService.SqlRequest::table)
@@ -774,7 +840,7 @@ public class CustomerServiceImpl implements CustomerService {
   String normalizedCode = normalizeOwnershipCode(ownershipCode);
   Map<String, String> existing = lookupExistingOwnershipRecord(normalizedCode);
   if (existing != null) {
-   if (Objects.equals(normalizeOracleValue(existing.get("ownershipDesc")), normalizeOracleValue(ownershipDesc))) return null;
+   if (!isCompanyNameDifferent(existing.get("ownershipDesc"), ownershipDesc)) return null;
    return generateOwnershipUpdateSql(normalizedCode, ownershipDesc);
   }
   if (lookupGlobalCustomerForOwnership(normalizedCode) == null) {
@@ -787,8 +853,29 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String generateOwnershipUpdateSql(String ownershipCode, String ownershipDesc) {
-  return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(ownershipDesc)
+  return "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = " + formatSqlValue(withOwnershipDescriptionPrefix(ownershipDesc))
       + " WHERE MAVWGONOWNRSHIPCODE = " + formatSqlValue(normalizeOwnershipCode(ownershipCode)) + ";";
+ }
+
+ private boolean isCompanyNameDifferent(String currentDesc, String newDesc) {
+  if (currentDesc == null && newDesc == null) return false;
+  if (currentDesc == null || newDesc == null) return true;
+  String norm1 = stripMsPrefix(currentDesc).trim().toUpperCase(Locale.ROOT);
+  String norm2 = stripMsPrefix(newDesc).trim().toUpperCase(Locale.ROOT);
+  return !norm1.equals(norm2);
+ }
+
+ private String stripMsPrefix(String desc) {
+  if (desc == null) return "";
+  String trimmed = desc.trim();
+  if (trimmed.length() >= 3 && trimmed.regionMatches(true, 0, "M/S", 0, 3)) {
+   int idx = 3;
+   while (idx < trimmed.length() && (trimmed.charAt(idx) == '.' || Character.isWhitespace(trimmed.charAt(idx)))) {
+    idx++;
+   }
+   return trimmed.substring(idx).trim();
+  }
+  return trimmed;
  }
 
  private Map<String, String> lookupExistingOwnershipRecord(String ownershipCode) {
@@ -845,17 +932,23 @@ public class CustomerServiceImpl implements CustomerService {
 
  public java.util.Map<String, String> lookupOwnershipPartyJDBC(String partyCode) {
   String normalizedCode = normalizeOwnershipCode(partyCode);
-  Map<String, String> existing = lookupExistingOwnershipPartyRecord(normalizedCode);
-  if (existing != null) {
-   existing.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
-   return existing;
+  Map<String, String> existingParty = lookupExistingOwnershipPartyRecord(normalizedCode);
+  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnershipParty(normalizedCode);
+
+  if (globalCustomer != null) {
+   globalCustomer.put("recordSource", existingParty != null ? "EXISTING_OWNERSHIP_RECORD" : "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
+   if (existingParty != null) {
+    globalCustomer.put("existingPartyDesc", existingParty.get("partyDesc"));
+   }
+   return globalCustomer;
   }
 
-  Map<String, String> globalCustomer = lookupGlobalCustomerForOwnershipParty(normalizedCode);
-  if (globalCustomer != null) {
-   globalCustomer.put("recordSource", "NEW_RECORD_FROM_GLOBAL_CUSTOMER");
+  if (existingParty != null) {
+   existingParty.put("recordSource", "EXISTING_OWNERSHIP_RECORD");
+   return existingParty;
   }
-  return globalCustomer;
+
+  return null;
  }
 
  public void saveOwnershipPartyJDBC(String partyCode, String partyDesc) {
@@ -897,6 +990,11 @@ public class CustomerServiceImpl implements CustomerService {
   return "INSERT INTO MEMWGONOWNRPRTY VALUES("
       + formatSqlValue(normalizedCode) + ","
       + formatSqlValue(withOwnershipDescriptionPrefix(partyDesc)) + ");";
+ }
+
+ private String generateOwnershipPartyUpdateSql(String partyCode, String partyDesc) {
+  return "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = " + formatSqlValue(withOwnershipDescriptionPrefix(partyDesc))
+      + " WHERE MAVWGONOWNRPRTYCODE = " + formatSqlValue(normalizeOwnershipCode(partyCode)) + ";";
  }
 
  private String withOwnershipDescriptionPrefix(String description) {

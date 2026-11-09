@@ -240,6 +240,7 @@ public class CustomerController {
                 LOGGER.info("Ownership lookup returned not found for code={}", code);
                 body.put("success", true);
                 body.put("found", false);
+                body.put("message", "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.");
             }
             return ResponseEntity.ok(body);
         } catch (Exception e) {
@@ -290,16 +291,28 @@ public class CustomerController {
     @PostMapping("/ownership-submit")
     public ResponseEntity<?> ownershipSubmit(@RequestBody Map<String, String> payload) {
         String ownershipCode = payload.get("ownershipCode");
+        String ownershipDesc = payload.get("ownershipDesc");
         String partyCode = payload.get("partyCode");
+        String partyDesc = payload.get("partyDesc");
+
+        // Unified form support: if one set of code/desc is provided, reuse it for both table operations
+        if ((partyCode == null || partyCode.trim().isEmpty()) && ownershipCode != null && !ownershipCode.trim().isEmpty()) {
+            partyCode = ownershipCode;
+            partyDesc = ownershipDesc;
+        } else if ((ownershipCode == null || ownershipCode.trim().isEmpty()) && partyCode != null && !partyCode.trim().isEmpty()) {
+            ownershipCode = partyCode;
+            ownershipDesc = partyDesc;
+        }
+
         LOGGER.info("Ownership INSERT request received at /api/customers/ownership-submit ownershipCodePresent={} partyCodePresent={}",
                 ownershipCode != null && !ownershipCode.trim().isEmpty(),
                 partyCode != null && !partyCode.trim().isEmpty());
         try {
             service.submitOwnershipJDBC(
                     ownershipCode,
-                    payload.get("ownershipDesc"),
+                    ownershipDesc,
                     partyCode,
-                    payload.get("partyDesc"));
+                    partyDesc);
             LOGGER.info("Ownership submit succeeded: ownershipCode={} partyCode={}", ownershipCode, partyCode);
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
@@ -338,6 +351,7 @@ public class CustomerController {
                 LOGGER.info("Ownership party lookup returned not found for code={}", code);
                 body.put("success", true);
                 body.put("found", false);
+                body.put("message", "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.");
             }
             return ResponseEntity.ok(body);
         } catch (Exception e) {

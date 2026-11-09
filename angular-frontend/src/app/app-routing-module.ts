@@ -11,8 +11,8 @@ import { AccessDeniedComponent } from './pages/access-denied/access-denied.compo
 import { AuthGuard, NonAuthGuard } from './services/auth.guard';
 
 const routes: Routes = [
-  { path: '', redirectTo: 'registration', pathMatch: 'full' },
-  { path: 'login', component: LoginComponent },
+  // { path: '', redirectTo: 'registration', pathMatch: 'full' },
+  // { path: 'login', component: LoginComponent },
   { path: 'access-denied', component: AccessDeniedComponent },
   { path: 'signup', redirectTo: 'register' },
   {

@@ -156,7 +156,7 @@ describe('OwnershipCodeComponent', () => {
     expect(component.ownSection1LookupError).toBe('Ownership table lookup failed');
   });
 
-  it('should validate required fields', () => {
+  it('should validate required fields in unified form', () => {
     const valid = component.validate();
     expect(valid).toBe(false);
     expect(component.errors['ownershipCode']).toBeDefined();
@@ -167,13 +167,13 @@ describe('OwnershipCodeComponent', () => {
     expect(component.errors['state']).toBeDefined();
     expect(component.errors['zone']).toBeDefined();
     expect(component.errors['operatingDivision']).toBeDefined();
-    expect(component.errors['ownershipPartyCode']).toBeDefined();
-    expect(component.errors['ownershipPartyAddress']).toBeDefined();
+    // Section 2 fields are eliminated from the unified form
+    expect(component.errors['ownershipPartyCode']).toBeUndefined();
+    expect(component.errors['ownershipPartyAddress']).toBeUndefined();
   });
 
-  it('should submit registration successfully', () => {
+  it('should submit unified form and supply entered company info to both database operations', () => {
     component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
-    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
     component.form = {
       ownershipCode: 'OWN1',
       ownershipAddress: 'Address 1',
@@ -185,24 +185,21 @@ describe('OwnershipCodeComponent', () => {
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
       email: 'owner@example.com',
-      mobile: '9876543210',
-      ownershipPartyCode: 'PRT1',
-      ownershipPartyAddress: 'Address 2'
+      mobile: '9876543210'
     };
 
     component.submit();
     expect(customerServiceMock.submitOwnershipJDBC).toHaveBeenCalledWith(
       'OWN1',
       'Address 1',
-      'PRT1',
-      'Address 2'
+      'OWN1',
+      'Address 1'
     );
     expect(component.notice).toContain('Request sent to DBA');
   });
 
-  it('should allow submission validation when city is blank or whitespace', () => {
+  it('should allow submission validation when city is blank or whitespace in unified form', () => {
     component.ownSection1Source = 'EXISTING_OWNERSHIP_RECORD';
-    component.ownSection2Source = 'EXISTING_OWNERSHIP_RECORD';
     component.form = {
       ownershipCode: 'OWN1',
       ownershipAddress: 'Address 1',
@@ -214,9 +211,7 @@ describe('OwnershipCodeComponent', () => {
       zone: 'Central Railway (CR)',
       operatingDivision: 'Mumbai (CSTM)',
       email: '',
-      mobile: '',
-      ownershipPartyCode: 'PRT1',
-      ownershipPartyAddress: 'Address 2'
+      mobile: ''
     };
 
     expect(component.validate()).toBe(true);

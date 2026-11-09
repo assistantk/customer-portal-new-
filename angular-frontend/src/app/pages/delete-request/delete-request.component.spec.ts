@@ -22,7 +22,7 @@ describe('DeleteRequestComponent', () => {
 
   it('initializes with default generic page title, no code-type logo, and requires selecting a code type', () => {
     expect(component.codeType).toBe('');
-    expect(component.pageTitle).toBe('Delete Request');
+    expect(component.pageTitle).toBe('Disable Code');
     expect(component.currentLogo).toBe('assets/portal-logo.webp');
     expect(component.currentLogoAlt).toBe('Freight Code Generator');
 
@@ -36,7 +36,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Global Customer Code logo and heading when Global Code is selected', () => {
     component.codeType = 'GLOBAL_CUSTOMER';
 
-    expect(component.pageTitle).toBe('Global Customer Code Deletion Request');
+    expect(component.pageTitle).toBe('Global Customer Code - Disable Code');
     expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
     expect(component.currentLogoAlt).toBe('Global Customer Code Logo');
   });
@@ -44,7 +44,7 @@ describe('DeleteRequestComponent', () => {
   it('dynamically displays Handling Agent logo and heading when Handling Agent Code is selected', () => {
     component.codeType = 'HANDLING_AGENT';
 
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
     expect(component.currentLogoAlt).toBe('Handling Agent Code Logo');
   });
@@ -102,7 +102,7 @@ describe('DeleteRequestComponent', () => {
     expect(component.verificationMessage).toBe('');
     expect(component.errorMessage).toBe('');
     expect(component.successMessage).toBe('');
-    expect(component.pageTitle).toBe('Handling Agent Code Deletion Request');
+    expect(component.pageTitle).toBe('Handling Agent Code - Disable Code');
     expect(component.currentLogo).toBe('assets/handling_agent_code_transparent.webp');
 
     component.sendRequest();

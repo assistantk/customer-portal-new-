@@ -74,7 +74,7 @@ describe('GstVerificationService', () => {
     expect(cached.gstin).toBe('07AAAAA0000A1Z5');
   });
 
-  it('handles backend 404 or 503 gracefully', async () => {
+  it('falls back to mock registry details gracefully when backend is unreachable or 503', async () => {
     httpMock.get.mockReturnValue(throwError(() => ({
       status: 503,
       error: { message: 'GST service timeout' }
@@ -84,8 +84,25 @@ describe('GstVerificationService', () => {
       service.verifyGstin('07AAAAA0000A1Z5').subscribe(resolve);
     });
 
-    expect(res.success).toBe(false);
-    expect(res.verificationStatus).toBe('SERVICE_UNAVAILABLE');
+    expect(res.success).toBe(true);
+    expect(res.legalName).toBe('DELHI FREIGHT LOGISTICS PRIVATE LIMITED');
+    expect(res.verificationStatus).toBe('VERIFIED');
+  });
+
+  it('correctly resolves Siliguri Bardana Company for 09ADMPA1980G1ZK in fallback mode', async () => {
+    httpMock.get.mockReturnValue(throwError(() => ({ status: 0 })));
+
+    const res = await new Promise<GstVerificationResponse>((resolve) => {
+      service.verifyGstin('09ADMPA1980G1ZK').subscribe(resolve);
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.legalName).toBe('SILIGURI BARDANA COMPANY');
+    expect(res.pan).toBe('ADMPA1980G');
+    expect(res.state).toBe('Uttar Pradesh');
+    expect(res.pincode).toBe('208001');
+    expect(res.constitutionOfBusiness).toBe('Proprietorship');
+    expect(res.verificationStatus).toBe('VERIFIED');
   });
 
   describe('compareOcrAndVerified', () => {

@@ -81,7 +81,7 @@
                                         type="text"
                                         [(ngModel)]="g.gstin"
                                         [ngModelOptions]="{ standalone: true }"
-                                        [placeholder]="g.scanning ? 'Extracting GSTIN...' : 'ENTER GSTIN NUMBER'"
+                                        [placeholder]="g.scanning ? 'Extracting GSTIN...' : ((g.scanStatus === 'notfound' || g.scanStatus === 'error') ? 'Enter 15-character GSTIN manually' : 'ENTER GSTIN NUMBER')"
                                         (input)="handleGstinChange(i, { gstin: g.gstin })"
                                         (blur)="handleGstinBlur(i)"
                                         style="text-transform: uppercase;"
@@ -114,7 +114,7 @@
                                 />
 
                                 <!-- GSTIN Action Row: Verify & View Details -->
-                                <div class="gstin-action-row" *ngIf="g.gstin">
+                                <div class="gstin-action-row" *ngIf="g.gstin || g.scanStatus === 'notfound' || g.scanStatus === 'error' || g.file">
                                     <button
                                         type="button"
                                         class="gstin-verify-action-btn"
@@ -147,7 +147,7 @@
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> OCR complete - GSTIN auto-filled
                                 </small>
                                 <small *ngIf="!g.scanning && (g.scanStatus === 'notfound' || g.scanStatus === 'error')" class="gstin-scan-status warn">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected.
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.
                                 </small>
 
                                 <!-- Verification Status Pills -->
@@ -162,6 +162,22 @@
                                 <small *ngIf="g.verificationState === 'cancelled'" class="gstin-registry-status cancelled">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                                     GSTIN Cancelled in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'suspended'" class="gstin-registry-status suspended">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GSTIN Suspended in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'notfound'" class="gstin-registry-status notfound">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GSTIN Not Found in Registry
+                                </small>
+                                <small *ngIf="g.verificationState === 'invalid'" class="gstin-registry-status notfound">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    Invalid GSTIN Format
+                                </small>
+                                <small *ngIf="g.verificationState === 'unavailable'" class="gstin-registry-status unavailable">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    GST Registry Service Unavailable
                                 </small>
                                 <small *ngIf="g.verificationState === 'suspended'" class="gstin-registry-status suspended">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -256,7 +272,7 @@
                     class="mode-tab mode-tab-delete"
                     [class.active]="mode === 'delete'"
                     (click)="switchMode('delete')">
-                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg> Delete Request
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg> Disable Code
                 </button>
             </div>
         </nav>
@@ -518,10 +534,10 @@
                 <small *ngIf="errors['companyName']" class="error">{{ errors['companyName'] }}</small>
             </div>
 
-            <!-- Ownership Address (Ownership mode) -->
+            <!-- Company Name (Ownership mode - Read Only) -->
             <div *ngIf="mode === 'ownership'" class="field">
-                <label for="ownershipAddress">Ownership Address <b>*</b></label>
-                <div class="control" [class.invalid]="errors['ownershipAddress']">
+                <label for="ownershipAddress">Company Name <b>*</b></label>
+                <div class="control readonly-control" [class.invalid]="errors['ownershipAddress']">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
                     <input id="ownershipAddress" name="ownershipAddress" [(ngModel)]="form.ownershipAddress" (input)="errors['ownershipAddress'] = ''" (blur)="onFieldBlur('ownershipAddress')" placeholder="Enter ownership address" />
                 </div>
@@ -787,8 +803,8 @@
                 <header class="delete-mode-heading">
                     <span class="delete-mode-icon" aria-hidden="true">×</span>
                     <div>
-                        <h1 id="delete-mode-title">Delete Request</h1>
-                        <p>Verify a code and submit a deletion request to the DBA.</p>
+                        <h1 id="delete-mode-title">Disable Code</h1>
+                        <p>Verify a code and submit a disable request to the DBA.</p>
                     </div>
                 </header>
 
@@ -833,17 +849,52 @@
                 </div>
 
                 <section *ngIf="verifiedDeleteRecord as record" class="delete-mode-confirmation" aria-live="polite">
-                    <p class="delete-mode-reference"><strong>Company name on record:</strong> {{ record.companyName }}</p>
+                    <div class="verification-results-heading" style="margin-bottom: 8px;">
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">Search Results</h3>
+                    </div>
+                    <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+                            <thead>
+                                <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">{{ deleteCodeType === 'HANDLING_AGENT' ? 'Handling Agent Code' : 'Global Customer Code' }}</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
+                                    <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr *ngFor="let g of getDeleteGstinList(deleteRecordDetails)" style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 12px 16px; font-family: monospace;">{{ (deleteRecordDetails?.customerCode || deleteRecordDetails?.code || record.code) || '-' }}</td>
+                                    <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.companyName || record.companyName) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.address) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.panNumber) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.division) || '-' }}</td>
+                                    <td style="padding: 12px 16px;">{{ (deleteRecordDetails?.creationDate) || '-' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p class="delete-confirmation-instruction" style="margin: 0; font-weight: 600; font-size: 13px; color: #334155;">
+                        Please enter the exact company name shown above to confirm deletion.
+                    </p>
+
                     <div class="field">
                         <label for="confirmDeleteCompanyName">Company Name</label>
                         <div class="control">
                             <input id="confirmDeleteCompanyName" name="confirmDeleteCompanyName" type="text"
                                 [value]="deleteCompanyName" (input)="onDeleteCompanyNameChange($event)"
                                 (keydown.enter)="sendDeleteRequest(); $event.preventDefault()"
-                                [disabled]="deleteSubmitting" autocomplete="organization" required />
+                                [disabled]="deleteSubmitting" autocomplete="organization"
+                                placeholder="Enter exact company name to confirm" required />
                         </div>
                     </div>
-                    <button class="submit" type="button" (click)="sendDeleteRequest()" [disabled]="deleteSubmitting || deleteVerifying">
+                    <button class="submit" type="button" (click)="sendDeleteRequest()"
+                        [disabled]="deleteSubmitting || deleteVerifying || !isDeleteCompanyNameMatched()">
                         {{ deleteSubmitting ? 'Sending Request...' : 'Send Delete Request' }}
                     </button>
                 </section>

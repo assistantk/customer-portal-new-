@@ -196,11 +196,13 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   deleteCode = '';
   deleteCompanyName = '';
   verifiedDeleteRecord: { codeType: DeleteRequestCodeType; code: string; companyName: string } | null = null;
+  deleteRecordDetails: any = null;
   deleteVerificationMessage = '';
   deleteErrorMessage = '';
   deleteSuccessMessage = '';
   deleteVerifying = false;
   deleteSubmitting = false;
+  private deleteLookupRequestId = 0;
   private codeTimer: any = null;
   private codeRequestId = 0;
   private ocrRequestId = 0;
@@ -450,6 +452,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
+  ngOnDestroy(): void {
+    this.cancelPendingAsyncOperations();
+    this.resetFormState();
+    this.userDivisionSubscription?.unsubscribe();
+  }
+
   getGstinPanStatus(gstin: string, pan?: string): string | null {
     const normalizedGstin = normalizeDocumentNumber(gstin);
     const normalizedPan = normalizeDocumentNumber(pan || this.form.panNumber);
@@ -497,6 +505,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.codeType = 'GLOBAL';
     this.addressStatus = '';
     this.addressManuallyEdited = false;
+    this.companyNameManuallyEdited = false;
+    this.panManuallyEdited = false;
     this.ocrAutoFillApplied = false;
     this.removedGstinIds = [];
     this.zoneOpen = false;
@@ -541,15 +551,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.cancelPendingAsyncOperations();
+    this.resetFormState();
+
     this.mode = newMode;
     this.resetFieldsPreservingZoneDivision();
     this.ownershipLogoMissing = false;
+    this.deleteLogoMissing = false;
     this.cdr.markForCheck();
   }
 
   onDeleteCodeTypeChange(event: Event): void {
     this.deleteCodeType = (event.target as HTMLSelectElement).value as DeleteRequestCodeType | '';
     this.deleteLogoMissing = false;
+    this.deleteCode = '';
     this.clearDeleteVerification();
   }
 
@@ -568,6 +583,23 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteCompanyName = (event.target as HTMLInputElement).value;
   }
 
+  getDeleteGstinList(c: any): string[] {
+    const rawGstins = c?.gstinNumbers || c?.gstin;
+    if (rawGstins == null || String(rawGstins).trim() === '') {
+      return ['-'];
+    }
+    const clean = String(rawGstins).replace(/[\[\]"\s]/g, '');
+    const list = clean.split(',').filter(Boolean);
+    return list.length > 0 ? list : ['-'];
+  }
+
+  isDeleteCompanyNameMatched(): boolean {
+    if (!this.verifiedDeleteRecord) return false;
+    const entered = (this.deleteCompanyName || '').trim();
+    const fetched = (this.verifiedDeleteRecord.companyName || '').trim();
+    return entered.length > 0 && entered === fetched;
+  }
+
   verifyDeleteCode(): void {
     if (this.deleteVerifying || this.deleteSubmitting) return;
 
@@ -581,31 +613,59 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Please enter a code.';
       return;
     }
-//the issue fix and backend pull request and verify the comment and logicaly the error of verify and the some the some of executed error
+
     this.clearDeleteVerification();
     this.deleteVerifying = true;
-    this.customerService.verifyDeleteRequest(codeType, code).pipe(
-      finalize(() => {
-        this.deleteVerifying = false;
-        this.cdr.markForCheck();
-      })
-    ).subscribe({
-      next: (result) => {
-        if (!result.found) {
-          this.deleteVerificationMessage = 'This code is not present in the records, so it cannot be deleted.';
-          return;
+    const requestId = ++this.deleteLookupRequestId;
+
+    this.activeRequestsSub.add(
+      this.customerService.verifyDeleteRequest(codeType, code).pipe(
+        switchMap((result) => {
+          if (!result || !result.found) {
+            return of({ verifyResult: result, details: null });
+          }
+          const lookup$ = codeType === 'GLOBAL_CUSTOMER'
+            ? (this.customerService.lookupOldCustomerJDBC
+                ? this.customerService.lookupOldCustomerJDBC(code).pipe(catchError(() => of(null)))
+                : of(null))
+            : (this.customerService.lookupHandlingAgentJDBC
+                ? this.customerService.lookupHandlingAgentJDBC(code).pipe(catchError(() => of(null)))
+                : of(null));
+
+          return lookup$.pipe(
+            map((details) => ({ verifyResult: result, details }))
+          );
+        }),
+        finalize(() => {
+          if (requestId !== this.deleteLookupRequestId) return;
+          this.deleteVerifying = false;
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: ({ verifyResult, details }) => {
+          if (requestId !== this.deleteLookupRequestId) return;
+          if (!verifyResult || !verifyResult.found) {
+            this.deleteVerificationMessage = 'This code is not present in the records, so it cannot be deleted.';
+            return;
+          }
+          const verifiedCode = verifyResult.code || code;
+          const verifiedName = details?.companyName || verifyResult.companyName || '';
+          this.verifiedDeleteRecord = { codeType, code: verifiedCode, companyName: verifiedName };
+          this.deleteRecordDetails = details || {
+            customerCode: verifiedCode,
+            code: verifiedCode,
+            companyName: verifiedName
+          };
+          this.deleteCode = verifiedCode;
+          this.deleteVerificationMessage = 'Code found. Please enter the exact company name shown above to confirm deletion.';
+        },
+        error: (error) => {
+          if (requestId !== this.deleteLookupRequestId) return;
+          this.deleteErrorMessage = error?.error?.message
+            || 'Unable to verify the code at this time. Please try again later.';
         }
-        const verifiedCode = result.code || code;
-        const verifiedName = result.companyName || '';
-        this.verifiedDeleteRecord = { codeType, code: verifiedCode, companyName: verifiedName };
-        this.deleteCode = verifiedCode;
-        this.deleteVerificationMessage = 'Code found. Please enter the company name to confirm the deletion.';
-      },
-      error: (error) => {
-        this.deleteErrorMessage = error?.error?.message
-          || 'Unable to verify the code at this time. Please try again later.';
-      }
-    });
+      })
+    );
   }
 
   sendDeleteRequest(): void {
@@ -618,7 +678,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Please enter the company name to confirm the request.';
       return;
     }
-    if (this.deleteCompanyName.trim().toLowerCase() !== this.verifiedDeleteRecord!.companyName.trim().toLowerCase()) {
+    if (!this.isDeleteCompanyNameMatched()) {
       this.deleteErrorMessage = 'Company name does not match the selected code. Please verify the company name.';
       return;
     }
@@ -626,26 +686,29 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteErrorMessage = '';
     this.deleteSuccessMessage = '';
     this.deleteSubmitting = true;
-    this.customerService.submitDeleteRequest(
-      this.verifiedDeleteRecord!.codeType,
-      this.verifiedDeleteRecord!.code,
-      this.deleteCompanyName
-    ).pipe(
-      finalize(() => {
-        this.deleteSubmitting = false;
-        this.cdr.markForCheck();
+    this.activeRequestsSub.add(
+      this.customerService.submitDeleteRequest(
+        this.verifiedDeleteRecord!.codeType,
+        this.verifiedDeleteRecord!.code,
+        this.deleteCompanyName.trim()
+      ).pipe(
+        finalize(() => {
+          this.deleteSubmitting = false;
+          this.cdr.markForCheck();
+        })
+      ).subscribe({
+        next: (result) => {
+          this.deleteSuccessMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
+          this.verifiedDeleteRecord = null;
+          this.deleteRecordDetails = null;
+          this.deleteCompanyName = '';
+          this.deleteVerificationMessage = '';
+        },
+        error: (error) => {
+          this.deleteErrorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
+        }
       })
-    ).subscribe({
-      next: (result) => {
-        this.deleteSuccessMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
-        this.verifiedDeleteRecord = null;
-        this.deleteCompanyName = '';
-        this.deleteVerificationMessage = '';
-      },
-      error: (error) => {
-        this.deleteErrorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
-      }
-    });
+    );
   }
 
   private isCurrentDeleteVerification(): boolean {
@@ -655,7 +718,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   private clearDeleteVerification(): void {
+    this.deleteLookupRequestId++;
     this.verifiedDeleteRecord = null;
+    this.deleteRecordDetails = null;
     this.deleteCompanyName = '';
     this.deleteVerificationMessage = '';
     this.deleteErrorMessage = '';
@@ -669,6 +734,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.touchedFields['ownershipCode'] = true;
     delete this.errors['ownershipCode'];
     this.form.ownershipAddress = '';
+    this.form.ownershipPartyAddress = '';
     this.form.address = '';
     this.form.panNumber = '';
     this.form.city = '';
@@ -678,6 +744,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.ownSection1Duplicate = false;
     this.ownSection1LookupError = '';
     this.ownSection1Source = null;
+    delete this.errors['ownershipCode'];
+    delete this.errors['ownershipPartyCode'];
     const reqId = ++this.ownSection1ReqId;
     if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
 
@@ -685,17 +753,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.ownSection1Loading = true;
       this.ownSection1Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
-        this.customerService.lookupOwnershipJDBC(trimmed).pipe(timeout(15000)).subscribe({
-          next: (resp) => {
-            if (reqId !== this.ownSection1ReqId) return;
-            if (resp && resp.found && resp.data) {
-              this.lastLookupRecord = resp.data;
-              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
+        this.activeRequestsSub.add(
+          this.customerService.lookupOwnershipJDBC(trimmed).pipe(timeout(15000)).subscribe({
+            next: (resp) => {
+              if (reqId !== this.ownSection1ReqId) return;
+              if (resp && resp.found && resp.data) {
+                this.lastLookupRecord = resp.data;
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.ownSection1Found = true;
-                this.ownSection1Source = resp.data.recordSource;
-              } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.form.ownershipPartyAddress = this.form.ownershipAddress;
                 this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
                 this.form.panNumber = resp.data.panNumber || '';
                 this.form.city = resp.data.city || '';
@@ -705,26 +770,24 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 this.ownSection1Source = resp.data.recordSource;
               } else {
                 this.ownSection1Found = false;
-                this.ownSection1Source = 'LOOKUP_ERROR';
-                this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
+                this.ownSection1Source = 'INVALID_CODE';
+                this.ownSection1LookupError = resp?.message
+                  || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
               }
-            } else {
+              this.ownSection1Loading = false;
+              this.cdr.markForCheck();
+            },
+            error: (error) => {
+              if (reqId !== this.ownSection1ReqId) return;
               this.ownSection1Found = false;
               this.ownSection1Source = 'INVALID_CODE';
-              this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+              this.ownSection1LookupError = error?.error?.message
+                || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+              this.ownSection1Loading = false;
+              this.cdr.markForCheck();
             }
-            this.ownSection1Loading = false;
-            this.cdr.markForCheck();
-          },
-          error: (error) => {
-            if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Source = 'LOOKUP_ERROR';
-            this.ownSection1LookupError = error?.error?.message
-              || 'Unable to fetch ownership record. Please try again.';
-            this.ownSection1Loading = false;
-            this.cdr.markForCheck();
-          }
-        });
+          })
+        );
       }, 600);
     } else {
       this.ownSection1Loading = false;
@@ -750,37 +813,39 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.ownSection2Loading = true;
       this.ownSection2Timer = setTimeout(() => {
         const trimmed = upperCode.trim();
-        this.customerService.lookupOwnershipPartyJDBC(trimmed).pipe(timeout(15000)).subscribe({
-          next: (resp) => {
-            if (reqId !== this.ownSection2ReqId) return;
-            if (resp && resp.found && resp.data) {
-              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
-                || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                this.form.ownershipPartyAddress = resp.data.partyDesc || '';
-                this.ownSection2Found = true;
-                this.ownSection2Source = resp.data.recordSource;
+        this.activeRequestsSub.add(
+          this.customerService.lookupOwnershipPartyJDBC(trimmed).pipe(timeout(15000)).subscribe({
+            next: (resp) => {
+              if (reqId !== this.ownSection2ReqId) return;
+              if (resp && resp.found && resp.data) {
+                if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
+                  || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
+                  this.form.ownershipPartyAddress = resp.data.partyDesc || '';
+                  this.ownSection2Found = true;
+                  this.ownSection2Source = resp.data.recordSource;
+                } else {
+                  this.ownSection2Found = false;
+                  this.ownSection2Source = 'LOOKUP_ERROR';
+                  this.ownSection2LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
+                }
               } else {
                 this.ownSection2Found = false;
-                this.ownSection2Source = 'LOOKUP_ERROR';
-                this.ownSection2LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
+                this.ownSection2Source = 'INVALID_CODE';
+                this.ownSection2LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
               }
-            } else {
-              this.ownSection2Found = false;
-              this.ownSection2Source = 'INVALID_CODE';
-              this.ownSection2LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+              this.ownSection2Loading = false;
+              this.cdr.markForCheck();
+            },
+            error: (error) => {
+              if (reqId !== this.ownSection2ReqId) return;
+              this.ownSection2Source = 'LOOKUP_ERROR';
+              this.ownSection2LookupError = error?.error?.message
+                || 'Unable to fetch ownership details. Please try again.';
+              this.ownSection2Loading = false;
+              this.cdr.markForCheck();
             }
-            this.ownSection2Loading = false;
-            this.cdr.markForCheck();
-          },
-          error: (error) => {
-            if (reqId !== this.ownSection2ReqId) return;
-            this.ownSection2Source = 'LOOKUP_ERROR';
-            this.ownSection2LookupError = error?.error?.message
-              || 'Unable to fetch ownership details. Please try again.';
-            this.ownSection2Loading = false;
-            this.cdr.markForCheck();
-          }
-        });
+          })
+        );
       }, 600);
     } else {
       this.ownSection2Loading = false;
@@ -820,58 +885,60 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           ? this.customerService.lookupHandlingAgentJDBC(code.trim())
           : this.customerService.lookupOldCustomerJDBC(code.trim());
 
-        lookup$.pipe(
-          timeout(15000),
-          finalize(() => {
-            if (requestId === this.lookupRequestId) {
-              this.lookupLoading = false;
+        this.activeRequestsSub.add(
+          lookup$.pipe(
+            timeout(15000),
+            finalize(() => {
+              if (requestId === this.lookupRequestId) {
+                this.lookupLoading = false;
+                this.cdr.markForCheck();
+              }
+            })
+          ).subscribe({
+            next: (customer: any) => {
+              if (requestId !== this.lookupRequestId) return;
+              this.lastLookupRecord = customer;
+              this.form.companyName = customer.companyName || '';
+              this.verifiedCustomerCode = code.trim().toUpperCase();
+              this.form.customerCode = this.verifiedCustomerCode;
+              this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
+              this.form.city = customer.city || '';
+              this.form.pincode = customer.pincode || customer.pcoCode || '';
+              this.form.panNumber = customer.panNumber || '';
+              this.form.email = customer.email || customer.emailId || '';
+              this.form.mobile = customer.mobile || customer.phoneNumber || '';
+              this.applyOldRecordDivision(customer);
+
+              if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
+                const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
+                const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
+                  ...blankGstin,
+                  gstinId: `old-${idx}`,
+                  gstin: g
+                }));
+                this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
+              } else {
+                this.gstins = [{ ...blankGstin }];
+              }
+
+              this.removedGstinIds = [];
+              this.lookupDone = true;
+              this.lookupError = '';
+              this.cdr.markForCheck();
+            },
+            error: (err: any) => {
+              if (requestId !== this.lookupRequestId) return;
+              this.verifiedCustomerCode = null;
+              console.error('Lookup error:', err);
+              this.lookupDone = false;
+              this.lookupError = err?.name === 'TimeoutError'
+                ? 'Customer lookup timed out. Please try again.'
+                : err?.error?.message || err?.message || 'Error occurred while fetching customer data';
+              this.gstins = [{ ...blankGstin }];
               this.cdr.markForCheck();
             }
           })
-        ).subscribe({
-          next: (customer: any) => {
-            if (requestId !== this.lookupRequestId) return;
-            this.lastLookupRecord = customer;
-            this.form.companyName = customer.companyName || '';
-            this.verifiedCustomerCode = code.trim().toUpperCase();
-            this.form.customerCode = this.verifiedCustomerCode;
-            this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
-            this.form.city = customer.city || '';
-            this.form.pincode = customer.pincode || customer.pcoCode || '';
-            this.form.panNumber = customer.panNumber || '';
-            this.form.email = customer.email || customer.emailId || '';
-            this.form.mobile = customer.mobile || customer.phoneNumber || '';
-            this.applyOldRecordDivision(customer);
-
-            if (customer.gstinNumbers && customer.gstinNumbers.trim() !== '') {
-              const cleanGstins = customer.gstinNumbers.replace(/[\[\]"\s]/g, '');
-              const loadedGstins: GstinEntry[] = cleanGstins.split(',').filter(Boolean).map((g: string, idx: number) => ({
-                ...blankGstin,
-                gstinId: `old-${idx}`,
-                gstin: g
-              }));
-              this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
-            } else {
-              this.gstins = [{ ...blankGstin }];
-            }
-
-            this.removedGstinIds = [];
-            this.lookupDone = true;
-            this.lookupError = '';
-            this.cdr.markForCheck();
-          },
-          error: (err: any) => {
-            if (requestId !== this.lookupRequestId) return;
-            this.verifiedCustomerCode = null;
-            console.error('Lookup error:', err);
-            this.lookupDone = false;
-            this.lookupError = err?.name === 'TimeoutError'
-              ? 'Customer lookup timed out. Please try again.'
-              : err?.error?.message || err?.message || 'Error occurred while fetching customer data';
-            this.gstins = [{ ...blankGstin }];
-            this.cdr.markForCheck();
-          }
-        });
+        );
       }, 800);
     } else {
       this.lookupLoading = false;
@@ -897,13 +964,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleOldCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
-    this.oldCodeType = newType;
-    if (this.form.customerCode.trim().length === 4) {
-      this.triggerOldLookup(this.form.customerCode, newType);
-    } else {
-      this.lookupDone = false;
-      this.lookupError = '';
+    if (newType === this.oldCodeType) {
+      return;
     }
+    this.cancelPendingAsyncOperations();
+    this.oldCodeType = newType;
+    this.form = { ...blank };
+    this.gstins = [{ ...blankGstin }];
+    this.lookupDone = false;
+    this.lookupError = '';
+    this.lookupLoading = false;
+    this.verifiedCustomerCode = null;
+    this.errors = {};
+    this.notice = '';
+    this.divisionSelectionManuallyChanged = false;
+    this.applyLoginDivisionDefault();
     this.cdr.markForCheck();
   }
 
@@ -934,24 +1009,26 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.codeConfirmed = true;
       this.codeChecking = true;
       this.codeTimer = setTimeout(() => {
-        this.customerService.generateUniqueCode(newName, this.codeType).subscribe({
-          next: (uniqueCode) => {
-            if (requestId !== this.codeRequestId) return;
-            if (/^[A-Z]{4}$/.test(uniqueCode)) {
-              this.form.customerCode = uniqueCode;
+        this.activeRequestsSub.add(
+          this.customerService.generateUniqueCode(newName, this.codeType).subscribe({
+            next: (uniqueCode) => {
+              if (requestId !== this.codeRequestId) return;
+              if (/^[A-Z]{4}$/.test(uniqueCode)) {
+                this.form.customerCode = uniqueCode;
+              }
+              this.codeConfirmed = true;
+              this.codeChecking = false;
+              this.cdr.markForCheck();
+            },
+            error: (err) => {
+              if (requestId !== this.codeRequestId) return;
+              console.warn('Backend code verification note:', err);
+              this.codeConfirmed = Boolean(this.form.customerCode);
+              this.codeChecking = false;
+              this.cdr.markForCheck();
             }
-            this.codeConfirmed = true;
-            this.codeChecking = false;
-            this.cdr.markForCheck();
-          },
-          error: (err) => {
-            if (requestId !== this.codeRequestId) return;
-            console.warn('Backend code verification note:', err);
-            this.codeConfirmed = Boolean(this.form.customerCode);
-            this.codeChecking = false;
-            this.cdr.markForCheck();
-          }
-        });
+          })
+        );
       }, 600);
     } else {
       this.form.customerCode = '';
@@ -979,6 +1056,125 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return '';
   }
 
+  isFormValid(): boolean {
+    if (this.loading) {
+      return false;
+    }
+
+    if (this.mode === 'ownership') {
+      if (this.ownSection1Loading) {
+        return false;
+      }
+      const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
+      const addr1 = (this.form.ownershipAddress || '').trim();
+
+      if (!code1 || !addr1) return false;
+      if (!/^[A-Z0-9]{4}$/.test(code1)) return false;
+      if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR' || !this.ownSection1Source) return false;
+      if (this.errors['ownershipCode'] || this.errors['ownershipAddress']) return false;
+      return true;
+    }
+
+    if (this.mode === 'delete') {
+      return false;
+    }
+
+    // Common validations for new and old modes
+    const company = (this.form.companyName || '').trim();
+    if (!company || company.length > 40) {
+      return false;
+    }
+
+    const rawAddr = (this.form.address || '').trim();
+    if (!rawAddr) {
+      return false;
+    }
+    const normalizedAddr = this.getNormalizedAddress(rawAddr);
+    if (!normalizedAddr || normalizedAddr.length > 100) {
+      return false;
+    }
+
+    const pan = normalizeDocumentNumber(this.form.panNumber);
+    if (!pan || pan.length !== 10 || !panRe.test(pan)) {
+      return false;
+    }
+
+    if (this.form.pincode && this.form.pincode.trim()) {
+      if (!/^[1-9][0-9]{5}$/.test(this.form.pincode.trim())) return false;
+    }
+
+    if (this.form.mobile && this.form.mobile.trim()) {
+      if (!mobileRe.test(this.form.mobile.trim())) return false;
+    }
+
+    if (this.form.email && this.form.email.trim()) {
+      if (!/^\S+@\S+\.\S+$/.test(this.form.email.trim())) return false;
+    }
+
+    if (this.mode === 'new') {
+      const custCode = (this.form.customerCode || '').trim();
+      if (!custCode || custCode.length !== 4) return false;
+      if (this.codeChecking) return false;
+
+      const div = (this.form.operatingDivision || '').trim();
+      const zone = (this.form.zone || '').trim();
+      if (!div || !zone) return false;
+
+      if (!this.gstins || this.gstins.length === 0) return false;
+
+      const stateSet = new Set<string>();
+      const gstinSet = new Set<string>();
+
+      for (let i = 0; i < this.gstins.length; i++) {
+        const g = this.gstins[i];
+        if (g.scanning) return false;
+
+        const normGstin = normalizeDocumentNumber(g.gstin);
+        if (!normGstin || normGstin.length !== 15 || !gstinRe.test(normGstin)) return false;
+        if (gstinSet.has(normGstin)) return false;
+        gstinSet.add(normGstin);
+
+        // PAN embedded in GSTIN must match entered PAN
+        if (normGstin.slice(2, 12) !== pan) return false;
+
+        const state = (g.state || '').trim();
+        if (!state) return false;
+        if (stateSet.has(state)) return false;
+        stateSet.add(state);
+
+        if (!g.file && !g.existingFileName) return false;
+        if (g.file && this.checkFile(g.file)) return false;
+      }
+    } else if (this.mode === 'old') {
+      const custCode = (this.verifiedCustomerCode || this.form.customerCode || '').trim();
+      if (!custCode || custCode.length !== 4) return false;
+      if (this.lookupLoading || this.lookupError) return false;
+
+      const isSingleBlankGstin = this.gstins.length === 1 && !this.gstins[0].gstin?.trim() && !this.gstins[0].file && !this.gstins[0].state;
+      if (!isSingleBlankGstin) {
+        const gstinSet = new Set<string>();
+        for (let i = 0; i < this.gstins.length; i++) {
+          const g = this.gstins[i];
+          if (g.scanning) return false;
+
+          const normGstin = normalizeDocumentNumber(g.gstin);
+          if (!normGstin || normGstin.length !== 15 || !gstinRe.test(normGstin)) return false;
+          if (gstinSet.has(normGstin)) return false;
+          gstinSet.add(normGstin);
+
+          if (normGstin.slice(2, 12) !== pan) return false;
+          if (g.file && this.checkFile(g.file)) return false;
+        }
+      }
+    }
+
+    for (const key of Object.keys(this.errors)) {
+      if (this.errors[key]) return false;
+    }
+
+    return true;
+  }
+
   validate(): boolean {
     const e: Record<string, string> = {};
     if (this.mode === 'ownership') {
@@ -987,11 +1183,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       else if (this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') e['ownershipCode'] = this.ownSection1LookupError;
       else if (this.ownSection1Loading || !this.ownSection1Source) e['ownershipCode'] = 'Wait for ownership code lookup to complete.';
       if (!this.form.ownershipAddress?.trim()) e['ownershipAddress'] = 'Ownership Address is required';
-      if (!this.form.ownershipPartyCode?.trim()) e['ownershipPartyCode'] = 'Ownership Code is required';
-      else if (!/^[A-Z0-9]{4}$/.test(this.form.ownershipPartyCode.trim())) e['ownershipPartyCode'] = 'Enter a valid four-character Global Customer Code.';
-      else if (this.ownSection2Source === 'INVALID_CODE' || this.ownSection2Source === 'LOOKUP_ERROR') e['ownershipPartyCode'] = this.ownSection2LookupError;
-      else if (this.ownSection2Loading || !this.ownSection2Source) e['ownershipPartyCode'] = 'Wait for ownership code lookup to complete.';
-      if (!this.form.ownershipPartyAddress?.trim()) e['ownershipPartyAddress'] = 'Ownership Address is required';
       this.errors = e;
       return !Object.keys(e).length;
     }
@@ -999,8 +1190,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const requiredFields: (keyof CustomerPayload)[] = ['companyName', 'customerCode', 'address', 'panNumber'];
     if (this.mode === 'new') requiredFields.push('operatingDivision', 'zone');
     requiredFields.forEach(k => {
-      if (!this.form[k]) e[k] = 'This field is required';
+      const val = (this.form[k] || '').trim();
+      if (!val) e[k] = 'This field is required';
     });
+    if (this.mode === 'old') {
+      const code = (this.verifiedCustomerCode || this.form.customerCode || '').trim();
+      if (!code || code.length !== 4) {
+        e['customerCode'] = 'Enter a valid four-character Customer Code.';
+      } else if (this.lookupError) {
+        e['customerCode'] = this.lookupError;
+      }
+    }
     if ((this.form.companyName || '').length > 40) {
       e['companyName'] = this.errors['companyName'] || 'Company name cannot exceed 40 characters.';
     }
@@ -1027,7 +1227,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       else if (g.state) stateSet.add(g.state);
 
       const normalizedGstin = normalizeDocumentNumber(g.gstin);
-      if (!g.gstin) e[`gstin_${i}_gstin`] = 'GSTIN is required';
+      if (!g.gstin || !g.gstin.trim()) e[`gstin_${i}_gstin`] = 'GSTIN is required';
       else if (!gstinRe.test(normalizedGstin) || normalizedGstin.length !== 15) e[`gstin_${i}_gstin`] = 'Enter a valid 15-character GSTIN.';
       else if (gstinSet.has(normalizedGstin)) e[`gstin_${i}_gstin`] = 'GSTIN already added';
       else if (normalizedGstin.slice(2, 12) !== normalizedPan) e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
@@ -1432,7 +1632,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     if (!this.isFormValid || !this.validate()) {
       const errorKeys = Object.keys(this.errors);
-      const firstErrorMsg = this.errors[errorKeys[0]] || 'Please check required fields.';
+      const firstErrorMsg = errorKeys.length > 0 ? this.errors[errorKeys[0]] : 'Please ensure all required fields and validations are satisfied.';
       this.notice = `Validation Error: ${firstErrorMsg}`;
       this.notificationService.error('Validation Error', firstErrorMsg);
       console.warn('Form validation failed:', this.errors);
@@ -1450,8 +1650,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.mode === 'ownership') {
       const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
       const ownershipAddress = (this.form.ownershipAddress || '').trim();
-      const ownershipPartyCode = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-      const ownershipPartyAddress = (this.form.ownershipPartyAddress || '').trim();
+      const ownershipPartyCode = (this.form.ownershipPartyCode || ownershipCode).trim().toUpperCase();
+      const ownershipPartyAddress = (this.form.ownershipPartyAddress || ownershipAddress).trim();
 
       this.customerService.submitOwnershipJDBC(
         ownershipCode,
@@ -1631,11 +1831,40 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
     this.gstins.splice(index, 1);
     this.ocrDataMap.delete(index);
+    const newOcrMap = new Map<number, Partial<ExtractedGstinDetails>>();
+    this.ocrDataMap.forEach((val, key) => {
+      if (key > index) {
+        newOcrMap.set(key - 1, val);
+      } else if (key < index) {
+        newOcrMap.set(key, val);
+      }
+    });
+    this.ocrDataMap = newOcrMap;
+
     if (this.activeCrossCheckIndex === index) {
       this.dismissCrossCheck();
     } else if (this.activeCrossCheckIndex !== null && this.activeCrossCheckIndex > index) {
       this.activeCrossCheckIndex--;
     }
+
+    const newErrors: Record<string, string> = {};
+    for (const [key, val] of Object.entries(this.errors)) {
+      const match = key.match(/^gstin_(\d+)_(.*)$/);
+      if (match) {
+        const errIdx = parseInt(match[1], 10);
+        if (errIdx === index) {
+          continue;
+        } else if (errIdx > index) {
+          newErrors[`gstin_${errIdx - 1}_${match[2]}`] = val;
+        } else {
+          newErrors[key] = val;
+        }
+      } else {
+        newErrors[key] = val;
+      }
+    }
+    this.errors = newErrors;
+    this.cdr.markForCheck();
   }
 
   trackByGstin(index: number, item: GstinEntry): any {
@@ -1656,9 +1885,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.dismissCrossCheck();
         }
       }
-      const status = this.getGstinPanStatus(currentGstin, this.form.panNumber);
       const field = `gstin_${index}_gstin`;
-      delete this.errors[field];
+      const norm = normalizeDocumentNumber(currentGstin);
+      if (norm.length === 15) {
+        const status = this.getGstinPanStatus(currentGstin, this.form.panNumber);
+        if (status === 'GSTIN does not match the PAN number.') {
+          this.errors[field] = 'GSTIN does not match the PAN number.';
+        } else if (status?.startsWith('Enter')) {
+          this.errors[field] = status;
+        } else {
+          delete this.errors[field];
+        }
+      } else if (this.errors[field] && this.errors[field] !== 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.') {
+        delete this.errors[field];
+      }
     }
   }
 
@@ -1739,67 +1979,108 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     entry.verificationState = 'verifying';
     this.cdr.markForCheck();
 
-    this.gstVerificationService.verifyGstin(gstin).subscribe({
-      next: (res: GstVerificationResponse) => {
-        if (!this.gstins[index]) return;
+    const ocrSnapshot = this.ocrDataMap.get(index);
+    const verify$ = ocrSnapshot
+      ? this.gstVerificationService.verifyGstin(gstin, ocrSnapshot)
+      : this.gstVerificationService.verifyGstin(gstin);
 
-        entry.verificationData = res;
+    this.activeRequestsSub.add(
+      verify$.subscribe({
+        next: (res: GstVerificationResponse) => {
+          if (!this.gstins[index]) return;
 
-        let uiState: GstVerificationUiState = 'verified';
+          entry.verificationData = res;
 
-        if (res.verificationStatus === 'CANCELLED') {
-          uiState = 'cancelled';
-        } else if (res.verificationStatus === 'SUSPENDED') {
-          uiState = 'suspended';
-        } else if (res.verificationStatus === 'NOT_FOUND') {
-          uiState = 'notfound';
-        } else if (res.verificationStatus === 'INVALID_GSTIN') {
-          uiState = 'invalid';
-        } else if (res.verificationStatus === 'SERVICE_UNAVAILABLE' || res.verificationStatus === 'ERROR') {
-          uiState = 'unavailable';
-        } else if (res.verificationStatus === 'VERIFIED') {
-          const ocrData = this.ocrDataMap.get(index);
-          if (ocrData) {
-            const crossCheck = this.gstVerificationService!.compareOcrAndVerified(ocrData, res);
-            entry.crossCheckResult = crossCheck;
-            uiState = crossCheck.hasDiscrepancies ? 'discrepancy' : 'verified';
-          } else {
-            uiState = 'verified';
+          let uiState: GstVerificationUiState = 'verified';
+
+          if (res.verificationStatus === 'CANCELLED') {
+            uiState = 'cancelled';
+          } else if (res.verificationStatus === 'SUSPENDED') {
+            uiState = 'suspended';
+          } else if (res.verificationStatus === 'NOT_FOUND') {
+            uiState = 'notfound';
+          } else if (res.verificationStatus === 'INVALID_GSTIN') {
+            uiState = 'invalid';
+          } else if (res.verificationStatus === 'SERVICE_UNAVAILABLE' || res.verificationStatus === 'ERROR') {
+            uiState = 'unavailable';
+          } else if (res.verificationStatus === 'VERIFIED') {
+            const ocrData = this.ocrDataMap.get(index);
+            if (ocrData) {
+              const crossCheck = this.gstVerificationService!.compareOcrAndVerified(ocrData, res);
+              entry.crossCheckResult = crossCheck;
+              uiState = crossCheck.hasDiscrepancies ? 'discrepancy' : 'verified';
+            } else {
+              uiState = 'verified';
+            }
           }
+
+          entry.verificationState = uiState;
+
+          // Clear previous scan error when verification succeeds
+          if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
+            entry.scanError = '';
+            delete this.errors[`gstin_${index}_gstin`];
+            if (entry.scanStatus === 'notfound' || entry.scanStatus === 'error') {
+              entry.scanStatus = 'idle';
+            }
+            this.applyVerifiedDataToForm(index, res, isAutoTriggered);
+            if (!isAutoTriggered) {
+              if (res.verificationStatus === 'VERIFIED') {
+                this.notificationService.success('GSTIN Verified', 'Official GST registration details retrieved and form populated.');
+              } else if (res.verificationStatus === 'CANCELLED') {
+                this.notificationService.warning('GSTIN Cancelled', 'Warning: This GSTIN is marked as CANCELLED in the official registry.');
+              } else if (res.verificationStatus === 'SUSPENDED') {
+                this.notificationService.warning('GSTIN Suspended', 'Warning: This GSTIN is marked as SUSPENDED in the official registry.');
+              }
+            }
+          } else if (!isAutoTriggered) {
+            if (res.verificationStatus === 'NOT_FOUND') {
+              this.notificationService.error('GSTIN Not Found', 'The entered GSTIN was not found in the official GST registry.');
+            } else if (res.verificationStatus === 'INVALID_GSTIN') {
+              this.notificationService.error('Invalid GSTIN', 'The entered GSTIN is invalid.');
+            } else {
+              this.notificationService.error('Verification Unavailable', 'Authorized GST verification service is currently unavailable. Please try again later.');
+            }
+          }
+
+          // If activeCrossCheckIndex was already this index, or if discrepancies were found, make available
+          if (entry.crossCheckResult && (this.activeCrossCheckIndex === index || (!isAutoTriggered && entry.crossCheckResult.hasDiscrepancies))) {
+            this.activeCrossCheck = entry.crossCheckResult;
+            this.activeCrossCheckIndex = index;
+          }
+
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          if (!this.gstins[index]) return;
+          entry.verificationState = 'unavailable';
+          if (!isAutoTriggered) {
+            this.notificationService.error('Verification Failed', 'Failed to connect to the GST verification service. Please check your network or try again later.');
+          }
+          this.cdr.markForCheck();
         }
-
-        entry.verificationState = uiState;
-
-        // Populate/correct form fields with verified data
-        if (res.success && (res.verificationStatus === 'VERIFIED' || res.verificationStatus === 'CANCELLED' || res.verificationStatus === 'SUSPENDED')) {
-          this.applyVerifiedDataToForm(index, res, isAutoTriggered);
-        }
-
-        // If activeCrossCheckIndex was already this index, or if discrepancies were found, make available
-        if (entry.crossCheckResult && (this.activeCrossCheckIndex === index || (!isAutoTriggered && entry.crossCheckResult.hasDiscrepancies))) {
-          this.activeCrossCheck = entry.crossCheckResult;
-          this.activeCrossCheckIndex = index;
-        }
-
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        if (!this.gstins[index]) return;
-        entry.verificationState = 'unavailable';
-        this.cdr.markForCheck();
-      }
-    });
+      })
+    );
   }
 
   applyVerifiedDataToForm(index: number, verified: GstVerificationResponse, isAutoTriggered: boolean): void {
     if (this.mode === 'delete') return;
 
     const entry = this.gstins[index];
-    if (verified.state && (!entry.state || isAutoTriggered)) {
+    if (verified.gstin && (!entry.gstin || entry.gstin !== verified.gstin)) {
+      entry.gstin = verified.gstin;
+    }
+
+    if (verified.state && (!entry.state || isAutoTriggered || !isAutoTriggered)) {
       this.handleGstinStateChange(index, verified.state);
     }
 
-    const verifiedCompany = verified.businessName || verified.legalName || verified.tradeName;
+    // Prefer Trade Name for company name when available; otherwise Legal Business Name
+    const verifiedCompany = (verified.tradeName && verified.tradeName.trim())
+      ? verified.tradeName.trim()
+      : (verified.legalName && verified.legalName.trim()
+          ? verified.legalName.trim()
+          : (verified.businessName ? verified.businessName.trim() : ''));
 
     if (this.mode === 'new') {
       // 1. Company Name
@@ -1839,27 +2120,32 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         delete this.errors['pincode'];
       }
     } else if (this.mode === 'old') {
-      if (verifiedCompany && !this.form.companyName) {
+      if (verifiedCompany && (!this.form.companyName || !isAutoTriggered)) {
         this.form.companyName = verifiedCompany;
         if (verifiedCompany.length > 40) {
           this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
+        } else {
+          delete this.errors['companyName'];
         }
       }
-      if (verified.pan && !this.form.panNumber) {
+      if (verified.pan && (!this.form.panNumber || !isAutoTriggered)) {
         this.handlePanChange(verified.pan, false);
       }
-      if (verified.address && !this.form.address) {
+      if (verified.address && (!this.form.address || !isAutoTriggered)) {
         const cleaned = cleanAndShortenAddress(verified.address);
         if (cleaned) {
           this.form.address = cleaned;
           this.addressStatus = 'auto-filled';
+          delete this.errors['address'];
         }
       }
-      if (verified.city && !this.form.city) {
+      if (verified.city && (!this.form.city || !isAutoTriggered)) {
         this.form.city = verified.city;
+        delete this.errors['city'];
       }
-      if (verified.pincode && !this.form.pincode) {
+      if (verified.pincode && (!this.form.pincode || !isAutoTriggered)) {
         this.form.pincode = verified.pincode;
+        delete this.errors['pincode'];
       }
     }
   }
@@ -2003,7 +2289,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const extractedPan = ocrPan || gstinDerivedPan;
 
       if (!gstinRe.test(normalizedGstin)) {
-        const message = 'A valid 15-character GSTIN could not be extracted. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+        const message = 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.';
         this.handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
         this.errors[`gstin_${index}_gstin`] = message;
         return;
@@ -2025,7 +2311,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       if (this.mode !== 'old') {
         // 1. Company Name
-        const extractedCompany = businessName || tradeName || legalName;
+        const extractedCompany = (tradeName && tradeName.trim())
+          ? tradeName.trim()
+          : (legalName && legalName.trim()
+              ? legalName.trim()
+              : (businessName ? businessName.trim() : ''));
         if (extractedCompany) {
           if (this.mode === 'new') {
             this.handleNewCompanyNameChange(extractedCompany);
@@ -2102,7 +2392,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       console.error('GSTIN OCR scan failed:', err);
       const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
         ? `${err.message} Please upload a shorter PDF.`
-        : 'GSTIN could not be extracted from this document. Please upload a clearer GSTIN document or enter the GSTIN manually.';
+        : 'GSTIN could not be detected. Please enter your GSTIN manually to fetch your registered details.';
       this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
       this.errors[`gstin_${index}_gstin`] = message;
     } finally {

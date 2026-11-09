@@ -128,8 +128,15 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.ownSection1Timer) clearTimeout(this.ownSection1Timer);
-    if (this.ownSection2Timer) clearTimeout(this.ownSection2Timer);
+    if (this.ownSection1Timer) {
+      clearTimeout(this.ownSection1Timer);
+      this.ownSection1Timer = null;
+    }
+    if (this.ownSection2Timer) {
+      clearTimeout(this.ownSection2Timer);
+      this.ownSection2Timer = null;
+    }
+    this.reset();
     this.userDivisionSubscription?.unsubscribe();
     this.zoneDivisionSubscription?.unsubscribe();
     this.routerEventsSubscription?.unsubscribe();
@@ -183,7 +190,9 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     this.form.ownershipCode = upperCode;
     this.touchedFields['ownershipCode'] = true;
     delete this.errors['ownershipCode'];
+    delete this.errors['ownershipPartyCode'];
     this.form.ownershipAddress = '';
+    this.form.ownershipPartyAddress = '';
     this.form.address = '';
     this.form.panNumber = '';
     this.form.city = '';
@@ -204,27 +213,19 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
           next: (resp) => {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
-              if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD') {
-                this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.ownSection1Found = true;
-                this.ownSection1Source = resp.data.recordSource;
-              } else if (resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
-                this.form.ownershipAddress = resp.data.ownershipDesc || '';
-                this.form.address = resp.data.address || '';
-                this.form.panNumber = resp.data.panNumber || '';
-                this.form.city = resp.data.city || '';
-                this.form.pincode = resp.data.pincode || '';
-                this.ownSection1Found = true;
-                this.ownSection1Source = resp.data.recordSource;
-              } else {
-                this.ownSection1Found = false;
-                this.ownSection1Source = 'LOOKUP_ERROR';
-                this.ownSection1LookupError = 'Ownership lookup returned an invalid record source. Please try again.';
-              }
+              this.form.ownershipAddress = resp.data.ownershipDesc || '';
+              this.form.ownershipPartyAddress = this.form.ownershipAddress;
+              this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
+              this.form.panNumber = resp.data.panNumber || '';
+              this.form.city = resp.data.city || '';
+              this.form.pincode = resp.data.pincode || '';
+              this.ownSection1Found = true;
+              this.ownSection1Source = resp.data.recordSource;
             } else {
               this.ownSection1Found = false;
               this.ownSection1Source = 'INVALID_CODE';
-              this.ownSection1LookupError = 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
+              this.ownSection1LookupError = resp?.message
+                || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             }
             this.ownSection1Loading = false;
             this.validateField('ownershipCode');
@@ -232,9 +233,10 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
           },
           error: (error) => {
             if (reqId !== this.ownSection1ReqId) return;
-            this.ownSection1Source = 'LOOKUP_ERROR';
+            this.ownSection1Found = false;
+            this.ownSection1Source = 'INVALID_CODE';
             this.ownSection1LookupError = error?.error?.message
-              || 'Unable to fetch ownership record. Please try again.';
+              || 'This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.';
             this.ownSection1Loading = false;
             this.validateField('ownershipCode');
             this.cdr.markForCheck();
@@ -245,6 +247,13 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
       this.ownSection1Loading = false;
       this.validateField('ownershipCode');
     }
+  }
+
+  handleOwnershipAddressChange(addr: string): void {
+    this.form.ownershipAddress = addr;
+    this.form.ownershipPartyAddress = addr;
+    delete this.errors['ownershipAddress'];
+    delete this.errors['ownershipPartyAddress'];
   }
 
   /* ===== Section 2: Ownership Party Code Lookup ===== */
@@ -611,6 +620,32 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     return this.isFormValid && Object.keys(this.errors).length === 0;
   }
 
+  isFormValid(): boolean {
+    const code1 = (this.form.ownershipCode || '').trim();
+    if (!code1 || !/^[A-Z0-9]{4}$/.test(code1) || this.ownSection1Loading || !this.ownSection1Source || this.ownSection1Source === 'INVALID_CODE' || this.ownSection1Source === 'LOOKUP_ERROR') return false;
+    if (!this.form.ownershipAddress?.trim()) return false;
+
+    const pan = (this.form.panNumber || '').trim().toUpperCase();
+    if (!pan || pan.length !== 10 || !panRe.test(pan)) return false;
+
+    const pin = (this.form.pincode || '').trim();
+    if (!pin || !pincodeRe.test(pin)) return false;
+
+    if (!this.form.state?.trim()) return false;
+    if (!this.form.zone?.trim()) return false;
+    if (!this.form.operatingDivision?.trim()) return false;
+
+    if (this.form.address && this.form.address.length > 100) return false;
+    if (this.form.email?.trim() && !emailRe.test(this.form.email.trim())) return false;
+    if (this.form.mobile?.trim() && !mobileRe.test(this.form.mobile.trim())) return false;
+
+    for (const key of Object.keys(this.errors)) {
+      if (this.errors[key]) return false;
+    }
+
+    return true;
+  }
+
   /* ===== Submission ===== */
   submit(e?: Event): void {
     if (e) {
@@ -639,8 +674,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
 
     const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
     const ownershipAddress = (this.form.ownershipAddress || '').trim();
-    const ownershipPartyCode = (this.form.ownershipPartyCode || '').trim().toUpperCase();
-    const ownershipPartyAddress = (this.form.ownershipPartyAddress || '').trim();
+    const ownershipPartyCode = (this.form.ownershipPartyCode || ownershipCode).trim().toUpperCase();
+    const ownershipPartyAddress = (this.form.ownershipPartyAddress || ownershipAddress).trim();
 
     this.customerService.submitOwnershipJDBC(
       ownershipCode,
