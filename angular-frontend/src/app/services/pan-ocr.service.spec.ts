@@ -16,7 +16,7 @@ describe('GSTIN OCR text extraction', () => {
     const file = new File(['not a PDF'], 'invalid.pdf', { type: 'application/pdf' });
 
     await expect(service.extractGstinFromFile(file)).rejects.toThrow(
-      'Unable to open this PDF for OCR. Please upload a valid, unprotected PDF or convert it to an image.'
+      'Unable to open this PDF for OCR. Please upload a valid, unprotected PDF or convert it to an image. PDF.js error: Invalid PDF'
     );
   });
 

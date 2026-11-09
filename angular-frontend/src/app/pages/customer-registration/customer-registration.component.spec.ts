@@ -819,6 +819,38 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       // Only Company B information should be present in the form
       expect(component.gstins[0].gstin).toBe('27BBBBB2222B1Z2');
       expect(component.form.companyName).toBe('Company B');
+    });
+
+    it('keeps scanning status until OCR resolves and forwards page progress to the form', async () => {
+      component.mode = 'new';
+      let resolveOcr: (value: any) => void;
+      const pendingOcr = new Promise((resolve) => { resolveOcr = resolve; });
+      panOcrServiceMock.extractGstinFromFile.mockImplementation((_file: File, reportProgress: (message: string) => void) => {
+        reportProgress('Scanning page 2 of 3...');
+        return pendingOcr;
+      });
+
+      const file = new File(['pdf'], 'multi-page.pdf', { type: 'application/pdf' });
+      const scan = component.handleGstinFileChange(0, {
+        target: { files: [file] }
+      } as unknown as Event);
+
+      expect(component.gstins[0].scanning).toBe(true);
+      expect(component.gstins[0].scanProgress).toBe('Scanning page 2 of 3...');
+      expect(component.gstins[0].scanStatus).toBe('processing');
+
+      resolveOcr!({
+        gstin: '27BBBBB2222B1Z2',
+        businessName: 'Company B',
+        tradeName: 'Company B',
+        pan: 'BBBBB2222B',
+        city: 'Mumbai'
+      });
+      await scan;
+
+      expect(component.gstins[0].scanning).toBe(false);
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.gstins[0].scanProgress).toBe('');
       expect(component.form.panNumber).toBe('BBBBB2222B');
       expect(component.form.city).toBe('Mumbai');
     });

@@ -17,6 +17,7 @@ export interface GstinEntry {
   scanning?: boolean;
   scanStatus?: 'idle' | 'processing' | 'success' | 'notfound' | 'error';
   scanError?: string;
+  scanProgress?: string;
   registeredAddress?: string;
   gstinStatus?: string;
   addressStatus?: string;

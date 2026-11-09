@@ -38,7 +38,8 @@ const blankGstin: GstinEntry = {
   existingFileName: '',
   scanning: false,
   scanStatus: 'idle',
-  scanError: ''
+  scanError: '',
+  scanProgress: ''
 };
 
 export const INDIAN_STATES: string[] = [
@@ -556,7 +557,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   clearSelectedUploads(): void {
-    this.gstins = this.gstins.map(g => ({ ...g, file: null, scanning: false, scanStatus: 'idle', scanError: '' }));
+    this.gstins = this.gstins.map(g => ({ ...g, file: null, scanning: false, scanStatus: 'idle', scanError: '', scanProgress: '' }));
     this.cdr.markForCheck();
   }
 
@@ -1972,6 +1973,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (!selected) return;
 
     const currentReqId = ++this.ocrRequestId;
+    console.info(`[GSTIN OCR] Document uploaded (${selected.type || 'unknown file type'}, ${selected.size} bytes).`);
 
     if (this.mode !== 'old') {
       this.form.companyName = '';
@@ -2007,13 +2009,19 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     const error = this.checkFile(selected);
     if (error) {
-      this.handleGstinChange(index, { file: null, scanning: false, scanStatus: 'error', scanError: error });
+      this.handleGstinChange(index, { file: null, scanning: false, scanStatus: 'error', scanError: error, scanProgress: '' });
       this.errors[`gstin_${index}_file`] = error;
       this.cdr.markForCheck();
       return;
     }
 
-    this.handleGstinChange(index, { file: selected, scanning: true, scanStatus: 'processing', scanError: '' });
+    this.handleGstinChange(index, {
+      file: selected,
+      scanning: true,
+      scanStatus: 'processing',
+      scanError: '',
+      scanProgress: 'Preparing document for scanning...'
+    });
     this.cdr.markForCheck();
 
     try {
@@ -2029,7 +2037,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         pan: ocrPan,
         panMismatch,
         companyNameTooLong
-      } = await this.panOcrService.extractGstinFromFile(selected);
+      } = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
+        if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
+        this.gstins[index].scanProgress = progress;
+        this.cdr.markForCheck();
+      });
 
       // Prevent an older OCR request from overwriting a newer upload
       if (currentReqId !== this.ocrRequestId) {
@@ -2041,8 +2053,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       const extractedPan = ocrPan || gstinDerivedPan;
 
       if (!gstinRe.test(normalizedGstin)) {
+        console.info('[GSTIN OCR] Processing finished; GSTIN was not detected.');
         const message = 'GSTIN could not be detected. Please enter your GSTIN manually.';
-        this.handleGstinChange(index, { scanning: false, scanStatus: gstin ? 'error' : 'notfound', scanError: message });
+        this.handleGstinChange(index, {
+          scanning: false,
+          scanStatus: gstin ? 'error' : 'notfound',
+          scanError: message,
+          scanProgress: ''
+        });
         this.errors[`gstin_${index}_gstin`] = message;
         return;
       }
@@ -2052,7 +2070,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         gstin: normalizedGstin,
         scanning: false,
         scanStatus: 'success',
-        scanError: ''
+        scanError: '',
+        scanProgress: ''
       };
       if (derivedState && (!this.gstins[index]?.state || this.gstins[index]?.state === '')) {
         updates.state = derivedState;
@@ -2087,7 +2106,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.form.panNumber = (ocrPan || gstinDerivedPan).toUpperCase();
         } else if (!panRe.test(extractedPan)) {
           const message = 'The extracted GSTIN contains an invalid PAN. Please upload a clearer GSTIN document or enter the GSTIN and PAN manually.';
-          this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
+          this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message, scanProgress: '' });
           this.errors['panNumber'] = 'PAN could not be derived because the extracted GSTIN is invalid.';
           this.errors[`gstin_${index}_gstin`] = message;
           return;
@@ -2120,16 +2139,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       }
 
       this.ocrAutoFillApplied = true;
+      console.info('[GSTIN OCR] Extraction results applied to the form.');
 
     } catch (err) {
       if (currentReqId !== this.ocrRequestId) return;
-      console.error('GSTIN OCR scan failed:', err);
+      console.error('[GSTIN OCR] Processing failed:', err);
       const message = err instanceof Error && err.message.startsWith('PDF exceeds the')
         ? `${err.message} Please upload a shorter PDF.`
         : err instanceof Error && err.message
           ? err.message
           : 'GSTIN could not be detected. Please enter your GSTIN manually.';
-      this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message });
+      this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message, scanProgress: '' });
       this.errors[`gstin_${index}_gstin`] = message;
     } finally {
       if (currentReqId === this.ocrRequestId) {
