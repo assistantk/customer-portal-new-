@@ -31,6 +31,14 @@ export class ZoneDivisionService {
     });
   }
 
+  setLoginDivision(zone?: string | null, division?: string | null): void {
+    this.selectionSubject.next({
+      zone: (zone || '').trim(),
+      division: (division || '').trim(),
+      manuallyChanged: false
+    });
+  }
+
   setDefaultIfUnset(zone?: string | null, division?: string | null): void {
     const current = this.selectionSubject.value;
     const cleanZone = (zone || '').trim();

@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
-import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout } from 'rxjs';
+import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout, firstValueFrom } from 'rxjs';
 import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
 import { PanOcrService, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
@@ -307,15 +307,27 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     this.resetFieldsPreservingZoneDivision();
 
-    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe((user) => {
+      if (!user) {
+        this.divisionSelectionManuallyChanged = false;
+        this.form.zone = '';
+        this.form.operatingDivision = '';
+        this.cdr.markForCheck();
+        return;
+      }
       this.applyLoginDivisionDefault();
     });
 
     this.zoneDivisionSubscription = this.zoneDivisionService?.selection$.subscribe((sel) => {
-      if (sel.manuallyChanged || (!this.form.zone && !this.form.operatingDivision)) {
-        if (sel.zone) this.form.zone = sel.zone;
-        if (sel.division) this.form.operatingDivision = sel.division;
-        this.divisionSelectionManuallyChanged = sel.manuallyChanged;
+      if (!sel) return;
+      if (sel.manuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
+        this.divisionSelectionManuallyChanged = true;
+        this.cdr.markForCheck();
+      } else if (!this.divisionSelectionManuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
         this.cdr.markForCheck();
       }
     });
@@ -403,7 +415,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.mode !== 'ownership'
       && this.mode !== 'delete'
       && !this.divisionSelectionManuallyChanged
-      && !this.form.operatingDivision
       && selection
     ) {
       this.form.zone = selection.zone;
@@ -2025,23 +2036,87 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
 
     try {
-      const {
-        gstin,
-        stateName,
-        address,
-        city,
-        pincode,
-        tradeName,
-        legalName,
-        businessName,
-        pan: ocrPan,
-        panMismatch,
-        companyNameTooLong
-      } = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
-        if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
-        this.gstins[index].scanProgress = progress;
-        this.cdr.markForCheck();
-      });
+      const isPdf = selected.type === 'application/pdf' || selected.name.toLowerCase().endsWith('.pdf');
+
+      let gstin: string | null | undefined;
+      let stateName: string | null | undefined;
+      let address: string | null | undefined;
+      let city: string | null | undefined;
+      let pincode: string | null | undefined;
+      let tradeName: string | null | undefined;
+      let legalName: string | null | undefined;
+      let businessName: string | null | undefined;
+      let ocrPan: string | null | undefined;
+      let panMismatch = false;
+      let companyNameTooLong = false;
+
+      if (isPdf) {
+        // PDF OCR: Keep existing PDF OCR workflow untouched
+        const result = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
+          if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
+          this.gstins[index].scanProgress = progress;
+          this.cdr.markForCheck();
+        });
+        gstin = result.gstin;
+        stateName = result.stateName;
+        address = result.address;
+        city = result.city;
+        pincode = result.pincode;
+        tradeName = result.tradeName;
+        legalName = result.legalName;
+        businessName = result.businessName;
+        ocrPan = result.pan;
+        panMismatch = !!result.panMismatch;
+        companyNameTooLong = !!result.companyNameTooLong;
+      } else {
+        // Image OCR (PNG, JPG, JPEG) via Backend Spring Boot Tesseract OCR
+        if (this.gstins[index]) {
+          this.gstins[index].scanProgress = 'Processing image with Tesseract OCR...';
+          this.cdr.markForCheck();
+        }
+
+        let backendHandled = false;
+        try {
+          const backendRes = await firstValueFrom(this.customerService.ocrImage(selected));
+          if (backendRes && backendRes.success && backendRes.gstin) {
+            backendHandled = true;
+            gstin = backendRes.gstin;
+            stateName = backendRes.stateName || backendRes.state;
+            address = backendRes.address;
+            city = backendRes.city;
+            pincode = backendRes.pincode;
+            tradeName = backendRes.tradeName;
+            legalName = backendRes.legalName;
+            businessName = backendRes.businessName;
+            ocrPan = backendRes.pan;
+            panMismatch = !!backendRes.panMismatch;
+            companyNameTooLong = !!backendRes.companyNameTooLong;
+          } else if (backendRes && backendRes.tesseractMissing) {
+            console.warn('[Image OCR] Backend Tesseract not installed on server, falling back to client-side OCR...');
+          }
+        } catch (backendErr) {
+          console.warn('[Image OCR] Backend OCR service call failed, trying client-side fallback:', backendErr);
+        }
+
+        if (!backendHandled) {
+          const result = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
+            if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
+            this.gstins[index].scanProgress = progress;
+            this.cdr.markForCheck();
+          });
+          gstin = result.gstin;
+          stateName = result.stateName;
+          address = result.address;
+          city = result.city;
+          pincode = result.pincode;
+          tradeName = result.tradeName;
+          legalName = result.legalName;
+          businessName = result.businessName;
+          ocrPan = result.pan;
+          panMismatch = !!result.panMismatch;
+          companyNameTooLong = !!result.companyNameTooLong;
+        }
+      }
 
       // Prevent an older OCR request from overwriting a newer upload
       if (currentReqId !== this.ocrRequestId) {

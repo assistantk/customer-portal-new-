@@ -3,6 +3,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { BehaviorSubject, Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_BASE_URL, isSecureApiTransport } from './api-config';
 import { environment } from '../../environments/environment';
+import { ZoneDivisionService } from './zone-division.service';
+import { getDivisionFormSelection } from '../utils/division-codes';
 
 export interface LoginRequest {
   username: string;
@@ -103,10 +105,25 @@ export class AuthService {
   private sessionCheckedSubject = new BehaviorSubject<boolean>(false);
   public sessionChecked$ = this.sessionCheckedSubject.asObservable();
 
-  constructor(private http: HttpClient) {}
+  constructor(
+    private http: HttpClient,
+    private zoneDivisionService?: ZoneDivisionService
+  ) {
+    const cachedUser = this.currentUserSubject.value;
+    if (cachedUser?.divisionCode && this.zoneDivisionService) {
+      const selection = getDivisionFormSelection(cachedUser.divisionCode);
+      if (selection) {
+        this.zoneDivisionService.setLoginDivision(selection.zone, selection.division);
+      }
+    }
+  }
 
   public get currentUser(): AuthUserData | null {
     return this.currentUserSubject.value;
+  }
+
+  public get activeDivision(): string {
+    return this.currentUserSubject.value?.divisionCode || '';
   }
 
   public get isAuthenticated(): boolean {
@@ -279,11 +296,13 @@ export class AuthService {
         if (res && res.success) {
           this.setRmsTempUser(null);
           this.updateCurrentUser(null);
+          this.zoneDivisionService?.reset();
         }
       }),
       catchError((error: HttpErrorResponse) => {
         this.setRmsTempUser(null);
         this.updateCurrentUser(null);
+        this.zoneDivisionService?.reset();
         return throwError(() => error);
       })
     );
@@ -322,8 +341,15 @@ export class AuthService {
     this.currentUserSubject.next(user);
     if (user) {
       sessionStorage.setItem(this.cachedUserKey, JSON.stringify(user));
+      if (user.divisionCode && this.zoneDivisionService) {
+        const selection = getDivisionFormSelection(user.divisionCode);
+        if (selection) {
+          this.zoneDivisionService.setLoginDivision(selection.zone, selection.division);
+        }
+      }
     } else {
       sessionStorage.removeItem(this.cachedUserKey);
+      this.zoneDivisionService?.reset();
     }
   }
 

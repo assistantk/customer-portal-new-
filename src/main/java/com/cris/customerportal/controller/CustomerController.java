@@ -3,9 +3,11 @@ package com.cris.customerportal.controller;
 import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
+import com.cris.customerportal.dto.ImageOcrResponse;
 import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.service.CustomerService;
+import com.cris.customerportal.service.ImageOcrService;
 import javax.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,9 +25,11 @@ import java.util.Map;
 public class CustomerController {
     private static final Logger LOGGER = LoggerFactory.getLogger(CustomerController.class);
     private final CustomerService service;
+    private final ImageOcrService imageOcrService;
 
-    public CustomerController(CustomerService s) {
+    public CustomerController(CustomerService s, ImageOcrService imageOcrService) {
         this.service = s;
+        this.imageOcrService = imageOcrService;
     }
 
     private String sanitizeErrorMessage(String prefix, Exception e, String fallback) {
@@ -447,5 +451,14 @@ public class CustomerController {
             body.put("message", safeMsg);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
         }
+    }
+
+    @PostMapping(value = "/ocr-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ImageOcrResponse> ocrImage(@RequestParam("file") MultipartFile file) {
+        LOGGER.info("Image OCR request received: filename={} size={}",
+                file != null ? file.getOriginalFilename() : "null",
+                file != null ? file.getSize() : 0);
+        ImageOcrResponse response = imageOcrService.processImage(file);
+        return ResponseEntity.ok(response);
     }
 }

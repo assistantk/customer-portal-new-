@@ -73,18 +73,15 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.authService.logout().subscribe({
       next: (res) => {
         this.isLoggingOut = false;
-        if (res && res.success) {
-          sessionStorage.clear();
-          this.router.navigate(['/login'], { replaceUrl: true });
-        } else {
-          const msg = res?.message || 'Failed to terminate backend session. Please try again.';
-          this.notificationService.error('Logout Failed', msg);
-        }
+        this.zoneDivisionService?.reset();
+        sessionStorage.clear();
+        this.router.navigate(['/login'], { replaceUrl: true });
       },
       error: (err) => {
         this.isLoggingOut = false;
-        const msg = err?.error?.message || err?.message || 'Failed to terminate backend session. Please try again.';
-        this.notificationService.error('Logout Failed', msg);
+        this.zoneDivisionService?.reset();
+        sessionStorage.clear();
+        this.router.navigate(['/login'], { replaceUrl: true });
       }
     });
   }

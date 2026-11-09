@@ -87,15 +87,27 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.resetFieldsPreservingZoneDivision();
 
-    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe((user) => {
+      if (!user) {
+        this.divisionSelectionManuallyChanged = false;
+        this.form.zone = '';
+        this.form.operatingDivision = '';
+        this.cdr.markForCheck();
+        return;
+      }
       this.applyLoginDivisionDefault();
     });
 
     this.zoneDivisionSubscription = this.zoneDivisionService?.selection$.subscribe((sel) => {
-      if (sel.manuallyChanged || (!this.form.zone && !this.form.operatingDivision)) {
-        if (sel.zone) this.form.zone = sel.zone;
-        if (sel.division) this.form.operatingDivision = sel.division;
-        this.divisionSelectionManuallyChanged = sel.manuallyChanged;
+      if (!sel) return;
+      if (sel.manuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
+        this.divisionSelectionManuallyChanged = true;
+        this.cdr.markForCheck();
+      } else if (!this.divisionSelectionManuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
         this.cdr.markForCheck();
       }
     });
@@ -154,7 +166,7 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
       return;
     }
     const selection = this.loginDivisionSelection;
-    if (!this.divisionSelectionManuallyChanged && !this.form.operatingDivision && selection) {
+    if (!this.divisionSelectionManuallyChanged && selection) {
       this.form.zone = selection.zone;
       this.form.operatingDivision = selection.division;
       this.zoneDivisionService?.setDefaultIfUnset(selection.zone, selection.division);

@@ -47,7 +47,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           recordSource: 'EXISTING_OWNERSHIP_RECORD'
         }
       })),
-      checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false }))
+      checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
+      ocrImage: vi.fn()
     };
     panOcrServiceMock = {
       extractGstinFromFile: vi.fn()
@@ -105,6 +106,58 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     expect(component.form.zone).toBe('Central Railway (CR)');
     expect(component.form.operatingDivision).toBe('');
     expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
+  });
+
+  it('updates division reactively across login, logout, and subsequent login with different divisions without browser refresh', () => {
+    // 1. Login with TKD
+    const userTkd = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = userTkd;
+    authUserSubject.next(userTkd);
+
+    component.ngOnInit();
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+
+    // 2. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 3. Login with DLI: immediately updates to DLI without refresh
+    const userDli = { divisionCode: 'DLI' };
+    authServiceMock.currentUser = userDli;
+    authUserSubject.next(userDli);
+    expect(component.form.operatingDivision).toBe('Delhi (DLI)');
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+
+    // 4. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 5. Login with CSTM: immediately updates to CSTM without refresh
+    const userCstm = { divisionCode: 'CSTM' };
+    authServiceMock.currentUser = userCstm;
+    authUserSubject.next(userCstm);
+    expect(component.form.operatingDivision).toBe('Mumbai (CSTM)');
+    expect(component.form.zone).toBe('Central Railway (CR)');
+
+    // 6. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 7. Login with NGP: immediately updates to NGP without refresh
+    const userNgp = { divisionCode: 'NGP' };
+    authServiceMock.currentUser = userNgp;
+    authUserSubject.next(userNgp);
+    expect(component.form.operatingDivision).toBe('Nagpur (NGP)');
+    expect(component.form.zone).toBe('Central Railway (CR)');
+
     component.ngOnDestroy();
   });
 
@@ -853,6 +906,141 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.gstins[0].scanProgress).toBe('');
       expect(component.form.panNumber).toBe('BBBBB2222B');
       expect(component.form.city).toBe('Mumbai');
+    });
+
+    it('processes PNG image upload via backend OCR and auto-fills registration form', async () => {
+      component.mode = 'new';
+      const pngFile = new File(['fake-png-bytes'], 'gst_cert.png', { type: 'image/png' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: true,
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'ACME LOGISTICS',
+        businessName: 'ACME LOGISTICS',
+        address: '123 CONNAUGHT PLACE, NEW DELHI',
+        city: 'Delhi',
+        pincode: '110001',
+        state: 'Delhi',
+        stateName: 'Delhi'
+      }));
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pngFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(pngFile);
+      expect(panOcrServiceMock.extractGstinFromFile).not.toHaveBeenCalled();
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('ACME LOGISTICS');
+      expect(component.form.panNumber).toBe('AAAAA0000A');
+      expect(component.form.address).toBe('123 CONNAUGHT PLACE,NEW DELHI');
+      expect(component.form.city).toBe('Delhi');
+      expect(component.form.pincode).toBe('110001');
+      expect(component.gstins[0].state).toBe('Delhi');
+    });
+
+    it('processes JPG/JPEG image upload via backend OCR and auto-fills registration form', async () => {
+      component.mode = 'new';
+      const jpgFile = new File(['fake-jpg-bytes'], 'gst_certificate.jpg', { type: 'image/jpeg' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: true,
+        gstin: '27BBBBB2222B1Z2',
+        pan: 'BBBBB2222B',
+        tradeName: 'BOMBAY CARRIERS',
+        businessName: 'BOMBAY CARRIERS',
+        address: '456 NARIMAN POINT, MUMBAI',
+        city: 'Mumbai',
+        pincode: '400021',
+        state: 'Maharashtra',
+        stateName: 'Maharashtra'
+      }));
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [jpgFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(jpgFile);
+      expect(panOcrServiceMock.extractGstinFromFile).not.toHaveBeenCalled();
+      expect(component.gstins[0].gstin).toBe('27BBBBB2222B1Z2');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('BOMBAY CARRIERS');
+      expect(component.form.panNumber).toBe('BBBBB2222B');
+      expect(component.form.address).toBe('456 NARIMAN POINT,MUMBAI');
+      expect(component.form.city).toBe('Mumbai');
+      expect(component.form.pincode).toBe('400021');
+    });
+
+    it('falls back to client-side OCR if backend Tesseract is unconfigured on the host', async () => {
+      component.mode = 'new';
+      const pngFile = new File(['fake-png-bytes'], 'gst_cert.png', { type: 'image/png' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: false,
+        tesseractMissing: true,
+        message: 'Tesseract executable is missing'
+      }));
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'CLIENT FALLBACK CORP',
+        address: '789 FALLBACK ROAD',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pngFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(pngFile);
+      expect(panOcrServiceMock.extractGstinFromFile).toHaveBeenCalledWith(pngFile, expect.any(Function));
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('CLIENT FALLBACK CORP');
+    });
+
+    it('preserves PDF workflow without calling backend image OCR', async () => {
+      component.mode = 'new';
+      const pdfFile = new File(['fake-pdf-bytes'], 'gst_document.pdf', { type: 'application/pdf' });
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'PDF LOGISTICS',
+        address: '100 PDF WAY',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pdfFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).not.toHaveBeenCalled();
+      expect(panOcrServiceMock.extractGstinFromFile).toHaveBeenCalledWith(pdfFile, expect.any(Function));
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.form.companyName).toBe('PDF LOGISTICS');
+    });
+
+    it('rejects unsupported file formats like .bmp or .txt', () => {
+      const txtFile = new File(['hello'], 'doc.txt', { type: 'text/plain' });
+      expect(component.checkFile(txtFile)).toBe('Only PDF, JPG, JPEG, and PNG files are allowed');
+
+      const bmpFile = new File(['fake-bmp'], 'image.bmp', { type: 'image/bmp' });
+      expect(component.checkFile(bmpFile)).toBe('Only PDF, JPG, JPEG, and PNG files are allowed');
+
+      const validPng = new File(['fake-png'], 'image.png', { type: 'image/png' });
+      expect(component.checkFile(validPng)).toBe('');
+
+      const validJpg = new File(['fake-jpg'], 'image.jpg', { type: 'image/jpeg' });
+      expect(component.checkFile(validJpg)).toBe('');
+
+      const validJpeg = new File(['fake-jpeg'], 'image.jpeg', { type: 'image/jpeg' });
+      expect(component.checkFile(validJpeg)).toBe('');
+
+      const validPdf = new File(['fake-pdf'], 'doc.pdf', { type: 'application/pdf' });
+      expect(component.checkFile(validPdf)).toBe('');
     });
 
     it('rejects a manually entered address longer than 100 characters', () => {

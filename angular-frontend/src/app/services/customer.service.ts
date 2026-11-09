@@ -46,6 +46,27 @@ export interface CustomerPayload {
 
 export type DeleteRequestCodeType = 'GLOBAL_CUSTOMER' | 'HANDLING_AGENT';
 
+export interface BackendImageOcrResponse {
+  success: boolean;
+  message?: string;
+  tesseractMissing?: boolean;
+  gstin?: string;
+  tradeName?: string;
+  legalName?: string;
+  businessName?: string;
+  pan?: string;
+  address?: string;
+  city?: string;
+  district?: string;
+  state?: string;
+  stateCode?: string;
+  stateName?: string;
+  pincode?: string;
+  panMismatch?: boolean;
+  companyNameTooLong?: boolean;
+  rawText?: string;
+}
+
 export interface DeleteRequestVerification {
   success: boolean;
   found: boolean;
@@ -387,5 +408,14 @@ export class CustomerService {
       partyCode,
       partyDesc
     }, { withCredentials: true });
+  }
+
+  /* ---------- Image OCR (Backend Spring Boot Tesseract) ---------- */
+  ocrImage(file: File): Observable<BackendImageOcrResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<BackendImageOcrResponse>(`${this.API}/customers/ocr-image`, formData, {
+      withCredentials: true
+    });
   }
 }
