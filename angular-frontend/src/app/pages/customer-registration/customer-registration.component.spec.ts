@@ -2027,12 +2027,14 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.handleGstinStateChange(0, 'Maharashtra');
       expect(component.gstins[0].state).not.toBe('Maharashtra');
 
-      // Attempt to add or remove GSTIN rows
+      // Existing GSTIN rows stay locked, but another state-wise GSTIN can be added.
       component.addGstin();
-      expect(component.gstins.length).toBe(1);
+      expect(component.gstins.length).toBe(2);
+      expect(component.isGstinEntryDisabled(0)).toBe(true);
+      expect(component.isGstinEntryDisabled(1)).toBe(false);
 
       component.removeGstin(0);
-      expect(component.gstins.length).toBe(1);
+      expect(component.gstins.length).toBe(2);
     });
 
     it('Case 2: Both PAN and GST missing in DB -> company name & address populated, both fields editable', () => {
@@ -2138,11 +2140,18 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.isPanDisabled).toBe(false);
       expect(component.isGstDisabled).toBe(true);
 
-      // GST cannot be modified or added to
+      // Existing GSTIN cannot be changed, while an additional state GSTIN can be added.
       component.handleGstinChange(0, { gstin: '27AAACE1111E1Z5' });
       expect(component.gstins[0].gstin).toBe('19AAACE1111E1Z3');
       component.addGstin();
-      expect(component.gstins.length).toBe(1);
+      expect(component.gstins.length).toBe(2);
+      expect(component.isGstinEntryDisabled(0)).toBe(true);
+      expect(component.isGstinEntryDisabled(1)).toBe(false);
+
+      component.handleGstinStateChange(1, 'Maharashtra');
+      component.handleGstinChange(1, { gstin: '27AAACE1111E1Z5' });
+      expect(component.gstins[1].state).toBe('Maharashtra');
+      expect(component.gstins[1].gstin).toBe('27AAACE1111E1Z5');
 
       // Missing PAN can be entered
       component.handlePanChange('AAACE1111E');

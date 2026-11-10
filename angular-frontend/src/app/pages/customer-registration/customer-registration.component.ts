@@ -197,6 +197,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     return this.mode === 'old' && this.isOldGstDisabled;
   }
 
+  isGstinEntryDisabled(index: number): boolean {
+    return this.isGstDisabled && Boolean(this.gstins[index]?.gstinId);
+  }
+
   isValueAvailable(val: any): boolean {
     if (val === null || val === undefined) return false;
     const str = String(val).trim();
@@ -1797,14 +1801,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   addGstin(): void {
-    if (this.isGstDisabled) {
-      return;
-    }
     this.gstins.push({ ...blankGstin });
   }
 
   removeGstin(index: number): void {
-    if (this.isGstDisabled) {
+    if (this.isGstinEntryDisabled(index)) {
       return;
     }
     const removed = this.gstins[index];
@@ -1838,7 +1839,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {
-    if (this.isGstDisabled) return;
+    if (this.isGstinEntryDisabled(index)) return;
     const currentEntry = this.gstins[index];
     if (!currentEntry) return;
     const hasGstinUpdate = Object.prototype.hasOwnProperty.call(updates, 'gstin');
@@ -1872,7 +1873,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinInput(index: number, rawGstin: string): void {
-    if (this.isGstDisabled) return;
+    if (this.isGstinEntryDisabled(index)) return;
     const gstin = normalizeDocumentNumber(rawGstin);
     const previousGstin = normalizeDocumentNumber(this.gstins[index]?.gstin);
     if (previousGstin === gstin) return;
@@ -1986,7 +1987,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleGstinStateChange(index: number, state: string): void {
-    if (this.isGstDisabled) return;
+    if (this.isGstinEntryDisabled(index)) return;
     this.handleGstinChange(index, { state });
     const field = `gstin_${index}_state`;
     if (state && this.gstins.some((gstin, currentIndex) => currentIndex !== index && gstin.state === state)) {
@@ -2066,7 +2067,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
-    if (this.isGstDisabled) return;
+    if (this.isGstinEntryDisabled(index)) return;
     const input = e.target as HTMLInputElement;
     const selected = input?.files?.[0];
     if (input) {
