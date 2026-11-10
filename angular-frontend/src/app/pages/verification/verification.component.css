@@ -1100,3 +1100,43 @@ footer {
     font: 12px 'Inter', Arial, sans-serif;
     text-align: center;
 }
+
+/* ===== Search Mode Selector (Code vs Company Name) ===== */
+.search-mode-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+
+.search-mode-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease-in-out;
+}
+
+.search-mode-option:hover {
+    color: #1e293b;
+    background: #f1f5f9;
+}
+
+.search-mode-option.selected {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.search-mode-option input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    margin: 0;
+}

@@ -12,6 +12,7 @@ import { CustomerService } from "../../services/customer.service";
 })
 export class VerificationComponent implements OnInit, OnDestroy {
   verificationType: "customer" | "gstin" | "agent" | "ownership" = "customer";
+  searchMode: "CODE" | "NAME" = "CODE";
   code = "";
   loading = false;
   customers: any[] | null = null;
@@ -42,14 +43,28 @@ export class VerificationComponent implements OnInit, OnDestroy {
     this.routerEventsSubscription?.unsubscribe();
   }
 
-  setVerificationType(type: "customer" | "gstin" | "agent" | "ownership"): void {
-    this.lookupRequestId++;
-    this.verificationType = type;
+  setSearchMode(mode: "CODE" | "NAME"): void {
+    if (this.searchMode === mode) return;
+    this.searchMode = mode;
     this.code = "";
     this.customers = null;
     this.error = "";
     this.verifiedSearchValue = "";
     this.loading = false;
+    this.lookupRequestId++;
+    this.cdr.markForCheck();
+  }
+
+  setVerificationType(type: "customer" | "gstin" | "agent" | "ownership"): void {
+    this.lookupRequestId++;
+    this.verificationType = type;
+    this.searchMode = "CODE";
+    this.code = "";
+    this.customers = null;
+    this.error = "";
+    this.verifiedSearchValue = "";
+    this.loading = false;
+    this.cdr.markForCheck();
   }
 
   onCodeInput(event: Event): void {
@@ -74,11 +89,13 @@ export class VerificationComponent implements OnInit, OnDestroy {
     if (!trimmedCode) {
       const field = this.verificationType === "gstin"
         ? "GSTIN"
-        : this.verificationType === "agent"
-          ? "Handling Agent Code or Company Name"
-          : this.verificationType === "ownership"
-            ? "Ownership Code or Company Name"
-            : "Customer Code";
+        : this.searchMode === "NAME"
+          ? "Company Name"
+          : this.verificationType === "agent"
+            ? "Handling Agent Code"
+            : this.verificationType === "ownership"
+              ? "Ownership Code"
+              : "Customer Code";
       this.error = `Please enter a ${field}.`;
       return;
     }
@@ -89,15 +106,16 @@ export class VerificationComponent implements OnInit, OnDestroy {
     this.verifiedSearchValue = "";
     const requestId = ++this.lookupRequestId;
     const requestType = this.verificationType;
+    const currentMode = this.searchMode;
     this.cdr.markForCheck();
 
     const lookup$ = requestType === "gstin"
       ? this.customerService.lookupCustomerByGstinJDBC(trimmedCode)
       : requestType === "agent"
-        ? this.customerService.searchHandlingAgentsJDBC(trimmedCode)
+        ? this.customerService.searchHandlingAgentsJDBC(trimmedCode, currentMode)
         : requestType === "ownership"
-          ? this.customerService.searchOwnershipCodesJDBC(trimmedCode)
-          : this.customerService.lookupOldCustomerJDBC(trimmedCode);
+          ? this.customerService.searchOwnershipCodesJDBC(trimmedCode, currentMode)
+          : this.customerService.lookupOldCustomerJDBC(trimmedCode, currentMode);
 
     lookup$.pipe(
       finalize(() => {
@@ -113,18 +131,26 @@ export class VerificationComponent implements OnInit, OnDestroy {
         if (this.customers.length > 0) {
           this.verifiedSearchValue = trimmedCode;
         } else {
-          this.error = requestType === "ownership"
-            ? "No Ownership Code or Company Name found."
-            : requestType === "agent"
-              ? "No Handling Agent Code or Company Name found."
+          if (requestType === "ownership") {
+            this.error = currentMode === "NAME"
+              ? "No Ownership Company Name found."
+              : "No Ownership Code found.";
+          } else if (requestType === "agent") {
+            this.error = currentMode === "NAME"
+              ? "No Handling Agent Company Name found."
+              : "No Handling Agent Code found.";
+          } else {
+            this.error = currentMode === "NAME"
+              ? "No record found for this Company Name."
               : "Code not found.";
+          }
         }
         this.cdr.markForCheck();
       },
       error: (err) => {
         if (requestId !== this.lookupRequestId) return;
         console.error("Lookup error:", err);
-        this.error = err?.error?.message || err?.message || "Code not found.";
+        this.error = err?.error?.message || err?.message || (currentMode === "NAME" ? "No record found for this Company Name." : "Code not found.");
         this.cdr.markForCheck();
       }
     });
@@ -169,7 +195,11 @@ export class VerificationComponent implements OnInit, OnDestroy {
       const data = this.createVerificationPdfData();
       const prefix = this.verificationType === "gstin"
         ? "GST_Verification"
-        : "Global_Customer_Verification";
+        : this.verificationType === "agent"
+          ? (this.searchMode === "NAME" ? "Handling_Agent_Name_Verification" : "Handling_Agent_Verification")
+          : this.verificationType === "ownership"
+            ? (this.searchMode === "NAME" ? "Ownership_Name_Verification" : "Ownership_Verification")
+            : (this.searchMode === "NAME" ? "Global_Customer_Name_Verification" : "Global_Customer_Verification");
       const safeValue = this.verifiedSearchValue
         .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
         .replace(/\s+/g, "_");
@@ -204,7 +234,7 @@ export class VerificationComponent implements OnInit, OnDestroy {
       this.getGstinList(record).map((gstin) =>
         allColumns.map((column) => {
           if (column === "customerCode") {
-            return this.pdfCellValue(record.customerCode || this.verifiedSearchValue);
+            return this.pdfCellValue(record.customerCode || (this.searchMode === "CODE" ? this.verifiedSearchValue : "-"));
           }
           if (column === "gstinNumbers") return gstin;
           return this.pdfCellValue(record[column]);
@@ -216,7 +246,15 @@ export class VerificationComponent implements OnInit, OnDestroy {
     const recordDate = (firstRecord?.['creationDate'] || firstRecord?.['date'] || firstRecord?.['createdDate'] || null) as string | Date | null;
 
     return {
-      searchType: this.verificationType === "gstin" ? "GST Number" : "Global Customer Code",
+      searchType: this.verificationType === "gstin"
+        ? "GST Number"
+        : this.searchMode === "NAME"
+          ? "Company Name"
+          : this.verificationType === "agent"
+            ? "Handling Agent Code"
+            : this.verificationType === "ownership"
+              ? "Ownership Code"
+              : "Global Customer Code",
       searchValue: this.verifiedSearchValue,
       columns: allColumns,
       rows,
@@ -240,6 +278,7 @@ export class VerificationComponent implements OnInit, OnDestroy {
     this.error = "";
     this.verifiedSearchValue = "";
     this.loading = false;
+    this.searchMode = "CODE";
     this.cdr.markForCheck();
   }
 }

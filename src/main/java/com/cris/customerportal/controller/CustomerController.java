@@ -100,8 +100,17 @@ public class CustomerController {
     }
 
     @GetMapping("/old-lookup")
-    public com.cris.customerportal.dto.OldCustomerResponse lookupOld(@RequestParam String code) {
-        LOGGER.info("Old customer lookup request: code={}", code);
+    public Object lookupOld(
+            @RequestParam String code,
+            @RequestParam(required = false) String searchMode,
+            @RequestParam(required = false) String searchType) {
+        String mode = searchMode != null ? searchMode : (searchType != null ? searchType : "CODE");
+        LOGGER.info("Old customer lookup request: code={} searchMode={}", code, mode);
+        if ("NAME".equalsIgnoreCase(mode) || "COMPANY_NAME".equalsIgnoreCase(mode)) {
+            java.util.List<com.cris.customerportal.dto.OldCustomerResponse> list = service.searchGlobalCustomersByCompanyName(code);
+            LOGGER.info("Old customer company name search returned {} matches", (list != null ? list.size() : 0));
+            return list;
+        }
         com.cris.customerportal.dto.OldCustomerResponse resp = service.lookupOldCustomerByCode(code);
         LOGGER.info("Old customer lookup succeeded for code={}", code);
         return resp;
@@ -115,6 +124,16 @@ public class CustomerController {
         return list;
     }
 
+    @GetMapping("/check-gstin-duplicate")
+    public ResponseEntity<com.cris.customerportal.dto.GstinDuplicateCheckResult> checkGstinDuplicate(
+            @RequestParam String gstin,
+            @RequestParam(required = false) String currentCode) {
+        LOGGER.info("GSTIN duplicate check request: gstin={} currentCode={}",
+                DataMaskingUtil.maskSensitive(gstin), currentCode);
+        com.cris.customerportal.dto.GstinDuplicateCheckResult result = service.checkGstinDuplicate(gstin, currentCode);
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/agent-lookup")
     public com.cris.customerportal.dto.GlobalAgentResponse lookupAgent(@RequestParam String code) {
         LOGGER.info("Handling agent lookup request: code={}", code);
@@ -124,9 +143,13 @@ public class CustomerController {
     }
 
     @GetMapping("/agent-search")
-    public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchAgents(@RequestParam String query) {
-        LOGGER.info("Handling agent search request");
-        return service.searchHandlingAgents(query);
+    public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchAgents(
+            @RequestParam String query,
+            @RequestParam(required = false) String searchMode,
+            @RequestParam(required = false) String searchType) {
+        String mode = searchMode != null ? searchMode : (searchType != null ? searchType : "CODE");
+        LOGGER.info("Handling agent search request: searchMode={}", mode);
+        return service.searchHandlingAgents(query, mode);
     }
 
     @GetMapping("/generate-code")
@@ -269,9 +292,13 @@ public class CustomerController {
     }
 
     @GetMapping("/ownership-search")
-    public java.util.List<java.util.Map<String, String>> searchOwnership(@RequestParam String query) {
-        LOGGER.info("Ownership code search request");
-        return service.searchOwnershipCodes(query);
+    public java.util.List<java.util.Map<String, String>> searchOwnership(
+            @RequestParam String query,
+            @RequestParam(required = false) String searchMode,
+            @RequestParam(required = false) String searchType) {
+        String mode = searchMode != null ? searchMode : (searchType != null ? searchType : "CODE");
+        LOGGER.info("Ownership code search request: searchMode={}", mode);
+        return service.searchOwnershipCodes(query, mode);
     }
 
     @PostMapping("/ownership-save")

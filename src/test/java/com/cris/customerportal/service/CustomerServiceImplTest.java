@@ -4,7 +4,10 @@ import com.cris.customerportal.audit.DatabaseOperationAudit;
 import com.cris.customerportal.controller.AuthController;
 import com.cris.customerportal.dto.AuthUserDto;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
+import com.cris.customerportal.dto.GstinDuplicateCheckResult;
+import com.cris.customerportal.dto.GstinDuplicateRecord;
 import com.cris.customerportal.dto.GstinRequest;
+import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.repository.CustomerRepository;
 import com.cris.customerportal.repository.JdbcPortalUserLookupRepository;
 import org.junit.jupiter.api.Test;
@@ -2327,6 +2330,143 @@ class CustomerServiceImplTest {
         assertFalse(body.contains("MAVCUSTGSTNUMB = NULL"));
     }
 
+    @Test
+    void searchGlobalCustomersByCompanyName_searchesByNameUsingInstr() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVGLBLCUSTCODE")).thenReturn("TISCO");
+        when(rs.getString("MAVGLBLCUSTNAME")).thenReturn("TATA STEEL LTD");
+        when(rs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("JAMSHEDPUR");
+        when(rs.getString("MAVCUSTPANNUMB")).thenReturn("AAACT2727Q");
+        when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("20AAACT2727Q1Z5");
+        when(rs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("JAMSHEDPUR");
+        when(rs.getString("MAVPCOCODE")).thenReturn("831001");
+        when(rs.getString("MAVIMPLREMK")).thenReturn("SR.DCM/CKP");
+        when(rs.getString("MAVVERIFICATIONDATE")).thenReturn("2026-11-10");
+
+        List<com.cris.customerportal.dto.OldCustomerResponse> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .searchGlobalCustomersByCompanyName("tata");
+
+        assertEquals(1, results.size());
+        assertEquals("TISCO", results.get(0).getCustomerCode());
+        assertEquals("TATA STEEL LTD", results.get(0).getCompanyName());
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("FROM MEMGLBLCUST WHERE INSTR(UPPER(NVL(MAVGLBLCUSTNAME, '')), ?) > 0")));
+        verify(ps).setString(1, "TATA");
+    }
+
+    @Test
+    void searchHandlingAgents_modeCode_searchesOnlyCodeColumn() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVHNDAGNTCODE")).thenReturn("AG01");
+        when(rs.getString("MAVHNDAGNTNAME")).thenReturn("AGENT ONE");
+
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .searchHandlingAgents("AG", "CODE");
+
+        assertEquals(1, results.size());
+        assertEquals("AG01", results.get(0).getCode());
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")
+                && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")));
+        verify(ps).setString(1, "AG");
+    }
+
+    @Test
+    void searchHandlingAgents_modeName_searchesOnlyNameColumn() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVHNDAGNTCODE")).thenReturn("AG01");
+        when(rs.getString("MAVHNDAGNTNAME")).thenReturn("LOGISTICS INC");
+
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .searchHandlingAgents("LOGISTICS", "NAME");
+
+        assertEquals(1, results.size());
+        assertEquals("AG01", results.get(0).getCode());
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")
+                && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")));
+        verify(ps).setString(1, "LOGISTICS");
+    }
+
+    @Test
+    void searchOwnershipCodes_modeCode_searchesOnlyCodeColumn() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("OWN1");
+        when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("OWNER ONE");
+
+        List<Map<String, String>> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .searchOwnershipCodes("OWN1", "CODE");
+
+        assertEquals(1, results.size());
+        assertEquals("OWN1", results.get(0).get("ownershipCode"));
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")
+                && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")));
+        verify(ps).setString(1, "OWN1");
+    }
+
+    @Test
+    void searchOwnershipCodes_modeName_searchesOnlyDescColumn() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("OWN1");
+        when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("FREIGHT CORP");
+
+        List<Map<String, String>> results =
+                service(dataSource, mock(JavaMailSender.class))
+                    .searchOwnershipCodes("FREIGHT", "NAME");
+
+        assertEquals(1, results.size());
+        assertEquals("FREIGHT CORP", results.get(0).get("companyName"));
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")
+                && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")));
+        verify(ps).setString(1, "FREIGHT");
+    }
+
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
         CustomerServiceImpl service = new CustomerServiceImpl(
             mock(CustomerRepository.class),
@@ -2358,5 +2498,263 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         return message.getValue().getText();
+    }
+
+    @Test
+    void checkGstinDuplicate_returnsDuplicateWhenFoundInGlobalCustomerDetailTable() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psCust = mock(PreparedStatement.class);
+        ResultSet rsCust = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(contains("MEMGLBLCUSTDTLS"))).thenReturn(psCust);
+        when(psCust.executeQuery()).thenReturn(rsCust);
+        when(rsCust.next()).thenReturn(true, false);
+        when(rsCust.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
+        when(rsCust.getString("MAVGLBLCUSTNAME")).thenReturn("ABC INDUSTRIES");
+        when(rsCust.getString("MAVCUSTGSTNUMB")).thenReturn("20APEPA6196G1Z9");
+        when(rsCust.getString("MAVCUSTPANNUMB")).thenReturn("APEPA6196G");
+        when(rsCust.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("123 RAILWAY ROAD");
+        when(rsCust.getString("CITY")).thenReturn("DELHI");
+        when(rsCust.getString("MANPINCODE")).thenReturn("110001");
+        when(rsCust.getString("EFFECTIVE_FROM")).thenReturn("2026-01-01");
+        when(rsCust.getString("EFFECTIVE_TO")).thenReturn(null);
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+
+        assertTrue(result.isDuplicate());
+        assertEquals("DUPLICATE", result.getStatus());
+        assertEquals(1, result.getRecords().size());
+        GstinDuplicateRecord rec = result.getRecords().get(0);
+        assertEquals("Global Customer", rec.getRecordType());
+        assertEquals("ABCD", rec.getExistingCode());
+        assertEquals("ABC INDUSTRIES", rec.getCompanyName());
+        assertEquals("20APEPA6196G1Z9", rec.getGstin());
+        assertFalse(rec.isFlaggedInconsistent());
+    }
+
+    @Test
+    void checkGstinDuplicate_returnsDuplicateWhenFoundInHandlingAgentDetailTable() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psHndg = mock(PreparedStatement.class);
+        ResultSet rsHndg = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(contains("MEMGLBLHNDGAGNTDTLS"))).thenReturn(psHndg);
+        when(psHndg.executeQuery()).thenReturn(rsHndg);
+        when(rsHndg.next()).thenReturn(true, false);
+        when(rsHndg.getString("MAVHNDGAGNTCODE")).thenReturn("H123");
+        when(rsHndg.getString("MAVHNDGAGNTNAME")).thenReturn("FAST LOGISTICS");
+        when(rsHndg.getString("MAVCUSTGSTNUMB")).thenReturn("20APEPA6196G1Z9");
+        when(rsHndg.getString("MAVCUSTPANNUMB")).thenReturn("APEPA6196G");
+        when(rsHndg.getString("MAVHNDGAGNTADDRTEXT")).thenReturn("456 PORT ROAD");
+        when(rsHndg.getString("CITY")).thenReturn("MUMBAI");
+        when(rsHndg.getString("MANPINCODE")).thenReturn("400001");
+        when(rsHndg.getString("EFFECTIVE_FROM")).thenReturn("2026-02-01");
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+
+        assertTrue(result.isDuplicate());
+        assertEquals("DUPLICATE", result.getStatus());
+        assertEquals(1, result.getRecords().size());
+        GstinDuplicateRecord rec = result.getRecords().get(0);
+        assertEquals("Handling Agent", rec.getRecordType());
+        assertEquals("H123", rec.getExistingCode());
+        assertEquals("FAST LOGISTICS", rec.getCompanyName());
+        assertFalse(rec.isFlaggedInconsistent());
+    }
+
+    @Test
+    void checkGstinDuplicate_flagsInconsistencyWhenFoundInBothDetailTables() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psCust = mock(PreparedStatement.class);
+        ResultSet rsCust = mock(ResultSet.class);
+        PreparedStatement psHndg = mock(PreparedStatement.class);
+        ResultSet rsHndg = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(contains("MEMGLBLCUSTDTLS"))).thenReturn(psCust);
+        when(psCust.executeQuery()).thenReturn(rsCust);
+        when(rsCust.next()).thenReturn(true, false);
+        when(rsCust.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
+        when(rsCust.getString("MAVGLBLCUSTNAME")).thenReturn("ABC INDUSTRIES");
+        when(rsCust.getString("MAVCUSTGSTNUMB")).thenReturn("20APEPA6196G1Z9");
+
+        when(conn.prepareStatement(contains("MEMGLBLHNDGAGNTDTLS"))).thenReturn(psHndg);
+        when(psHndg.executeQuery()).thenReturn(rsHndg);
+        when(rsHndg.next()).thenReturn(true, false);
+        when(rsHndg.getString("MAVHNDGAGNTCODE")).thenReturn("H123");
+        when(rsHndg.getString("MAVHNDGAGNTNAME")).thenReturn("FAST LOGISTICS");
+        when(rsHndg.getString("MAVCUSTGSTNUMB")).thenReturn("20APEPA6196G1Z9");
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+
+        assertTrue(result.isDuplicate());
+        assertEquals(2, result.getRecords().size());
+        assertTrue(result.getRecords().get(0).isFlaggedInconsistent());
+        assertTrue(result.getRecords().get(1).isFlaggedInconsistent());
+    }
+
+    @Test
+    void checkGstinDuplicate_returnsAvailableWhenInNeitherTable() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+
+        assertFalse(result.isDuplicate());
+        assertEquals("AVAILABLE", result.getStatus());
+        assertTrue(result.getRecords().isEmpty());
+    }
+
+    @Test
+    void checkGstinDuplicate_returnsUnavailableOnDatabaseError() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(anyString())).thenThrow(new SQLException("Connection lost"));
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+
+        assertFalse(result.isDuplicate());
+        assertEquals("UNAVAILABLE", result.getStatus());
+        assertTrue(result.getMessage().contains("Unavailable"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_multipleGstins_generatesParentAndAllDetailInserts() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psExists = mock(PreparedStatement.class);
+        ResultSet rsExists = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(psExists);
+        when(psExists.executeQuery()).thenReturn(rsExists);
+        when(rsExists.next()).thenReturn(false);
+
+        DbaEmailService dbaEmailService = mock(DbaEmailService.class);
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        ReflectionTestUtils.setField(service, "dbaEmailService", dbaEmailService);
+
+        String gstinDetailsJson = "[{\"gstin\":\"20APEPA6196G1Z9\",\"address\":\"Shop 1, Delhi\",\"city\":\"Delhi\",\"pincode\":\"110001\"},"
+            + "{\"gstin\":\"20APEPA6196G2Z8\",\"address\":\"Warehouse 2, Haryana\",\"city\":\"Gurgaon\",\"pincode\":\"122001\"}]";
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "ABCD");
+        formData.put("companyName", "ABC INDUSTRIES");
+        formData.put("address", "Shop 1, Delhi");
+        formData.put("city", "Delhi");
+        formData.put("pincode", "110001");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "APEPA6196G");
+        formData.put("gstinNumbers", "20APEPA6196G1Z9,20APEPA6196G2Z8");
+        formData.put("gstinDetails", gstinDetailsJson);
+
+        String code = service.registerNewEntryJDBC(formData);
+        assertEquals("ABCD", code);
+
+        ArgumentCaptor<List<DbaEmailService.SqlRequest>> captor = ArgumentCaptor.forClass(List.class);
+        verify(dbaEmailService).sendDbaSqlEmail(captor.capture());
+        List<DbaEmailService.SqlRequest> requests = captor.getValue();
+
+        // 1 Parent INSERT + 2 Detail INSERTs = 3 total requests
+        assertEquals(3, requests.size());
+        assertEquals("MEMGLBLCUST", requests.get(0).table());
+        assertEquals("MEMGLBLCUSTDTLS", requests.get(1).table());
+        assertEquals("MEMGLBLCUSTDTLS", requests.get(2).table());
+        assertTrue(requests.get(1).sql().contains("20APEPA6196G1Z9"));
+        assertTrue(requests.get(1).sql().contains("Shop 1,Delhi"));
+        assertTrue(requests.get(2).sql().contains("20APEPA6196G2Z8"));
+        assertTrue(requests.get(2).sql().contains("Warehouse 2,Haryana"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_singleGstin_generatesOnlyParentInsert() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psExists = mock(PreparedStatement.class);
+        ResultSet rsExists = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement("SELECT 1 FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?")).thenReturn(psExists);
+        when(psExists.executeQuery()).thenReturn(rsExists);
+        when(rsExists.next()).thenReturn(false);
+
+        DbaEmailService dbaEmailService = mock(DbaEmailService.class);
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        ReflectionTestUtils.setField(service, "dbaEmailService", dbaEmailService);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "ABCD");
+        formData.put("companyName", "ABC INDUSTRIES");
+        formData.put("address", "Shop 1, Delhi");
+        formData.put("city", "Delhi");
+        formData.put("pincode", "110001");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "APEPA6196G");
+        formData.put("gstinNumbers", "20APEPA6196G1Z9");
+
+        String code = service.registerNewEntryJDBC(formData);
+        assertEquals("ABCD", code);
+
+        ArgumentCaptor<List<DbaEmailService.SqlRequest>> captor = ArgumentCaptor.forClass(List.class);
+        verify(dbaEmailService).sendDbaSqlEmail(captor.capture());
+        List<DbaEmailService.SqlRequest> requests = captor.getValue();
+
+        // Exactly 1 Parent INSERT (preserving single GSTIN workflow)
+        assertEquals(1, requests.size());
+        assertEquals("MEMGLBLCUST", requests.get(0).table());
+    }
+
+    @Test
+    void registerNewEntryJDBC_blocksWhenAnyGstinIsDuplicate() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psCust = mock(PreparedStatement.class);
+        ResultSet rsCust = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(contains("MEMGLBLCUSTDTLS"))).thenReturn(psCust);
+        when(psCust.executeQuery()).thenReturn(rsCust);
+        when(rsCust.next()).thenReturn(true, false);
+        when(rsCust.getString("MAVGLBLCUSTCODE")).thenReturn("EXIST");
+        when(rsCust.getString("MAVGLBLCUSTNAME")).thenReturn("EXISTING CORP");
+        when(rsCust.getString("MAVCUSTGSTNUMB")).thenReturn("20APEPA6196G1Z9");
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "ABCD");
+        formData.put("companyName", "ABC INDUSTRIES");
+        formData.put("address", "Shop 1, Delhi");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "APEPA6196G");
+        formData.put("gstinNumbers", "20APEPA6196G1Z9");
+
+        assertThrows(ResourceAlreadyExistsException.class, () -> service.registerNewEntryJDBC(formData));
     }
 }
