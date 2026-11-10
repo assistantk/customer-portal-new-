@@ -176,6 +176,24 @@
                                 <small *ngIf="!g.dbVerifying && g.dbVerificationStatus === 'unavailable'" class="gstin-db-status unavailable">
                                     {{ g.dbVerificationMessage || 'ℹ Verification Unavailable – Unable to connect to office database.' }}
                                 </small>
+
+                                <!-- Duplicate check status -->
+                                <small *ngIf="g.duplicateStatus === 'checking'" class="gstin-db-status checking" role="status" aria-live="polite">
+                                    <svg width="12" height="12" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                                    Checking duplicate status...
+                                </small>
+                                <small *ngIf="g.duplicateStatus === 'available'" class="gstin-db-status verified">
+                                    ✓ Available – No duplicate registration found.
+                                </small>
+                                <div *ngIf="g.duplicateStatus === 'duplicate'" class="gstin-duplicate-warning" style="margin-top: 4px; padding: 6px 8px; background: #fef2f2; border: 1px solid #f87171; border-radius: 4px; font-size: 0.78rem; color: #b91c1c;">
+                                    <div><strong>Duplicate GSTIN Found:</strong> This GSTIN is already registered in the database. A new code cannot be generated for this GSTIN.</div>
+                                    <button type="button" class="view-details-btn" (click)="openDuplicateModal(g)" style="margin-top: 4px; font-size: 0.75rem; padding: 2px 8px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; cursor: pointer; font-weight: 500;">
+                                        View Details
+                                    </button>
+                                </div>
+                                <small *ngIf="g.duplicateStatus === 'unavailable'" class="gstin-db-status unavailable">
+                                    ℹ Duplicate Check Unavailable – Unable to verify this GSTIN.
+                                </small>
                             </div>
 
                             <!-- State dropdown -->
@@ -571,6 +589,17 @@
 
                 <!-- Row 2: Address | City | Pincode -->
                 <div *ngIf="mode !== 'ownership'" class="field">
+                    <div *ngIf="isMultipleGstin()" style="margin-bottom: 8px;">
+                        <label for="addressGstinSelect" style="font-weight: 500; font-size: 0.85rem; color: var(--text, #334155); display: block; margin-bottom: 4px;">Address for GSTIN: <b>*</b></label>
+                        <div class="control">
+                            <select id="addressGstinSelect" class="form-select" [ngModel]="selectedGstinAddressIndex" (ngModelChange)="onSelectGstinAddress($event)"
+                                style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 0.875rem; background: var(--surface, #ffffff);">
+                                <option *ngFor="let g of gstins; let i = index" [value]="i">
+                                    {{ g.gstin || ('GSTIN ' + (i + 1)) }} {{ g.state ? '(' + g.state + ')' : '' }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
                     <label for="address">Address <b>*</b></label>
                     <div class="control" [class.invalid]="errors['address']">
                         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
@@ -886,4 +915,46 @@
             </section>
         </ng-template>
     </form>
+
+    <!-- View Details Modal for Duplicate GSTIN Records -->
+    <div *ngIf="showDuplicateModal" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+        <div class="modal-dialog" style="background: #ffffff; border-radius: 10px; max-width: 650px; width: 92%; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); padding: 20px; border: 1px solid #cbd5e1;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
+                <h5 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #dc2626; display: flex; align-items: center; gap: 8px;">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    Existing GSTIN Registration Details
+                </h5>
+                <button type="button" (click)="closeDuplicateModal()" aria-label="Close" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b; line-height: 1;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #475569; margin-bottom: 14px;">
+                    The entered GSTIN is already registered in the database. Below are the details of the existing record:
+                </p>
+                <div *ngFor="let rec of selectedDuplicateRecords; let idx = index" style="margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+                    <div *ngIf="rec.flaggedInconsistent" style="background: #fef3c7; color: #92400e; padding: 8px 12px; font-size: 0.82rem; font-weight: 500; border-bottom: 1px solid #fde68a;">
+                        ⚠️ <strong>Inconsistency Flag:</strong> This GSTIN exists in both Global Customer and Handling Agent detail tables.
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <tbody>
+                            <tr><th style="width: 32%; background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Record Type</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b;">{{ rec.recordType }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Existing Code</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #2563eb;">{{ rec.existingCode }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Company Name</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ rec.companyName }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">GSTIN</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">{{ rec.gstin }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">PAN</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">{{ rec.pan }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Address</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ rec.address }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">City</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ rec.city }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">PIN Code</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ rec.pincode }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Effective From</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ rec.effectiveFrom }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; text-align: left; color: #475569;">Effective To</th><td style="padding: 7px 12px;">{{ rec.effectiveTo || 'Active' }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: right;">
+                <button type="button" class="btn btn-secondary" (click)="closeDuplicateModal()" style="padding: 6px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; color: #334155; font-size: 0.85rem; font-weight: 500; cursor: pointer;">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
 </main>
