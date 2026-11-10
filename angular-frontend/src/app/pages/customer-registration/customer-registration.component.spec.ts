@@ -47,7 +47,13 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           recordSource: 'EXISTING_OWNERSHIP_RECORD'
         }
       })),
-      checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false }))
+      checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
+      ocrImage: vi.fn(),
+      verifySemGstin: vi.fn().mockReturnValue(of({
+        verified: false,
+        status: 'UNAVAILABLE',
+        message: 'ℹ Verification Unavailable – Unable to connect to office database.'
+      }))
     };
     panOcrServiceMock = {
       extractGstinFromFile: vi.fn()
@@ -105,6 +111,58 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     expect(component.form.zone).toBe('Central Railway (CR)');
     expect(component.form.operatingDivision).toBe('');
     expect(loginUser.divisionCode).toBe('TKD');
+    component.ngOnDestroy();
+  });
+
+  it('updates division reactively across login, logout, and subsequent login with different divisions without browser refresh', () => {
+    // 1. Login with TKD
+    const userTkd = { divisionCode: 'TKD' };
+    authServiceMock.currentUser = userTkd;
+    authUserSubject.next(userTkd);
+
+    component.ngOnInit();
+    expect(component.form.operatingDivision).toBe('Tughlakabad / Delhi Area (TKD)');
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+
+    // 2. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 3. Login with DLI: immediately updates to DLI without refresh
+    const userDli = { divisionCode: 'DLI' };
+    authServiceMock.currentUser = userDli;
+    authUserSubject.next(userDli);
+    expect(component.form.operatingDivision).toBe('Delhi (DLI)');
+    expect(component.form.zone).toBe('Northern Railway (NR)');
+
+    // 4. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 5. Login with CSTM: immediately updates to CSTM without refresh
+    const userCstm = { divisionCode: 'CSTM' };
+    authServiceMock.currentUser = userCstm;
+    authUserSubject.next(userCstm);
+    expect(component.form.operatingDivision).toBe('Mumbai (CSTM)');
+    expect(component.form.zone).toBe('Central Railway (CR)');
+
+    // 6. Logout: clear session state
+    authServiceMock.currentUser = null;
+    authUserSubject.next(null);
+    expect(component.form.operatingDivision).toBe('');
+    expect(component.form.zone).toBe('');
+
+    // 7. Login with NGP: immediately updates to NGP without refresh
+    const userNgp = { divisionCode: 'NGP' };
+    authServiceMock.currentUser = userNgp;
+    authUserSubject.next(userNgp);
+    expect(component.form.operatingDivision).toBe('Nagpur (NGP)');
+    expect(component.form.zone).toBe('Central Railway (CR)');
+
     component.ngOnDestroy();
   });
 
@@ -853,6 +911,265 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.gstins[0].scanProgress).toBe('');
       expect(component.form.panNumber).toBe('BBBBB2222B');
       expect(component.form.city).toBe('Mumbai');
+    });
+
+    it('processes PNG image upload via backend OCR and auto-fills registration form', async () => {
+      component.mode = 'new';
+      const pngFile = new File(['fake-png-bytes'], 'gst_cert.png', { type: 'image/png' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: true,
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'ACME LOGISTICS',
+        businessName: 'ACME LOGISTICS',
+        address: '123 CONNAUGHT PLACE, NEW DELHI',
+        city: 'Delhi',
+        pincode: '110001',
+        state: 'Delhi',
+        stateName: 'Delhi'
+      }));
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pngFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(pngFile);
+      expect(panOcrServiceMock.extractGstinFromFile).not.toHaveBeenCalled();
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('ACME LOGISTICS');
+      expect(component.form.panNumber).toBe('AAAAA0000A');
+      expect(component.form.address).toBe('123 CONNAUGHT PLACE,NEW DELHI');
+      expect(component.form.city).toBe('Delhi');
+      expect(component.form.pincode).toBe('110001');
+      expect(component.gstins[0].state).toBe('Delhi');
+    });
+
+    it('processes JPG/JPEG image upload via backend OCR and auto-fills registration form', async () => {
+      component.mode = 'new';
+      const jpgFile = new File(['fake-jpg-bytes'], 'gst_certificate.jpg', { type: 'image/jpeg' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: true,
+        gstin: '27BBBBB2222B1Z2',
+        pan: 'BBBBB2222B',
+        tradeName: 'BOMBAY CARRIERS',
+        businessName: 'BOMBAY CARRIERS',
+        address: '456 NARIMAN POINT, MUMBAI',
+        city: 'Mumbai',
+        pincode: '400021',
+        state: 'Maharashtra',
+        stateName: 'Maharashtra'
+      }));
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [jpgFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(jpgFile);
+      expect(panOcrServiceMock.extractGstinFromFile).not.toHaveBeenCalled();
+      expect(component.gstins[0].gstin).toBe('27BBBBB2222B1Z2');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('BOMBAY CARRIERS');
+      expect(component.form.panNumber).toBe('BBBBB2222B');
+      expect(component.form.address).toBe('456 NARIMAN POINT,MUMBAI');
+      expect(component.form.city).toBe('Mumbai');
+      expect(component.form.pincode).toBe('400021');
+    });
+
+    it('falls back to client-side OCR if backend Tesseract is unconfigured on the host', async () => {
+      component.mode = 'new';
+      const pngFile = new File(['fake-png-bytes'], 'gst_cert.png', { type: 'image/png' });
+      customerServiceMock.ocrImage.mockReturnValue(of({
+        success: false,
+        tesseractMissing: true,
+        message: 'Tesseract executable is missing'
+      }));
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'CLIENT FALLBACK CORP',
+        address: '789 FALLBACK ROAD',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pngFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).toHaveBeenCalledWith(pngFile);
+      expect(panOcrServiceMock.extractGstinFromFile).toHaveBeenCalledWith(pngFile, expect.any(Function));
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.gstins[0].scanStatus).toBe('success');
+      expect(component.form.companyName).toBe('CLIENT FALLBACK CORP');
+    });
+
+    it('preserves PDF workflow without calling backend image OCR', async () => {
+      component.mode = 'new';
+      const pdfFile = new File(['fake-pdf-bytes'], 'gst_document.pdf', { type: 'application/pdf' });
+      panOcrServiceMock.extractGstinFromFile.mockResolvedValue({
+        gstin: '07AAAAA0000A1Z4',
+        pan: 'AAAAA0000A',
+        tradeName: 'PDF LOGISTICS',
+        address: '100 PDF WAY',
+        city: 'Delhi',
+        pincode: '110001',
+        stateName: 'Delhi'
+      });
+
+      await component.handleGstinFileChange(0, {
+        target: { files: [pdfFile] }
+      } as unknown as Event);
+
+      expect(customerServiceMock.ocrImage).not.toHaveBeenCalled();
+      expect(panOcrServiceMock.extractGstinFromFile).toHaveBeenCalledWith(pdfFile, expect.any(Function));
+      expect(component.gstins[0].gstin).toBe('07AAAAA0000A1Z4');
+      expect(component.form.companyName).toBe('PDF LOGISTICS');
+    });
+
+    it('rejects unsupported file formats like .bmp or .txt', () => {
+      const txtFile = new File(['hello'], 'doc.txt', { type: 'text/plain' });
+      expect(component.checkFile(txtFile)).toBe('Only PDF, JPG, JPEG, and PNG files are allowed');
+
+      const bmpFile = new File(['fake-bmp'], 'image.bmp', { type: 'image/bmp' });
+      expect(component.checkFile(bmpFile)).toBe('Only PDF, JPG, JPEG, and PNG files are allowed');
+
+      const validPng = new File(['fake-png'], 'image.png', { type: 'image/png' });
+      expect(component.checkFile(validPng)).toBe('');
+
+      const validJpg = new File(['fake-jpg'], 'image.jpg', { type: 'image/jpeg' });
+      expect(component.checkFile(validJpg)).toBe('');
+
+      const validJpeg = new File(['fake-jpeg'], 'image.jpeg', { type: 'image/jpeg' });
+      expect(component.checkFile(validJpeg)).toBe('');
+
+      const validPdf = new File(['fake-pdf'], 'doc.pdf', { type: 'application/pdf' });
+      expect(component.checkFile(validPdf)).toBe('');
+    });
+
+    describe('Office Database (SEM_GSTIN) Verification', () => {
+      beforeEach(() => {
+        component.mode = 'new';
+        component.form = {
+          companyName: 'ACME LOGISTICS',
+          customerCode: 'ACME',
+          address: '123 CONNAUGHT PLACE, NEW DELHI',
+          city: 'Delhi',
+          pincode: '110001',
+          panNumber: 'AAAAA0000A',
+          operatingDivision: 'DLI',
+          zone: 'NR',
+          codeType: 'GLOBAL'
+        };
+        component.gstins = [{
+          state: 'Delhi',
+          gstin: '07AAAAA0000A1Z4',
+          file: new File(['fake'], 'cert.pdf', { type: 'application/pdf' })
+        }];
+      });
+
+      it('Case 1: displays Verified when GSTIN and company details match office database', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: true,
+          status: 'VERIFIED',
+          message: '✓ Verified – Details matched with office database.',
+          gstin: '07AAAAA0000A1Z4',
+          dbCompanyName: 'ACME LOGISTICS',
+          dbAddress: '123 CONNAUGHT PLACE, NEW DELHI'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(customerServiceMock.verifySemGstin).toHaveBeenCalledWith(
+          '07AAAAA0000A1Z4', 'ACME LOGISTICS', '123 CONNAUGHT PLACE, NEW DELHI'
+        );
+        expect(component.gstins[0].dbVerificationStatus).toBe('verified');
+        expect(component.gstins[0].dbVerificationMessage).toBe('✓ Verified – Details matched with office database.');
+        expect(component.errors['gstin_0_gstin']).toBeUndefined();
+        // Crucial requirement: User MUST still be able to validate/submit form
+        expect(component.validate()).toBe(true);
+      });
+
+      it('Case 2: displays Verification Failed when GSTIN exists but details differ, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'MISMATCH',
+          message: '⚠ Verification Failed – Entered details do not match office database.',
+          gstin: '07AAAAA0000A1Z4',
+          dbCompanyName: 'DIFFERENT FIRM',
+          companyNameMatched: false
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('mismatch');
+        expect(component.gstins[0].dbVerificationMessage).toBe('⚠ Verification Failed – Entered details do not match office database.');
+        // Submission must NOT be blocked by mismatch
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('Case 3: displays Verification Unavailable when GSTIN is not found in database, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'NOT_FOUND',
+          message: 'ℹ Verification Unavailable – GSTIN not found in office database.',
+          gstin: '07AAAAA0000A1Z4'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('not_found');
+        expect(component.gstins[0].dbVerificationMessage).toBe('ℹ Verification Unavailable – GSTIN not found in office database.');
+        // Submission must NOT be blocked
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('Case 4: displays Verification Unavailable when database or connection is inaccessible, without blocking submission', () => {
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: false,
+          status: 'UNAVAILABLE',
+          message: 'ℹ Verification Unavailable – Unable to connect to office database.',
+          gstin: '07AAAAA0000A1Z4'
+        }));
+
+        component.verifySemGstinForIndex(0);
+
+        expect(component.gstins[0].dbVerificationStatus).toBe('unavailable');
+        expect(component.gstins[0].dbVerificationMessage).toBe('ℹ Verification Unavailable – Unable to connect to office database.');
+        // Submission must NOT be blocked
+        expect(component.validate()).toBe(true);
+        expect(component.isFormValid).toBe(true);
+      });
+
+      it('clears previous verification status when GSTIN changes', () => {
+        component.gstins[0].dbVerificationStatus = 'verified';
+        component.gstins[0].dbVerificationMessage = '✓ Verified – Details matched with office database.';
+
+        component.handleGstinInput(0, '07BBBBB1111B1Z9');
+
+        expect(component.gstins[0].dbVerificationStatus).toBeUndefined();
+        expect(component.gstins[0].dbVerificationMessage).toBeUndefined();
+      });
+
+      it('re-verifies GSTIN when company name changes', () => {
+        vi.useFakeTimers();
+        customerServiceMock.verifySemGstin.mockReturnValue(of({
+          verified: true,
+          status: 'VERIFIED',
+          message: '✓ Verified – Details matched with office database.'
+        }));
+
+        component.handleNewCompanyNameChange('NEW ACME CORP');
+        vi.advanceTimersByTime(350);
+
+        expect(customerServiceMock.verifySemGstin).toHaveBeenCalledWith(
+          '07AAAAA0000A1Z4', 'NEW ACME CORP', '123 CONNAUGHT PLACE, NEW DELHI'
+        );
+        vi.useRealTimers();
+      });
     });
 
     it('rejects a manually entered address longer than 100 characters', () => {

@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
-import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout } from 'rxjs';
-import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType } from '../../services/customer.service';
+import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout, firstValueFrom } from 'rxjs';
+import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, SemGstinVerificationResult } from '../../services/customer.service';
 import { PanOcrService, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
@@ -227,6 +227,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private codeTimer: any = null;
   private codeRequestId = 0;
   private ocrRequestId = 0;
+  private semGstinVerifyTimer: any = null;
 
   // Dropdown states
   zoneOpen = false;
@@ -307,15 +308,27 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     this.resetFieldsPreservingZoneDivision();
 
-    this.userDivisionSubscription = this.authService?.currentUser$.subscribe(() => {
+    this.userDivisionSubscription = this.authService?.currentUser$.subscribe((user) => {
+      if (!user) {
+        this.divisionSelectionManuallyChanged = false;
+        this.form.zone = '';
+        this.form.operatingDivision = '';
+        this.cdr.markForCheck();
+        return;
+      }
       this.applyLoginDivisionDefault();
     });
 
     this.zoneDivisionSubscription = this.zoneDivisionService?.selection$.subscribe((sel) => {
-      if (sel.manuallyChanged || (!this.form.zone && !this.form.operatingDivision)) {
-        if (sel.zone) this.form.zone = sel.zone;
-        if (sel.division) this.form.operatingDivision = sel.division;
-        this.divisionSelectionManuallyChanged = sel.manuallyChanged;
+      if (!sel) return;
+      if (sel.manuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
+        this.divisionSelectionManuallyChanged = true;
+        this.cdr.markForCheck();
+      } else if (!this.divisionSelectionManuallyChanged) {
+        this.form.zone = sel.zone;
+        this.form.operatingDivision = sel.division;
         this.cdr.markForCheck();
       }
     });
@@ -403,7 +416,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.mode !== 'ownership'
       && this.mode !== 'delete'
       && !this.divisionSelectionManuallyChanged
-      && !this.form.operatingDivision
       && selection
     ) {
       this.form.zone = selection.zone;
@@ -434,6 +446,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.ownSection2Timer) {
       clearTimeout(this.ownSection2Timer);
       this.ownSection2Timer = null;
+    }
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
     }
   }
 
@@ -1042,6 +1058,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.lookupError = '';
     delete this.errors['customerCode'];
     if (this.codeTimer) clearTimeout(this.codeTimer);
+    this.verifyAllEligibleGstins();
 
     if (newName.length > 40) {
       this.errors['companyName'] = 'Company name exceeds the maximum allowed length of 40 characters. Please verify and shorten it manually.';
@@ -1861,7 +1878,21 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (previousGstin === gstin) return;
 
     this.ocrRequestId++;
+    const targetGstin = this.gstins[index];
+    if (targetGstin) {
+      targetGstin.dbVerificationStatus = undefined;
+      targetGstin.dbVerificationMessage = undefined;
+      targetGstin.dbVerifying = false;
+    }
     this.handleGstinChange(index, { gstin });
+
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
+    }
+    if (gstin.length === 15) {
+      this.semGstinVerifyTimer = setTimeout(() => this.verifySemGstinForIndex(index), 350);
+    }
     this.cdr.markForCheck();
   }
 
@@ -1872,6 +1903,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const rawGstin = (g.gstin || '').trim();
     if (!rawGstin) {
       delete this.errors[field];
+      g.dbVerificationStatus = undefined;
+      g.dbVerificationMessage = undefined;
+      g.dbVerifying = false;
       return;
     }
     const status = this.getGstinPanStatus(rawGstin, this.form.panNumber);
@@ -1881,6 +1915,73 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.errors[field] = status;
     } else {
       delete this.errors[field];
+    }
+    if (rawGstin.length === 15) {
+      this.verifySemGstinForIndex(index);
+    }
+  }
+
+  verifySemGstinForIndex(index: number): void {
+    const g = this.gstins[index];
+    if (!g) return;
+    const rawGstin = (g.gstin || '').trim().toUpperCase();
+    if (rawGstin.length !== 15 || !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(rawGstin)) {
+      g.dbVerificationStatus = undefined;
+      g.dbVerificationMessage = undefined;
+      g.dbVerifying = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    const reqId = (g.dbVerifyReqId || 0) + 1;
+    g.dbVerifyReqId = reqId;
+    g.dbVerifying = true;
+    g.dbVerificationStatus = 'checking';
+    this.cdr.markForCheck();
+
+    this.customerService.verifySemGstin(rawGstin, this.form.companyName, this.form.address).subscribe({
+      next: (res) => {
+        if (g.dbVerifyReqId !== reqId) return;
+        g.dbVerifying = false;
+        if (res.status === 'VERIFIED') {
+          g.dbVerificationStatus = 'verified';
+        } else if (res.status === 'MISMATCH') {
+          g.dbVerificationStatus = 'mismatch';
+        } else if (res.status === 'NOT_FOUND') {
+          g.dbVerificationStatus = 'not_found';
+        } else {
+          g.dbVerificationStatus = 'unavailable';
+        }
+        g.dbVerificationMessage = res.message;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        if (g.dbVerifyReqId !== reqId) return;
+        g.dbVerifying = false;
+        g.dbVerificationStatus = 'unavailable';
+        g.dbVerificationMessage = 'ℹ Verification Unavailable – Unable to connect to office database.';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  verifyAllEligibleGstins(debounceMs = 300): void {
+    if (this.semGstinVerifyTimer) {
+      clearTimeout(this.semGstinVerifyTimer);
+      this.semGstinVerifyTimer = null;
+    }
+    const run = () => {
+      this.gstins.forEach((g, idx) => {
+        const raw = (g.gstin || '').trim();
+        if (raw.length === 15) {
+          this.verifySemGstinForIndex(idx);
+        }
+      });
+    };
+    if (debounceMs <= 0) {
+      run();
+    } else {
+      this.semGstinVerifyTimer = setTimeout(run, debounceMs);
     }
   }
 
@@ -1939,6 +2040,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.form.address) {
       this.form.address = this.getNormalizedAddress(this.form.address);
     }
+    this.verifyAllEligibleGstins(0);
   }
 
   handleAddressPaste(e: ClipboardEvent): void {
@@ -2025,23 +2127,87 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
 
     try {
-      const {
-        gstin,
-        stateName,
-        address,
-        city,
-        pincode,
-        tradeName,
-        legalName,
-        businessName,
-        pan: ocrPan,
-        panMismatch,
-        companyNameTooLong
-      } = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
-        if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
-        this.gstins[index].scanProgress = progress;
-        this.cdr.markForCheck();
-      });
+      const isPdf = selected.type === 'application/pdf' || selected.name.toLowerCase().endsWith('.pdf');
+
+      let gstin: string | null | undefined;
+      let stateName: string | null | undefined;
+      let address: string | null | undefined;
+      let city: string | null | undefined;
+      let pincode: string | null | undefined;
+      let tradeName: string | null | undefined;
+      let legalName: string | null | undefined;
+      let businessName: string | null | undefined;
+      let ocrPan: string | null | undefined;
+      let panMismatch = false;
+      let companyNameTooLong = false;
+
+      if (isPdf) {
+        // PDF OCR: Keep existing PDF OCR workflow untouched
+        const result = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
+          if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
+          this.gstins[index].scanProgress = progress;
+          this.cdr.markForCheck();
+        });
+        gstin = result.gstin;
+        stateName = result.stateName;
+        address = result.address;
+        city = result.city;
+        pincode = result.pincode;
+        tradeName = result.tradeName;
+        legalName = result.legalName;
+        businessName = result.businessName;
+        ocrPan = result.pan;
+        panMismatch = !!result.panMismatch;
+        companyNameTooLong = !!result.companyNameTooLong;
+      } else {
+        // Image OCR (PNG, JPG, JPEG) via Backend Spring Boot Tesseract OCR
+        if (this.gstins[index]) {
+          this.gstins[index].scanProgress = 'Processing image with Tesseract OCR...';
+          this.cdr.markForCheck();
+        }
+
+        let backendHandled = false;
+        try {
+          const backendRes = await firstValueFrom(this.customerService.ocrImage(selected));
+          if (backendRes && backendRes.success && backendRes.gstin) {
+            backendHandled = true;
+            gstin = backendRes.gstin;
+            stateName = backendRes.stateName || backendRes.state;
+            address = backendRes.address;
+            city = backendRes.city;
+            pincode = backendRes.pincode;
+            tradeName = backendRes.tradeName;
+            legalName = backendRes.legalName;
+            businessName = backendRes.businessName;
+            ocrPan = backendRes.pan;
+            panMismatch = !!backendRes.panMismatch;
+            companyNameTooLong = !!backendRes.companyNameTooLong;
+          } else if (backendRes && backendRes.tesseractMissing) {
+            console.warn('[Image OCR] Backend Tesseract not installed on server, falling back to client-side OCR...');
+          }
+        } catch (backendErr) {
+          console.warn('[Image OCR] Backend OCR service call failed, trying client-side fallback:', backendErr);
+        }
+
+        if (!backendHandled) {
+          const result = await this.panOcrService.extractGstinFromFile(selected, (progress) => {
+            if (currentReqId !== this.ocrRequestId || !this.gstins[index]) return;
+            this.gstins[index].scanProgress = progress;
+            this.cdr.markForCheck();
+          });
+          gstin = result.gstin;
+          stateName = result.stateName;
+          address = result.address;
+          city = result.city;
+          pincode = result.pincode;
+          tradeName = result.tradeName;
+          legalName = result.legalName;
+          businessName = result.businessName;
+          ocrPan = result.pan;
+          panMismatch = !!result.panMismatch;
+          companyNameTooLong = !!result.companyNameTooLong;
+        }
+      }
 
       // Prevent an older OCR request from overwriting a newer upload
       if (currentReqId !== this.ocrRequestId) {
@@ -2140,6 +2306,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       this.ocrAutoFillApplied = true;
       console.info('[GSTIN OCR] Extraction results applied to the form.');
+      this.verifySemGstinForIndex(index);
 
     } catch (err) {
       if (currentReqId !== this.ocrRequestId) return;

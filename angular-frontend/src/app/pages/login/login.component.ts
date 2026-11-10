@@ -4,8 +4,9 @@ import { Router } from "@angular/router";
 import { merge, Subscription } from "rxjs";
 import { finalize, timeout } from "rxjs/operators";
 import { AuthService, RmsValidatedUserData, RmsValidateUserResponse } from "../../services/auth.service";
-import { isValidDivisionCode, getDivisionDetails, RAILWAY_DIVISIONS } from "../../utils/division-codes";
+import { isValidDivisionCode, getDivisionDetails, getDivisionFormSelection, RAILWAY_DIVISIONS } from "../../utils/division-codes";
 import { IMAGE_ASSETS } from '../../config/image-assets';
+import { ZoneDivisionService } from '../../services/zone-division.service';
 
 export type AuthStep = 'LOGIN' | 'DESIGNATION' | 'OTP';
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
@@ -49,10 +50,13 @@ export class LoginComponent implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private zoneDivisionService?: ZoneDivisionService
   ) {}
 
   ngOnInit(): void {
+    this.zoneDivisionService?.reset();
+
     // Step 1 Form: User ID, Password, Division Code
     this.loginForm = this.fb.group({
       userId: ["", Validators.required],
@@ -138,6 +142,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     this.authService.setCurrentUser(null);
     this.authService.setRmsTempUser(null);
+    this.zoneDivisionService?.reset();
     this.validatedUser = null;
     this.availableDesignations = [];
     this.designationForm.reset({ designation: '' });
@@ -313,6 +318,11 @@ export class LoginComponent implements OnInit, OnDestroy {
         }
 
         if (passed) {
+          const selectedDivisionCode = (this.loginForm.get('divisionCode')?.value || this.validatedUser?.divisionCode || '').trim().toUpperCase();
+          const divisionSelection = getDivisionFormSelection(selectedDivisionCode);
+          if (divisionSelection) {
+            this.zoneDivisionService?.setLoginDivision(divisionSelection.zone, divisionSelection.division);
+          }
           this.authService.setRmsTempUser(null);
           this.successMessage = "Verification Successful! Redirecting to portal...";
           this.clearCooldownTimer();
@@ -424,6 +434,7 @@ export class LoginComponent implements OnInit, OnDestroy {
   restartLogin(): void {
     this.authService.setRmsTempUser(null);
     this.authService.setCurrentUser(null);
+    this.zoneDivisionService?.reset();
     this.loading = false;
     this.loadingOperation = null;
     this.currentStep = 'LOGIN';
@@ -528,6 +539,7 @@ export class LoginComponent implements OnInit, OnDestroy {
   private resetFlowAfterCredentialChange(): void {
     this.authService.setRmsTempUser(null);
     this.authService.setCurrentUser(null);
+    this.zoneDivisionService?.reset();
     this.currentStep = 'LOGIN';
     this.error = '';
     this.successMessage = '';

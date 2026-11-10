@@ -117,6 +117,29 @@ export const RAILWAY_DIVISIONS: DivisionInfo[] = [
   { code: 'CRIS', name: 'CRIS Office', zone: 'CRIS' }
 ];
 
+export const DIVISIONS_BY_ZONE: Record<string, string[]> = {
+  'Central Railway (CR)': ['Mumbai (CSTM)', 'Bhusawal (BSL)', 'Nagpur (NGP)', 'Pune (PUNE)', 'Solapur (SUR)'],
+  'Eastern Railway (ER)': ['Howrah (HWH)', 'Sealdah (SDAH)', 'Asansol (ASN)', 'Malda (MLDT)'],
+  'East Central Railway (ECR)': ['Danapur (DNR)', 'Dhanbad (DHN)', 'Pt. Deen Dayal Upadhyaya (DDU)', 'Samastipur (SPJ)', 'Sonpur (SEE)'],
+  'East Coast Railway (ECOR)': ['Khurda Road (KUR)', 'Sambalpur (SBP)', 'Rayagada (RGDA)'],
+  'Northern Railway (NR)': ['Delhi (DLI)', 'Ambala (UMB)', 'Firozpur (FZR)', 'Lucknow (LKO)', 'Moradabad (MB)'],
+  'North Central Railway (NCR)': ['Prayagraj (PRYJ)', 'Agra (AGC)', 'Jhansi (JHS)'],
+  'North Eastern Railway (NER)': ['Izzatnagar (IZN)', 'Lucknow (LJN)', 'Varanasi (BSB)'],
+  'Northeast Frontier Railway (NFR)': ['Alipurduar (APDJ)', 'Katihar (KIR)', 'Lumding (LMG)', 'Rangiya (RNY)', 'Tinsukia (TSK)'],
+  'North Western Railway (NWR)': ['Jaipur (JP)', 'Ajmer (AII)', 'Bikaner (BKN)', 'Jodhpur (JU)'],
+  'Southern Railway (SR)': ['Chennai (MAS)', 'Madurai (MDU)', 'Palakkad (PGT)', 'Salem (SA)', 'Tiruchchirapalli (TPJ)', 'Thiruvananthapuram (TVC)'],
+  'South Central Railway (SCR)': ['Secunderabad (SC)', 'Hyderabad (HYB)', 'Guntakal (GTL)', 'Guntur (GNT)', 'Vijayawada (BZA)', 'Nanded (NED)'],
+  'South Coast Railway (SCoR)': ['Visakhapatnam (VSKP)'],
+  'South Eastern Railway (SER)': ['Adra (ADRA)', 'Chakradharpur (CKP)', 'Kharagpur (KGP)', 'Ranchi (RNC)'],
+  'South East Central Railway (SECR)': ['Bilaspur (BSP)', 'Nagpur (NAG)', 'Raipur (R)'],
+  'South Western Railway (SWR)': ['Hubballi (UBL)', 'Bengaluru (SBC)', 'Mysuru (MYS)'],
+  'Western Railway (WR)': ['Mumbai Central (BCT)', 'Vadodara (BRC)', 'Ahmedabad (ADI)', 'Rajkot (RJT)', 'Bhavnagar (BVP)', 'Ratlam (RTM)'],
+  'West Central Railway (WCR)': ['Jabalpur (JBP)', 'Bhopal (BPL)', 'Kota (KOTA)'],
+  'Metro Railway Kolkata (MRK)': ['Kolkata Metro (KMR)']
+};
+
+export { DIVISIONS_BY_ZONE as divisionsByZone };
+
 const CODE_SET = new Set(RAILWAY_DIVISIONS.map(d => d.code.toUpperCase()));
 const CODE_MAP = new Map(RAILWAY_DIVISIONS.map(d => [d.code.toUpperCase(), d]));
 
@@ -132,7 +155,7 @@ export function getDivisionDetails(code: string | null | undefined): DivisionInf
 
 export function getDivisionFormSelection(
   code: string | null | undefined,
-  divisionsByZone: Record<string, string[]>
+  divisionsByZone: Record<string, string[]> = DIVISIONS_BY_ZONE
 ): { zone: string; division: string } | undefined {
   const details = getDivisionDetails(code);
   if (!details) return undefined;

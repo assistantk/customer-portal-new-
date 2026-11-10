@@ -1044,6 +1044,35 @@ label b {
     color: #b45309;
 }
 
+.gstin-db-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 600 11.5px 'Inter', Arial, sans-serif;
+    margin-top: 3px;
+    line-height: 1.4;
+}
+
+.gstin-db-status.checking {
+    color: #2563eb;
+}
+
+.gstin-db-status.verified {
+    color: #15803d;
+}
+
+.gstin-db-status.mismatch {
+    color: #b45309;
+}
+
+.gstin-db-status.not-found {
+    color: #475569;
+}
+
+.gstin-db-status.unavailable {
+    color: #64748b;
+}
+
 /* Zone Dropdown styles (zone-dropdown.css) */
 .zone-field {
     position: relative;

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, forkJoin, map, switchMap } from 'rxjs';
+import { Observable, of, forkJoin, map, switchMap, catchError } from 'rxjs';
 import { API_BASE_URL } from './api-config';
 
 export interface MasterData {
@@ -23,6 +23,10 @@ export interface GstinEntry {
   addressStatus?: string;
   hasFile?: boolean;
   activeFlag?: string;
+  dbVerificationStatus?: 'idle' | 'checking' | 'verified' | 'mismatch' | 'not_found' | 'unavailable';
+  dbVerificationMessage?: string;
+  dbVerifying?: boolean;
+  dbVerifyReqId?: number;
 }
 
 export interface CustomerPayload {
@@ -45,6 +49,38 @@ export interface CustomerPayload {
 }
 
 export type DeleteRequestCodeType = 'GLOBAL_CUSTOMER' | 'HANDLING_AGENT';
+
+export interface BackendImageOcrResponse {
+  success: boolean;
+  message?: string;
+  tesseractMissing?: boolean;
+  gstin?: string;
+  tradeName?: string;
+  legalName?: string;
+  businessName?: string;
+  pan?: string;
+  address?: string;
+  city?: string;
+  district?: string;
+  state?: string;
+  stateCode?: string;
+  stateName?: string;
+  pincode?: string;
+  panMismatch?: boolean;
+  companyNameTooLong?: boolean;
+  rawText?: string;
+}
+
+export interface SemGstinVerificationResult {
+  verified: boolean;
+  status: 'VERIFIED' | 'MISMATCH' | 'NOT_FOUND' | 'UNAVAILABLE';
+  message: string;
+  gstin?: string;
+  dbCompanyName?: string;
+  dbAddress?: string;
+  companyNameMatched?: boolean;
+  addressMatched?: boolean;
+}
 
 export interface DeleteRequestVerification {
   success: boolean;
@@ -387,5 +423,31 @@ export class CustomerService {
       partyCode,
       partyDesc
     }, { withCredentials: true });
+  }
+
+  /* ---------- Image OCR (Backend Spring Boot Tesseract) ---------- */
+  ocrImage(file: File): Observable<BackendImageOcrResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<BackendImageOcrResponse>(`${this.API}/customers/ocr-image`, formData, {
+      withCredentials: true
+    });
+  }
+
+  /* ---------- Office Database (SEM_GSTIN) Verification ---------- */
+  verifySemGstin(gstin: string, companyName?: string, address?: string): Observable<SemGstinVerificationResult> {
+    const params: Record<string, string> = { gstin: (gstin || '').trim().toUpperCase() };
+    if (companyName?.trim()) params['companyName'] = companyName.trim();
+    if (address?.trim()) params['address'] = address.trim();
+    return this.http.get<SemGstinVerificationResult>(`${this.API}/customers/verify-sem-gstin`, {
+      params,
+      withCredentials: true
+    }).pipe(
+      catchError(() => of({
+        verified: false,
+        status: 'UNAVAILABLE' as const,
+        message: 'ℹ Verification Unavailable – Unable to connect to office database.'
+      }))
+    );
   }
 }

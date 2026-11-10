@@ -53,5 +53,47 @@ describe('ZoneDivisionService', () => {
       manuallyChanged: false
     });
   });
+
+  it('updates selection on login and clears on logout across multiple sessions', () => {
+    // Session 1: Login with TKD
+    service.setLoginDivision('Northern Railway (NR)', 'Tughlakabad / Delhi Area (TKD)');
+    expect(service.currentSelection).toEqual({
+      zone: 'Northern Railway (NR)',
+      division: 'Tughlakabad / Delhi Area (TKD)',
+      manuallyChanged: false
+    });
+
+    // Logout 1
+    service.reset();
+    expect(service.currentSelection).toEqual({
+      zone: '',
+      division: '',
+      manuallyChanged: false
+    });
+
+    // Session 2: Login with DLI
+    service.setLoginDivision('Northern Railway (NR)', 'Delhi (DLI)');
+    expect(service.currentSelection).toEqual({
+      zone: 'Northern Railway (NR)',
+      division: 'Delhi (DLI)',
+      manuallyChanged: false
+    });
+
+    // Logout 2
+    service.reset();
+    expect(service.currentSelection).toEqual({
+      zone: '',
+      division: '',
+      manuallyChanged: false
+    });
+
+    // Session 3: Login with CSTM
+    service.setLoginDivision('Central Railway (CR)', 'Mumbai CSMT (CSTM)');
+    expect(service.currentSelection).toEqual({
+      zone: 'Central Railway (CR)',
+      division: 'Mumbai CSMT (CSTM)',
+      manuallyChanged: false
+    });
+  });
 });
 
