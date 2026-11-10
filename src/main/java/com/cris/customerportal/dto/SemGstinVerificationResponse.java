@@ -29,6 +29,17 @@ public class SemGstinVerificationResponse {
         return res;
     }
 
+    public static SemGstinVerificationResponse verifiedByGstinAndName(String gstin, String dbName, String message) {
+        SemGstinVerificationResponse res = new SemGstinVerificationResponse();
+        res.setVerified(true);
+        res.setStatus("VERIFIED");
+        res.setGstin(gstin);
+        res.setDbCompanyName(dbName);
+        res.setCompanyNameMatched(true);
+        res.setMessage(message != null ? message : "✓ Verified – Details matched with office database.");
+        return res;
+    }
+
     public static SemGstinVerificationResponse mismatch(String gstin, String dbName, String dbAddr,
                                                         boolean nameMatch, boolean addrMatch, String message) {
         SemGstinVerificationResponse res = new SemGstinVerificationResponse();
@@ -43,13 +54,23 @@ public class SemGstinVerificationResponse {
         return res;
     }
 
+    public static SemGstinVerificationResponse nameMismatch(String gstin, String dbName, String message) {
+        SemGstinVerificationResponse res = new SemGstinVerificationResponse();
+        res.setVerified(false);
+        res.setStatus("MISMATCH");
+        res.setGstin(gstin);
+        res.setDbCompanyName(dbName);
+        res.setCompanyNameMatched(false);
+        res.setMessage(message != null ? message : "⚠ Verification Failed – Entered details do not match office database.");
+        return res;
+    }
+
     public static SemGstinVerificationResponse notFound(String gstin, String message) {
         SemGstinVerificationResponse res = new SemGstinVerificationResponse();
         res.setVerified(false);
         res.setStatus("NOT_FOUND");
         res.setGstin(gstin);
         res.setCompanyNameMatched(false);
-        res.setAddressMatched(false);
         res.setMessage(message != null ? message : "ℹ Verification Unavailable – GSTIN not found in office database.");
         return res;
     }
@@ -127,4 +148,3 @@ public class SemGstinVerificationResponse {
         this.addressMatched = addressMatched;
     }
 }
-

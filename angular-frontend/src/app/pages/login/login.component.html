@@ -20,7 +20,7 @@
 
   <!-- Main Content -->
   <main class="login-main">
-    <div class="login-card">
+    <div class="login-card" [class.login-card-otp]="currentStep === 'OTP'">
       <!-- Card Banner / Emblem -->
       <div class="login-card-head">
         <div class="login-railways-banner">
@@ -51,7 +51,7 @@
       <!-- ═══════════════════════════════════════════════════════════ -->
       <!-- STEP 1: USER ID, PASSWORD, DIVISION CODE, CAPTCHA          -->
       <!-- ═══════════════════════════════════════════════════════════ -->
-      <form [formGroup]="loginForm" (ngSubmit)="onSubmitLogin()" class="login-grid" autocomplete="off">
+      <form *ngIf="currentStep === 'LOGIN'" [formGroup]="loginForm" (ngSubmit)="onSubmitLogin()" class="login-grid" autocomplete="off">
 
         <!-- User ID -->
         <div class="login-field-wrap">
@@ -217,11 +217,12 @@
           <div class="user-sub">
             <span>ID: <strong>{{ validatedUser?.userId }}</strong></span>
             <span>Division: <strong>{{ validatedUser?.divisionCode }}</strong></span>
+            <span *ngIf="currentStep === 'OTP'">Role: <strong>{{ designationForm.get('designation')?.value }}</strong></span>
           </div>
         </div>
       </div>
 
-      <form *ngIf="currentStep !== 'LOGIN'" [formGroup]="designationForm" (ngSubmit)="onSubmitDesignation()" class="login-grid auth-expansion" autocomplete="off">
+      <form *ngIf="currentStep === 'DESIGNATION'" [formGroup]="designationForm" (ngSubmit)="onSubmitDesignation()" class="login-grid auth-expansion" autocomplete="off">
         <div class="login-field-wrap">
           <label for="select-desig">Role <b>*</b></label>
           <div class="login-control select-wrap">
@@ -231,12 +232,15 @@
               <line x1="20" y1="8" x2="20" y2="14" />
               <line x1="23" y1="11" x2="17" y2="11" />
             </svg>
-            <select id="select-desig" formControlName="designation" class="login-select" (change)="onSubmitDesignation()" [disabled]="loading || currentStep === 'OTP'">
+            <select id="select-desig" formControlName="designation" class="login-select" (change)="onSubmitDesignation()" [disabled]="loading">
               <option value="">Select Role</option>
               <option *ngFor="let desig of availableDesignations" [value]="desig">
                 {{ desig }}
               </option>
             </select>
+            <svg class="login-select-arrow" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
         </div>
 
