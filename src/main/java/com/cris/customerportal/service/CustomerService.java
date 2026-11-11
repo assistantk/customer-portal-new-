@@ -21,6 +21,8 @@ public interface CustomerService {
   default com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin) {
     return checkGstinDuplicate(gstin, null);
   }
+
+  com.cris.customerportal.dto.PanDuplicateCheckResult checkPanDuplicate(String pan);
   // Ownership (MEMWGONOWNRSHIP)
   java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);

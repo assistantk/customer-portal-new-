@@ -585,6 +585,21 @@
                             style="text-transform: uppercase;" [disabled]="isPanDisabled" [readonly]="isPanDisabled" />
                     </div>
                     <small *ngIf="errors['panNumber']" class="error">{{ errors['panNumber'] }}</small>
+                    <small *ngIf="mode === 'new' && panDuplicateStatus === 'checking'" class="gstin-db-status checking" role="status" aria-live="polite">
+                        Checking PAN duplicate status...
+                    </small>
+                    <small *ngIf="mode === 'new' && panDuplicateStatus === 'available'" class="gstin-db-status verified">
+                        ✓ Available – No existing company found with this PAN.
+                    </small>
+                    <div *ngIf="mode === 'new' && panDuplicateStatus === 'duplicate'" class="gstin-duplicate-warning" style="margin-top: 4px; padding: 6px 8px; background: #fef2f2; border: 1px solid #f87171; border-radius: 4px; font-size: 0.78rem; color: #b91c1c;">
+                        <div><strong>Company Already Exists:</strong> This PAN is already registered with company code <strong>{{ selectedPanCompany?.companyCode }}</strong>.</div>
+                        <button type="button" class="view-details-btn" (click)="showPanDuplicateModal = true" style="margin-top: 4px; font-size: 0.75rem; padding: 2px 8px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; cursor: pointer; font-weight: 500;">
+                            View Company Details & Options
+                        </button>
+                    </div>
+                    <small *ngIf="mode === 'new' && panDuplicateStatus === 'unavailable'" class="gstin-db-status unavailable">
+                        ℹ Duplicate Check Unavailable – Unable to verify this PAN.
+                    </small>
                 </div>
 
                 <!-- Row 2: Address | City | Pincode -->
@@ -957,6 +972,123 @@
             <div class="modal-footer" style="border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: right;">
                 <button type="button" class="btn btn-secondary" (click)="closeDuplicateModal()" style="padding: 6px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; color: #334155; font-size: 0.85rem; font-weight: 500; cursor: pointer;">
                     Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Already Exists (PAN Duplicate) Modal -->
+    <div *ngIf="showPanDuplicateModal" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+        <div class="modal-dialog" style="background: #ffffff; border-radius: 10px; max-width: 720px; width: 94%; max-height: 88vh; overflow-y: auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); padding: 22px; border: 1px solid #cbd5e1;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
+                <h5 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #b91c1c; display: flex; align-items: center; gap: 8px;">
+                    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    Company Already Exists
+                </h5>
+                <button type="button" (click)="onPanDuplicateNo()" aria-label="Close" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b; line-height: 1;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;">
+                    <p style="font-size: 0.9rem; color: #9f1239; margin: 0; line-height: 1.5; font-weight: 500;">
+                        This PAN is already registered in the Freight Code Generator. The company already has an existing code. You cannot generate another code for the same company. Would you like to add a new GSTIN or update the existing company details?
+                    </p>
+                </div>
+
+                <!-- If multiple matching companies (e.g. Global Customer and Handling Agent) -->
+                <div *ngIf="panDuplicateResult && panDuplicateResult.companies.length > 1" style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+                    <button *ngFor="let c of panDuplicateResult.companies" type="button"
+                            (click)="selectPanCompany(c)"
+                            [style.background]="selectedPanCompany === c ? '#2563eb' : '#f1f5f9'"
+                            [style.color]="selectedPanCompany === c ? '#ffffff' : '#334155'"
+                            style="padding: 6px 14px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+                        {{ c.recordType }}: {{ c.companyCode }}
+                    </button>
+                </div>
+
+                <div *ngIf="selectedPanCompany" style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+                    <div style="background: #f8fafc; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 0.9rem; color: #1e293b; display: flex; justify-content: space-between;">
+                        <span>Existing Company Details</span>
+                        <span style="color: #2563eb;">{{ selectedPanCompany.recordType }} ({{ selectedPanCompany.companyCode }})</span>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <tbody>
+                            <tr><th style="width: 28%; background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Company Name</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">{{ selectedPanCompany.companyName || 'N/A' }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">PAN Number</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: 700; color: #0f172a;">{{ selectedPanCompany.pan }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Company Code</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #2563eb;">{{ selectedPanCompany.companyCode }}</td></tr>
+                            <tr><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Record Type</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ selectedPanCompany.recordType }}</td></tr>
+                            <tr *ngIf="selectedPanCompany.primaryAddress"><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">Primary Address</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ selectedPanCompany.primaryAddress }}</td></tr>
+                            <tr *ngIf="selectedPanCompany.city || selectedPanCompany.pincode"><th style="background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; color: #475569;">City / PIN</th><td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">{{ selectedPanCompany.city || '' }} {{ selectedPanCompany.pincode ? '(' + selectedPanCompany.pincode + ')' : '' }}</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div style="background: #f8fafc; padding: 8px 14px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 0.85rem; color: #334155;">
+                        Registered GSTINs ({{ selectedPanCompany.gstins?.length || 0 }})
+                    </div>
+                    <div style="max-height: 200px; overflow-y: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                            <thead>
+                                <tr style="background: #f1f5f9; color: #475569; text-align: left;">
+                                    <th style="padding: 6px 10px; border-bottom: 1px solid #cbd5e1;">#</th>
+                                    <th style="padding: 6px 10px; border-bottom: 1px solid #cbd5e1;">GSTIN</th>
+                                    <th style="padding: 6px 10px; border-bottom: 1px solid #cbd5e1;">Address</th>
+                                    <th style="padding: 6px 10px; border-bottom: 1px solid #cbd5e1;">City / PIN</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr *ngFor="let g of selectedPanCompany.gstins; let i = index" style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 6px 10px; color: #64748b;">{{ i + 1 }}</td>
+                                    <td style="padding: 6px 10px; font-family: monospace; font-weight: 600; color: #1e293b;">{{ g.gstin }}</td>
+                                    <td style="padding: 6px 10px; color: #334155;">{{ g.address || 'N/A' }}</td>
+                                    <td style="padding: 6px 10px; color: #475569;">{{ g.city || '' }} {{ g.pincode ? '(' + g.pincode + ')' : '' }}</td>
+                                </tr>
+                                <tr *ngIf="!selectedPanCompany.gstins || selectedPanCompany.gstins.length === 0">
+                                    <td colspan="4" style="padding: 10px; text-align: center; color: #64748b; font-style: italic;">No GSTIN details found in detail table.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" (click)="onPanDuplicateNo()" style="padding: 7px 18px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #334155; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
+                    No – Do Not Update
+                </button>
+                <button type="button" class="btn btn-primary" (click)="onPanDuplicateYes()" style="padding: 7px 20px; border: 1px solid #1d4ed8; border-radius: 6px; background: #2563eb; color: #ffffff; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
+                    Yes – Update Existing Company
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Confirmation Modal (Add New GSTIN vs Update Existing Details) -->
+    <div *ngIf="showPanConfirmationModal" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+        <div class="modal-dialog" style="background: #ffffff; border-radius: 10px; max-width: 550px; width: 92%; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); padding: 22px; border: 1px solid #cbd5e1;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
+                <h5 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                    <svg width="20" height="20" fill="none" stroke="#2563eb" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    Update Existing Company
+                </h5>
+                <button type="button" (click)="onPanConfirmationCancel()" aria-label="Close" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b; line-height: 1;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.92rem; color: #334155; margin-bottom: 16px; font-weight: 500;">
+                    Do you want to add a new GSTIN to this existing company or update its existing details?
+                </p>
+                <div *ngIf="selectedPanCompany" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; font-size: 0.85rem; color: #475569;">
+                    <div><strong>Company:</strong> {{ selectedPanCompany.companyName }}</div>
+                    <div><strong>Code:</strong> <span style="font-weight: 700; color: #2563eb;">{{ selectedPanCompany.companyCode }}</span> ({{ selectedPanCompany.recordType }})</div>
+                    <div><strong>PAN:</strong> <span style="font-family: monospace; font-weight: 600;">{{ selectedPanCompany.pan }}</span></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                <button type="button" (click)="onPanConfirmationCancel()" style="padding: 7px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #475569; font-size: 0.85rem; font-weight: 500; cursor: pointer;">
+                    Cancel
+                </button>
+                <button type="button" (click)="onPanUpdateExistingDetails()" style="padding: 7px 16px; border: 1px solid #2563eb; border-radius: 6px; background: #eff6ff; color: #1d4ed8; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                    Update Existing Details
+                </button>
+                <button type="button" (click)="onPanAddNewGstin()" style="padding: 7px 18px; border: 1px solid #16a34a; border-radius: 6px; background: #16a34a; color: #ffffff; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                    Add New GSTIN
                 </button>
             </div>
         </div>

@@ -28,6 +28,34 @@ export interface GstinDuplicateCheckResult {
   records: GstinDuplicateRecord[];
 }
 
+export interface PanGstinRecord {
+  gstin?: string;
+  address?: string;
+  city?: string;
+  pincode?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface PanCompanyRecord {
+  recordType: string;
+  codeType: string;
+  companyCode: string;
+  companyName: string;
+  pan: string;
+  primaryAddress?: string;
+  city?: string;
+  pincode?: string;
+  gstins: PanGstinRecord[];
+}
+
+export interface PanDuplicateCheckResult {
+  duplicate: boolean;
+  status: string;
+  message: string;
+  companies: PanCompanyRecord[];
+}
+
 export interface GstinEntry {
   gstinId?: any;
   state: string;
@@ -280,6 +308,21 @@ export class CustomerService {
         status: 'UNAVAILABLE',
         message: 'Duplicate Check Unavailable – Unable to verify this GSTIN.',
         records: []
+      }))
+    );
+  }
+
+  checkPanDuplicate(pan: string): Observable<PanDuplicateCheckResult> {
+    const clean = (pan || '').trim().toUpperCase();
+    return this.http.get<PanDuplicateCheckResult>(`${this.API}/customers/check-pan-duplicate`, {
+      params: { pan: clean },
+      withCredentials: true
+    }).pipe(
+      catchError(() => of({
+        duplicate: false,
+        status: 'UNAVAILABLE',
+        message: 'Duplicate Check Unavailable – Unable to verify this PAN.',
+        companies: []
       }))
     );
   }

@@ -134,6 +134,14 @@ public class CustomerController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/check-pan-duplicate")
+    public ResponseEntity<com.cris.customerportal.dto.PanDuplicateCheckResult> checkPanDuplicate(
+            @RequestParam String pan) {
+        LOGGER.info("PAN duplicate check request: pan={}", DataMaskingUtil.maskSensitive(pan));
+        com.cris.customerportal.dto.PanDuplicateCheckResult result = service.checkPanDuplicate(pan);
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/agent-lookup")
     public com.cris.customerportal.dto.GlobalAgentResponse lookupAgent(@RequestParam String code) {
         LOGGER.info("Handling agent lookup request: code={}", code);

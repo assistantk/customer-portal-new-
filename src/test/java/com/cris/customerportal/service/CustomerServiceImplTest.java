@@ -138,9 +138,8 @@ class CustomerServiceImplTest {
         assertEquals(1, results.size());
         assertEquals(List.of("HA01"), results.get(0).getHandlingAgentCodes());
         verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMGLBLHNDGAGNT")
-                    && sql.contains("INSTR(',' ||")
-                    && sql.contains("MAVCUSTGSTNUMB")
+                sql.contains("FROM MEMGLBLHNDGAGNTDTLS")
+                    && sql.contains("MAVCUSTGSTNUMB = ?")
                     && sql.contains("SELECT DISTINCT MAVHNDGAGNTCODE")));
         verify(agentLookup).setString(1, "07ABCDE1234F1Z5");
     }
@@ -265,7 +264,10 @@ class CustomerServiceImplTest {
             + "SQL QUERY:\n"
             + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"
+            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'APEPA6196G');"
+        ));
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"
         ));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC\n\nSQL QUERY:\n"));
         assertFalse(body.contains("Prasanta Mondal"));
@@ -438,7 +440,10 @@ class CustomerServiceImplTest {
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
                 + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
-                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'10ABACA6462C1ZD','ABACA6462C');"
+                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'ABACA6462C');"
+        ));
+        assertTrue(body.contains(
+            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', 'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
         ));
         assertFalse(body.contains("INSERT INTO MEMGLBLCUST ("));
         verify(existsPs, never()).executeUpdate();
@@ -473,7 +478,10 @@ class CustomerServiceImplTest {
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR',"
                 + "'PATNA ROAD','PATNA',NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,"
-                + "'10ABACA6462C1ZD','ABACA6462C');"
+                + "'ABACA6462C');"
+        ));
+        assertTrue(emailedBody(mailSender).contains(
+            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR', 'PATNA ROAD', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
         ));
     }
 
@@ -505,7 +513,10 @@ class CustomerServiceImplTest {
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED',"
                 + "'22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,"
-                + "'SR.DCM/MDU',NULL,'09AAACJ2055K1ZJ','AAACJ2055K');"
+                + "'SR.DCM/MDU',NULL,'AAACJ2055K');"
+        ));
+        assertTrue(emailedBody(mailSender).contains(
+            "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K', SYSDATE, NULL);"
         ));
         assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
         verify(existsPs, never()).executeUpdate();
@@ -611,7 +622,7 @@ class CustomerServiceImplTest {
         ));
 
         assertTrue(emailedBody(mailSender).contains("WHERE MAVGLBLCUSTCODE = 'A';"));
-        verify(lookupPs).setString(1, "A");
+        verify(lookupPs, atLeastOnce()).setString(1, "A");
         verify(lookupPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
@@ -841,13 +852,21 @@ class CustomerServiceImplTest {
                 service(dataSource, mailSender).updateOldCustomerJDBC(formData);
 
                 String body = emailedBody(mailSender);
-                String expectedAssignments = testCase.getValue().get("expected")
-                    .replace("MAVGLBLCUSTNAME", nameColumn)
-                    .replace("MAVGLBLCUSTADDRTEXT", addressColumn)
-                    .replace("MAVCUSTGSTNUMB", "MAVCUSTGSTNUMB")
-                    .replace("CITYNAME", "global".equals(codeType) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME");
-                assertTrue(body.contains("UPDATE " + table + " SET\n" + expectedAssignments
-                    + "\nWHERE "), () -> codeType + " " + testCase.getKey() + ":\n" + body);
+                if ("GSTIN".equals(testCase.getKey())) {
+                    String dtlsTable = "global".equals(codeType) ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
+                    assertTrue(body.contains("Table: " + dtlsTable), () -> codeType + " GSTIN table:\n" + body);
+                    assertTrue(body.contains("INSERT INTO " + dtlsTable), () -> codeType + " GSTIN insert:\n" + body);
+                    assertTrue(body.contains("DELETE FROM " + dtlsTable), () -> codeType + " GSTIN delete:\n" + body);
+                    assertFalse(body.contains("UPDATE " + table), () -> codeType + " parent should not be updated on GSTIN change:\n" + body);
+                } else {
+                    String expectedAssignments = testCase.getValue().get("expected")
+                        .replace("MAVGLBLCUSTNAME", nameColumn)
+                        .replace("MAVGLBLCUSTADDRTEXT", addressColumn)
+                        .replace("MAVCUSTGSTNUMB", "MAVCUSTGSTNUMB")
+                        .replace("CITYNAME", "global".equals(codeType) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME");
+                    assertTrue(body.contains("UPDATE " + table + " SET\n" + expectedAssignments
+                        + "\nWHERE "), () -> codeType + " " + testCase.getKey() + ":\n" + body);
+                }
                 verify(lookupPs, never()).executeUpdate();
                 verify(connection, never()).prepareStatement(startsWith("UPDATE"));
             }
@@ -1546,7 +1565,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
-        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST WHERE"))).thenReturn(globalLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(ownershipRs.next()).thenReturn(true);
@@ -1576,7 +1595,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
-        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST WHERE"))).thenReturn(globalLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(ownershipRs.next()).thenReturn(false);
@@ -1604,7 +1623,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(null);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
-        when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalLookup);
+        when(connection.prepareStatement(contains("FROM MEMGLBLCUST WHERE"))).thenReturn(globalLookup);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(globalLookup.executeQuery()).thenReturn(globalRs);
         when(partyRs.next()).thenReturn(false);
@@ -2294,7 +2313,8 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("MAVCUSTPANNUMB = 'AAECR3577N'"));
-        assertTrue(body.contains("MAVCUSTGSTNUMB = '27AAECR3577NLZE'"));
+        assertTrue(body.contains("INSERT INTO MEMGLBLCUSTDTLS"));
+        assertTrue(body.contains("'27AAECR3577NLZE'"));
     }
 
     @Test
@@ -2909,5 +2929,164 @@ class CustomerServiceImplTest {
         formData.put("gstinNumbers", "20APEPA6196G1Z9");
 
         assertThrows(ResourceAlreadyExistsException.class, () -> service.registerNewEntryJDBC(formData));
+    }
+
+    @Test
+    void checkPanDuplicate_returnsAvailableWhenPanNotFound() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(false);
+
+        CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
+
+        // Blank or invalid
+        assertEquals("AVAILABLE", service.checkPanDuplicate("").getStatus());
+        assertEquals("AVAILABLE", service.checkPanDuplicate(null).getStatus());
+        assertEquals("AVAILABLE", service.checkPanDuplicate("INVALID123").getStatus());
+
+        // Valid but not in DB
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+        assertFalse(res.isDuplicate());
+        assertEquals("AVAILABLE", res.getStatus());
+        assertTrue(res.getCompanies().isEmpty());
+    }
+
+    @Test
+    void checkPanDuplicate_returnsDuplicateWhenFoundInGlobalCustomer() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psParent = mock(PreparedStatement.class);
+        ResultSet rsParent = mock(ResultSet.class);
+        PreparedStatement psDtls = mock(PreparedStatement.class);
+        ResultSet rsDtls = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(psParent.executeQuery()).thenReturn(rsParent);
+        when(rsParent.next()).thenReturn(true, false);
+        when(rsParent.getString("MAVGLBLCUSTCODE")).thenReturn("ABPC");
+        when(rsParent.getString("MAVGLBLCUSTNAME")).thenReturn("ABP PRIVATE LIMITED");
+        when(rsParent.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+        when(rsParent.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("123 DELHI ROAD");
+        when(rsParent.getString("CITY")).thenReturn("DELHI");
+        when(rsParent.getString("MAVPCOCODE")).thenReturn("110001");
+
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUSTDTLS WHERE UPPER(TRIM(MAVGLBLCUSTCODE))"))).thenReturn(psDtls);
+        when(psDtls.executeQuery()).thenReturn(rsDtls);
+        when(rsDtls.next()).thenReturn(true, false);
+        when(rsDtls.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
+        when(rsDtls.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("123 DELHI ROAD");
+        when(rsDtls.getString("CITY")).thenReturn("DELHI");
+        when(rsDtls.getString("MANPINCODE")).thenReturn("110001");
+
+        CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+
+        assertTrue(res.isDuplicate());
+        assertEquals("DUPLICATE", res.getStatus());
+        assertEquals(1, res.getCompanies().size());
+
+        com.cris.customerportal.dto.PanCompanyRecord comp = res.getCompanies().get(0);
+        assertEquals("ABPC", comp.getCompanyCode());
+        assertEquals("ABP PRIVATE LIMITED", comp.getCompanyName());
+        assertEquals("ABCDE1234F", comp.getPan());
+        assertEquals("Global Customer", comp.getRecordType());
+        assertEquals(1, comp.getGstins().size());
+        assertEquals("07ABCDE1234F1Z5", comp.getGstins().get(0).getGstin());
+    }
+
+    @Test
+    void checkPanDuplicate_returnsDuplicateWhenFoundInHandlingAgent() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psParent = mock(PreparedStatement.class);
+        ResultSet rsParent = mock(ResultSet.class);
+        PreparedStatement psDtls = mock(PreparedStatement.class);
+        ResultSet rsDtls = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNT WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(psParent.executeQuery()).thenReturn(rsParent);
+        when(rsParent.next()).thenReturn(true, false);
+        when(rsParent.getString("CODE")).thenReturn("HA01");
+        when(rsParent.getString("NAME")).thenReturn("HA AGENT CORP");
+        when(rsParent.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+        when(rsParent.getString("ADDR")).thenReturn("STATION ROAD");
+        when(rsParent.getString("CITY")).thenReturn("MUMBAI");
+        when(rsParent.getString("MAVPCOCODE")).thenReturn("400001");
+
+        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS WHERE UPPER(TRIM(MAVHNDGAGNTCODE))"))).thenReturn(psDtls);
+        when(psDtls.executeQuery()).thenReturn(rsDtls);
+        when(rsDtls.next()).thenReturn(true, false);
+        when(rsDtls.getString("MAVCUSTGSTNUMB")).thenReturn("27ABCDE1234F1Z8");
+        when(rsDtls.getString("MAVHNDGAGNTADDRTEXT")).thenReturn("STATION ROAD");
+        when(rsDtls.getString("CITY")).thenReturn("MUMBAI");
+        when(rsDtls.getString("MANPINCODE")).thenReturn("400001");
+
+        CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+
+        assertTrue(res.isDuplicate());
+        assertEquals("DUPLICATE", res.getStatus());
+        assertEquals(1, res.getCompanies().size());
+
+        com.cris.customerportal.dto.PanCompanyRecord comp = res.getCompanies().get(0);
+        assertEquals("HA01", comp.getCompanyCode());
+        assertEquals("Handling Agent", comp.getRecordType());
+        assertEquals(1, comp.getGstins().size());
+        assertEquals("27ABCDE1234F1Z8", comp.getGstins().get(0).getGstin());
+    }
+
+    @Test
+    void checkPanDuplicate_returnsUnavailableOnSQLException() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        when(dataSource.getConnection()).thenThrow(new SQLException("Connection refused"));
+
+        CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+
+        assertFalse(res.isDuplicate());
+        assertEquals("UNAVAILABLE", res.getStatus());
+        assertTrue(res.getMessage().contains("Unavailable"));
+    }
+
+    @Test
+    void registerNewEntryJDBC_blocksWhenPanAlreadyExistsInSameRecordType() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement psParent = mock(PreparedStatement.class);
+        ResultSet rsParent = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(psParent.executeQuery()).thenReturn(rsParent);
+        when(rsParent.next()).thenReturn(true, false);
+        when(rsParent.getString("MAVGLBLCUSTCODE")).thenReturn("ABPC");
+        when(rsParent.getString("MAVGLBLCUSTNAME")).thenReturn("ABP PRIVATE LIMITED");
+        when(rsParent.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+
+        CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "NEWC");
+        formData.put("companyName", "ABP BRANCH");
+        formData.put("address", "Haryana Road");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "ABCDE1234F");
+        formData.put("gstinNumbers", "06ABCDE1234F1Z2");
+
+        ResourceAlreadyExistsException ex = assertThrows(
+            ResourceAlreadyExistsException.class,
+            () -> service.registerNewEntryJDBC(formData)
+        );
+        assertTrue(ex.getMessage().contains("Company Already Exists"));
+        assertTrue(ex.getMessage().contains("ABPC"));
     }
 }

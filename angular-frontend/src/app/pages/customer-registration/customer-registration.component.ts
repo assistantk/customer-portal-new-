@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout, firstValueFrom } from 'rxjs';
-import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, SemGstinVerificationResult, GstinDuplicateRecord, GstinDuplicateCheckResult } from '../../services/customer.service';
+import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, SemGstinVerificationResult, GstinDuplicateRecord, GstinDuplicateCheckResult, PanDuplicateCheckResult, PanCompanyRecord, PanGstinRecord } from '../../services/customer.service';
 import { PanOcrService, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
@@ -192,6 +192,144 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   showDuplicateModal = false;
   selectedDuplicateRecords: GstinDuplicateRecord[] = [];
   private duplicateCheckTimers: { [index: number]: any } = {};
+
+  // PAN Duplicate Check State
+  showPanDuplicateModal = false;
+  showPanConfirmationModal = false;
+  panDuplicateStatus: 'idle' | 'checking' | 'available' | 'duplicate' | 'unavailable' = 'idle';
+  panDuplicateMessage?: string;
+  panDuplicateResult: PanDuplicateCheckResult | null = null;
+  selectedPanCompany: PanCompanyRecord | null = null;
+  private panCheckTimer: any = null;
+  private panCheckReqId = 0;
+
+  selectPanCompany(company: PanCompanyRecord): void {
+    this.selectedPanCompany = company;
+    this.cdr.markForCheck();
+  }
+
+  triggerPanDuplicateCheck(pan: string): void {
+    if (this.panCheckTimer) {
+      clearTimeout(this.panCheckTimer);
+    }
+    if (this.mode !== 'new' || !pan) {
+      this.panDuplicateStatus = 'idle';
+      this.panDuplicateMessage = undefined;
+      this.panDuplicateResult = null;
+      this.selectedPanCompany = null;
+      return;
+    }
+
+    const cleanPan = (pan || '').trim().toUpperCase();
+    if (!panRe.test(cleanPan)) {
+      this.panDuplicateStatus = 'idle';
+      this.panDuplicateMessage = undefined;
+      this.panDuplicateResult = null;
+      this.selectedPanCompany = null;
+      return;
+    }
+
+    const reqId = ++this.panCheckReqId;
+    this.panDuplicateStatus = 'checking';
+    this.panDuplicateMessage = undefined;
+    this.cdr.markForCheck();
+
+    this.panCheckTimer = setTimeout(() => {
+      this.customerService.checkPanDuplicate(cleanPan).subscribe({
+        next: (res) => {
+          if (this.panCheckReqId !== reqId) return;
+          if (res.status === 'DUPLICATE' && res.companies && res.companies.length > 0) {
+            this.panDuplicateStatus = 'duplicate';
+            this.panDuplicateMessage = res.message;
+            this.panDuplicateResult = res;
+            this.selectedPanCompany = res.companies[0];
+            this.showPanDuplicateModal = true;
+          } else if (res.status === 'AVAILABLE') {
+            this.panDuplicateStatus = 'available';
+            this.panDuplicateMessage = res.message;
+            this.panDuplicateResult = null;
+            this.selectedPanCompany = null;
+          } else {
+            this.panDuplicateStatus = 'unavailable';
+            this.panDuplicateMessage = res.message;
+            this.panDuplicateResult = null;
+            this.selectedPanCompany = null;
+          }
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          if (this.panCheckReqId !== reqId) return;
+          this.panDuplicateStatus = 'unavailable';
+          this.panDuplicateMessage = 'Duplicate Check Unavailable – Unable to verify this PAN.';
+          this.panDuplicateResult = null;
+          this.selectedPanCompany = null;
+          this.cdr.markForCheck();
+        }
+      });
+    }, 350);
+  }
+
+  onPanDuplicateYes(): void {
+    this.showPanDuplicateModal = false;
+    this.showPanConfirmationModal = true;
+    this.cdr.markForCheck();
+  }
+
+  onPanDuplicateNo(): void {
+    this.showPanDuplicateModal = false;
+    this.showPanConfirmationModal = false;
+    this.panDuplicateStatus = 'idle';
+    this.panDuplicateMessage = undefined;
+    this.panDuplicateResult = null;
+    this.selectedPanCompany = null;
+    this.reset();
+    this.cdr.markForCheck();
+  }
+
+  onPanConfirmationCancel(): void {
+    this.showPanConfirmationModal = false;
+    this.cdr.markForCheck();
+  }
+
+  onPanAddNewGstin(company?: PanCompanyRecord): void {
+    const targetComp = company || this.selectedPanCompany || (this.panDuplicateResult?.companies?.[0]);
+    if (!targetComp) return;
+    this.showPanConfirmationModal = false;
+    this.showPanDuplicateModal = false;
+    this.panDuplicateStatus = 'idle';
+
+    const targetType: 'GLOBAL' | 'HANDLING_AGENT' = targetComp.codeType === 'handling_agent' ? 'HANDLING_AGENT' : 'GLOBAL';
+    this.switchMode('old');
+    this.codeType = targetType;
+    this.form.customerCode = targetComp.companyCode;
+    this.triggerOldLookup(targetComp.companyCode, targetType);
+
+    const checkInterval = setInterval(() => {
+      if (!this.lookupLoading) {
+        clearInterval(checkInterval);
+        const hasEmptyGstin = this.gstins.some(g => !g.gstin || !g.gstin.trim());
+        if (!hasEmptyGstin) {
+          this.addGstin();
+        }
+        this.cdr.markForCheck();
+      }
+    }, 100);
+    setTimeout(() => clearInterval(checkInterval), 10000);
+  }
+
+  onPanUpdateExistingDetails(company?: PanCompanyRecord): void {
+    const targetComp = company || this.selectedPanCompany || (this.panDuplicateResult?.companies?.[0]);
+    if (!targetComp) return;
+    this.showPanConfirmationModal = false;
+    this.showPanDuplicateModal = false;
+    this.panDuplicateStatus = 'idle';
+
+    const targetType: 'GLOBAL' | 'HANDLING_AGENT' = targetComp.codeType === 'handling_agent' ? 'HANDLING_AGENT' : 'GLOBAL';
+    this.switchMode('old');
+    this.codeType = targetType;
+    this.form.customerCode = targetComp.companyCode;
+    this.triggerOldLookup(targetComp.companyCode, targetType);
+  }
 
   isMultipleGstin(): boolean {
     return Boolean(this.gstins && this.gstins.length > 1);
@@ -544,6 +682,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   private resetFormState(): void {
     this.notice = '';
     this.loading = false;
+    this.panDuplicateStatus = 'idle';
+    this.panDuplicateMessage = undefined;
+    this.panDuplicateResult = null;
+    this.selectedPanCompany = null;
+    this.showPanDuplicateModal = false;
+    this.showPanConfirmationModal = false;
     this.lookupLoading = false;
     this.lookupDone = false;
     this.lookupError = '';
@@ -1350,6 +1494,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     if (this.mode === 'new') {
+      if (this.panDuplicateStatus === 'duplicate') {
+        return false;
+      }
       const name = (this.form.companyName || '').trim();
       if (!name || name.length > 40) return false;
 
@@ -2165,6 +2312,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       delete this.errors['panNumber'];
     }
 
+    if (this.mode === 'new') {
+      if (normalizedPan && panRe.test(normalizedPan)) {
+        this.triggerPanDuplicateCheck(normalizedPan);
+      } else {
+        this.panDuplicateStatus = 'idle';
+        this.panDuplicateMessage = undefined;
+        this.panDuplicateResult = null;
+        this.selectedPanCompany = null;
+      }
+    }
+
     this.gstins.forEach((gstin, index) => {
       const status = this.getGstinPanStatus(gstin.gstin, this.form.panNumber);
       const field = `gstin_${index}_gstin`;
@@ -2451,6 +2609,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           } else {
             this.form.panNumber = extractedPan.toUpperCase();
             delete this.errors['panNumber'];
+            if (this.mode === 'new') {
+              this.triggerPanDuplicateCheck(this.form.panNumber);
+            }
           }
         }
 
