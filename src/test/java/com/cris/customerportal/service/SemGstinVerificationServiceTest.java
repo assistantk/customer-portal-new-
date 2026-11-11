@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.sql.*;
-import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -48,13 +47,9 @@ class SemGstinVerificationServiceTest {
         when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString("SAVCUSTGSTIN")).thenReturn("07AAAAA0000A1Z4");
         when(resultSet.getString("SAVCUSTNAME")).thenReturn("ACME LOGISTICS PRIVATE LIMITED");
-        when(resultSet.getString("SAVCUSTADDR")).thenReturn("PLOT NO 12, CONNAUGHT PLACE, NEW DELHI 110001");
-        when(resultSet.getString("SAVCVALDFLAG")).thenReturn("Y");
-        when(resultSet.getDate("SADEFFCFROM")).thenReturn(Date.valueOf(LocalDate.now().minusDays(10)));
-        when(resultSet.getDate("SADEFFCTO")).thenReturn(null);
 
         SemGstinVerificationResponse res = service.verifyGstin(
-                "07AAAAA0000A1Z4", "ACME LOGISTICS", "12, CONNAUGHT PLACE, NEW DELHI, 110001"
+                "07AAAAA0000A1Z4", "ACME LOGISTICS", "an unrelated address"
         );
 
         assertNotNull(res);
@@ -63,6 +58,10 @@ class SemGstinVerificationServiceTest {
         assertEquals("✓ Verified – Details matched with office database.", res.getMessage());
         assertEquals("07AAAAA0000A1Z4", res.getGstin());
         assertEquals("ACME LOGISTICS PRIVATE LIMITED", res.getDbCompanyName());
+        assertNull(res.getDbAddress());
+        assertNull(res.getAddressMatched());
+        verify(connection).prepareStatement(
+                "SELECT SAVCUSTGSTIN, SAVCUSTNAME FROM SEM_GSTIN WHERE UPPER(TRIM(SAVCUSTGSTIN)) = ?");
     }
 
     @Test
@@ -70,10 +69,6 @@ class SemGstinVerificationServiceTest {
         when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString("SAVCUSTGSTIN")).thenReturn("07AAAAA0000A1Z4");
         when(resultSet.getString("SAVCUSTNAME")).thenReturn("SILIGURI BARDANA COMPANY");
-        when(resultSet.getString("SAVCUSTADDR")).thenReturn("KANPUR NAGAR 208001");
-        when(resultSet.getString("SAVCVALDFLAG")).thenReturn("Y");
-        when(resultSet.getDate("SADEFFCFROM")).thenReturn(null);
-        when(resultSet.getDate("SADEFFCTO")).thenReturn(null);
 
         SemGstinVerificationResponse res = service.verifyGstin(
                 "07AAAAA0000A1Z4", "COMPLETELY DIFFERENT ENTERPRISE", "KANPUR 208001"
@@ -87,24 +82,19 @@ class SemGstinVerificationServiceTest {
     }
 
     @Test
-    void testVerifyGstin_addressPinConflict_returnsMismatch() throws SQLException {
+    void testVerifyGstin_matchingGstinAndName_ignoresAddress() throws SQLException {
         when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString("SAVCUSTGSTIN")).thenReturn("07AAAAA0000A1Z4");
         when(resultSet.getString("SAVCUSTNAME")).thenReturn("ACME LOGISTICS");
-        when(resultSet.getString("SAVCUSTADDR")).thenReturn("DELHI 110001");
-        when(resultSet.getString("SAVCVALDFLAG")).thenReturn("Y");
-        when(resultSet.getDate("SADEFFCFROM")).thenReturn(null);
-        when(resultSet.getDate("SADEFFCTO")).thenReturn(null);
 
-        // Entered address has PIN 700001 (Kolkata) vs DB 110001 (Delhi)
         SemGstinVerificationResponse res = service.verifyGstin(
                 "07AAAAA0000A1Z4", "ACME LOGISTICS", "KOLKATA 700001"
         );
 
         assertNotNull(res);
-        assertFalse(res.isVerified());
-        assertEquals("MISMATCH", res.getStatus());
-        assertEquals("⚠ Verification Failed – Entered details do not match office database.", res.getMessage());
+        assertTrue(res.isVerified());
+        assertEquals("VERIFIED", res.getStatus());
+        assertNull(res.getAddressMatched());
     }
 
     @Test
@@ -145,30 +135,4 @@ class SemGstinVerificationServiceTest {
         assertEquals("UNAVAILABLE", res.getStatus());
         assertEquals("ℹ Verification Unavailable – Unable to connect to office database.", res.getMessage());
     }
-
-    @Test
-    void testIsRecordCurrentlyValid_inactiveFlag() {
-        SemGstinVerificationServiceImpl.GstinDbRecord rec = new SemGstinVerificationServiceImpl.GstinDbRecord();
-        rec.valdFlag = "N";
-        assertFalse(service.isRecordCurrentlyValid(rec, LocalDate.now()));
-
-        rec.valdFlag = "Y";
-        assertTrue(service.isRecordCurrentlyValid(rec, LocalDate.now()));
-    }
-
-    @Test
-    void testIsRecordCurrentlyValid_dateRanges() {
-        SemGstinVerificationServiceImpl.GstinDbRecord rec = new SemGstinVerificationServiceImpl.GstinDbRecord();
-        rec.valdFlag = "Y";
-        rec.effcFrom = LocalDate.now().plusDays(5); // future effective date
-        assertFalse(service.isRecordCurrentlyValid(rec, LocalDate.now()));
-
-        rec.effcFrom = LocalDate.now().minusDays(5);
-        rec.effcTo = LocalDate.now().minusDays(1); // past expiry
-        assertFalse(service.isRecordCurrentlyValid(rec, LocalDate.now()));
-
-        rec.effcTo = LocalDate.now().plusDays(10);
-        assertTrue(service.isRecordCurrentlyValid(rec, LocalDate.now()));
-    }
 }
-

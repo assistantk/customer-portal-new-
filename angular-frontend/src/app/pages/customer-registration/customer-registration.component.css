@@ -456,12 +456,20 @@ label b {
 
 .select select {
     appearance: none;
-    padding-right: 17px;
+    padding-right: 32px;
 }
 
 .select>svg:last-child {
     position: absolute;
-    right: 8px;
+    right: 7px;
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+    border-radius: 6px;
+    color: #f8fafc;
+    background: #2563eb;
+    border: 1px solid #bfdbfe;
+    stroke-width: 2.5;
     pointer-events: none;
 }
 
@@ -1101,6 +1109,15 @@ label b {
 
 .zone-trigger>svg:last-child {
     margin-left: auto;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    color: #f8fafc;
+    background: #2563eb;
+    stroke-width: 2.5;
 }
 
 .zone-menu {

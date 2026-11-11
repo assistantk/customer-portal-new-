@@ -132,78 +132,80 @@
                     </button>
                 </div>
             </div>
-            <div *ngIf="verificationType === 'ownership'" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 360px; white-space: nowrap;">
+            <div *ngIf="verificationType === 'ownership'" class="verification-results-table-wrap">
+                <table class="verification-results-table ownership-results-table">
                     <thead>
-                        <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Code</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
+                        <tr>
+                            <th scope="col">Code</th>
+                            <th scope="col">Company Name</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let record of customers" style="border-bottom: 1px solid #e2e8f0;">
-                            <td style="padding: 12px 16px; font-family: monospace;">{{ record.ownershipCode || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ record.companyName || '-' }}</td>
+                        <tr *ngFor="let record of customers">
+                            <td class="verification-identifier">{{ record.ownershipCode || '-' }}</td>
+                            <td>{{ record.companyName || '-' }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div *ngIf="verificationType === 'agent'" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+            <div *ngIf="verificationType === 'agent'" class="verification-results-table-wrap">
+                <table class="verification-results-table agent-results-table">
                     <thead>
-                        <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Handling Agent Code</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+                        <tr>
+                            <th scope="col">Agent Code</th>
+                            <th scope="col">GSTIN</th>
+                            <th scope="col">Company</th>
+                            <th scope="col">Address</th>
+                            <th scope="col">PAN</th>
+                            <th scope="col">SR.DCM</th>
+                            <th scope="col">Date</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let agent of customers" style="border-bottom: 1px solid #e2e8f0;">
-                            <td style="padding: 12px 16px; font-family: monospace;">{{ agent.code || (searchMode === 'CODE' ? verifiedSearchValue : '-') }}</td>
-                            <td style="padding: 12px 16px; font-family: monospace;">{{ agent.gstinNumbers || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ agent.companyName || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ agent.address || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ agent.panNumber || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ agent.division || '-' }}</td>
-                            <td style="padding: 12px 16px;">{{ agent.creationDate || '-' }}</td>
+                        <tr *ngFor="let agent of customers">
+                            <td class="verification-identifier">{{ agent.code || verifiedSearchValue }}</td>
+                            <td class="verification-identifier">{{ agent.gstinNumbers || '-' }}</td>
+                            <td>{{ agent.companyName || '-' }}</td>
+                            <td>{{ agent.address || '-' }}</td>
+                            <td class="verification-identifier">{{ agent.panNumber || '-' }}</td>
+                            <td>{{ agent.division || '-' }}</td>
+                            <td>{{ agent.creationDate || '-' }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <div *ngIf="verificationType === 'customer' || verificationType === 'gstin'"
-                 style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
+                 class="verification-results-table-wrap">
+                <table class="verification-results-table"
+                    [class.customer-results-table]="verificationType === 'customer'"
+                    [class.gstin-results-table]="verificationType === 'gstin'">
                     <thead>
-                        <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Global Customer Code</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
-                            <th *ngIf="verificationType === 'gstin'" style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Handling Agent Code</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
-                            <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+                        <tr>
+                            <th scope="col">Global Code</th>
+                            <th scope="col">GSTIN</th>
+                            <th *ngIf="verificationType === 'gstin'" scope="col">Agent Code</th>
+                            <th scope="col">Company</th>
+                            <th scope="col">Address</th>
+                            <th scope="col">PAN</th>
+                            <th scope="col">SR.DCM</th>
+                            <th scope="col">Date</th>
                         </tr>
                     </thead>
                     <tbody>
                         <ng-container *ngFor="let c of customers; let i = index">
-                            <tr *ngFor="let g of getGstinList(c); let gIdx = index" style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 12px 16px; font-family: monospace;">
-                                    {{ c.customerCode || (verificationType === 'gstin' || searchMode === 'NAME' ? '-' : verifiedSearchValue || code) }}
+                            <tr *ngFor="let g of getGstinList(c); let gIdx = index">
+                                <td class="verification-identifier">
+                                    {{ c.customerCode || (verificationType === 'gstin' ? '-' : verifiedSearchValue || code) }}
                                 </td>
-                                <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
-                                <td *ngIf="verificationType === 'gstin'" style="padding: 12px 16px; font-family: monospace;">
+                                <td class="verification-identifier" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+                                <td *ngIf="verificationType === 'gstin'" class="verification-identifier">
                                     {{ getHandlingAgentCodes(c).join(', ') || 'No Handling Agent Code found' }}
                                 </td>
-                                <td style="padding: 12px 16px;">{{ c.companyName || '-' }}</td>
-                                <td style="padding: 12px 16px;">{{ c.address || '-' }}</td>
-                                <td style="padding: 12px 16px;">{{ c.panNumber || '-' }}</td>
-                                <td style="padding: 12px 16px;">{{ c.division || '-' }}</td>
-                                <td style="padding: 12px 16px;">{{ c.creationDate || '-' }}</td>
+                                <td>{{ c.companyName || '-' }}</td>
+                                <td>{{ c.address || '-' }}</td>
+                                <td class="verification-identifier">{{ c.panNumber || '-' }}</td>
+                                <td>{{ c.division || '-' }}</td>
+                                <td>{{ c.creationDate || '-' }}</td>
                             </tr>
                         </ng-container>
                     </tbody>
