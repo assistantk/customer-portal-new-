@@ -121,21 +121,134 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     mockCustomerService.lookupOldCustomerJDBC.mockReturnValue(of({ customerCode: 'A' }));
     component.code = 'A';
     component.verifyCode();
-    expect(mockCustomerService.lookupOldCustomerJDBC).toHaveBeenCalledWith('A');
+    expect(mockCustomerService.lookupOldCustomerJDBC).toHaveBeenCalledWith('A', 'CODE');
     expect(component.customers).toEqual([{ customerCode: 'A' }]);
 
     mockCustomerService.searchHandlingAgentsJDBC.mockReturnValue(of([{ code: 'BD' }]));
     component.setVerificationType('agent');
     component.code = 'BD';
     component.verifyCode();
-    expect(mockCustomerService.searchHandlingAgentsJDBC).toHaveBeenCalledWith('BD');
+    expect(mockCustomerService.searchHandlingAgentsJDBC).toHaveBeenCalledWith('BD', 'CODE');
     expect(component.customers).toEqual([{ code: 'BD' }]);
 
     mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([{ ownershipCode: 'MCC' }]));
     component.setVerificationType('ownership');
     component.code = 'MCC';
     component.verifyCode();
-    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('MCC');
+    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('MCC', 'CODE');
     expect(component.customers).toEqual([{ ownershipCode: 'MCC' }]);
+  });
+
+  it('defaults to search by Code and toggles searchMode mutually exclusively', () => {
+    expect(component.searchMode).toBe('CODE');
+
+    component.code = 'TEST';
+    component.customers = [{ customerCode: 'TEST' }];
+    component.error = 'Old error';
+    component.verifiedSearchValue = 'TEST';
+
+    component.setSearchMode('NAME');
+    expect(component.searchMode).toBe('NAME');
+    expect(component.code).toBe('');
+    expect(component.customers).toBeNull();
+    expect(component.error).toBe('');
+    expect(component.verifiedSearchValue).toBe('');
+
+    component.setSearchMode('CODE');
+    expect(component.searchMode).toBe('CODE');
+    expect(component.code).toBe('');
+    expect(component.customers).toBeNull();
+  });
+
+  it('resets searchMode to CODE when switching verification types', () => {
+    component.setSearchMode('NAME');
+    expect(component.searchMode).toBe('NAME');
+
+    component.setVerificationType('agent');
+    expect(component.searchMode).toBe('CODE');
+
+    component.setSearchMode('NAME');
+    component.setVerificationType('ownership');
+    expect(component.searchMode).toBe('CODE');
+
+    component.setSearchMode('NAME');
+    component.setVerificationType('customer');
+    expect(component.searchMode).toBe('CODE');
+  });
+
+  it('searches by company name across Global Customer, Agent, and Ownership sections', () => {
+    // 1. Global Customer by Company Name
+    mockCustomerService.lookupOldCustomerJDBC.mockReturnValue(of([
+      { customerCode: 'TISCO', companyName: 'TATA STEEL' }
+    ]));
+    component.setVerificationType('customer');
+    component.setSearchMode('NAME');
+    component.code = 'TATA';
+    component.verifyCode();
+
+    expect(mockCustomerService.lookupOldCustomerJDBC).toHaveBeenCalledWith('TATA', 'NAME');
+    expect(component.customers).toEqual([{ customerCode: 'TISCO', companyName: 'TATA STEEL' }]);
+
+    // 2. Handling Agent by Company Name
+    mockCustomerService.searchHandlingAgentsJDBC.mockReturnValue(of([
+      { code: 'AGNT1', companyName: 'LOGISTICS LTD' }
+    ]));
+    component.setVerificationType('agent');
+    component.setSearchMode('NAME');
+    component.code = 'LOGISTICS';
+    component.verifyCode();
+
+    expect(mockCustomerService.searchHandlingAgentsJDBC).toHaveBeenCalledWith('LOGISTICS', 'NAME');
+    expect(component.customers).toEqual([{ code: 'AGNT1', companyName: 'LOGISTICS LTD' }]);
+
+    // 3. Ownership by Company Name
+    mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([
+      { ownershipCode: 'OWN1', companyName: 'FREIGHT CORP' }
+    ]));
+    component.setVerificationType('ownership');
+    component.setSearchMode('NAME');
+    component.code = 'FREIGHT';
+    component.verifyCode();
+
+    expect(mockCustomerService.searchOwnershipCodesJDBC).toHaveBeenCalledWith('FREIGHT', 'NAME');
+    expect(component.customers).toEqual([{ ownershipCode: 'OWN1', companyName: 'FREIGHT CORP' }]);
+  });
+
+  it('handles empty search results with appropriate error messages for each mode and section', () => {
+    // Customer search by name with no results
+    mockCustomerService.lookupOldCustomerJDBC.mockReturnValue(of([]));
+    component.setVerificationType('customer');
+    component.setSearchMode('NAME');
+    component.code = 'UNKNOWN CORP';
+    component.verifyCode();
+    expect(component.error).toBe('No record found for this Company Name.');
+
+    // Agent search by name with no results
+    mockCustomerService.searchHandlingAgentsJDBC.mockReturnValue(of([]));
+    component.setVerificationType('agent');
+    component.setSearchMode('NAME');
+    component.code = 'UNKNOWN AGENT';
+    component.verifyCode();
+    expect(component.error).toBe('No Handling Agent Company Name found.');
+
+    // Agent search by code with no results
+    component.setSearchMode('CODE');
+    component.code = 'NONE';
+    component.verifyCode();
+    expect(component.error).toBe('No Handling Agent Code found.');
+
+    // Ownership search by name with no results
+    mockCustomerService.searchOwnershipCodesJDBC.mockReturnValue(of([]));
+    component.setVerificationType('ownership');
+    component.setSearchMode('NAME');
+    component.code = 'UNKNOWN OWNER';
+    component.verifyCode();
+    expect(component.error).toBe('No Ownership Company Name found.');
+
+    // Ownership search by code with no results
+    component.setSearchMode('CODE');
+    component.code = 'NONE';
+    component.verifyCode();
+    expect(component.error).toBe('No Ownership Code found.');
   });
 });

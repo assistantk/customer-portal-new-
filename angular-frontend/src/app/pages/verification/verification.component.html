@@ -52,15 +52,37 @@
         
         <div *ngIf="customers && customers.length > 0 && !loading" class="info-banner" style="background: #e7f7ed; color: #126c38; border-color: #16a34a;">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 
-            Code verified successfully. Found {{ customers?.length || 0 }} record(s).
+            {{ searchMode === 'NAME' ? 'Company details verified successfully.' : 'Code verified successfully.' }} Found {{ customers?.length || 0 }} record(s).
         </div>
 
         <form (ngSubmit)="verifyCode($event)" class="grid">
+            <div *ngIf="verificationType !== 'gstin'" class="full search-mode-container" style="max-width: 400px; margin: 0 auto 12px; display: flex; justify-content: center; gap: 24px;">
+                <label class="search-mode-option" [class.selected]="searchMode === 'CODE'" (click)="$event.preventDefault(); setSearchMode('CODE')" style="display: inline-flex; align-items: center; cursor: pointer; user-select: none;">
+                    <input
+                        type="checkbox"
+                        [checked]="searchMode === 'CODE'"
+                        tabindex="-1"
+                        style="cursor: pointer; width: 16px; height: 16px; accent-color: #2563eb; margin: 0 6px 0 0;"
+                    />
+                    <span style="font-size: 13px; font-weight: 500;">Search by Code</span>
+                </label>
+                <label class="search-mode-option" [class.selected]="searchMode === 'NAME'" (click)="$event.preventDefault(); setSearchMode('NAME')" style="display: inline-flex; align-items: center; cursor: pointer; user-select: none;">
+                    <input
+                        type="checkbox"
+                        [checked]="searchMode === 'NAME'"
+                        tabindex="-1"
+                        style="cursor: pointer; width: 16px; height: 16px; accent-color: #2563eb; margin: 0 6px 0 0;"
+                    />
+                    <span style="font-size: 13px; font-weight: 500;">Search by Company Name</span>
+                </label>
+            </div>
+
             <div class="field full" style="max-width: 400px; margin: 0 auto 10px; text-align: center;">
                 <label for="customerCode">
                     {{ verificationType === 'gstin' ? 'Enter GSTIN' :
-                       verificationType === 'agent' ? 'Search Handling Agent Code or Company Name' :
-                       verificationType === 'ownership' ? 'Search Ownership Code or Company Name' :
+                       searchMode === 'NAME' ? 'Search by Company Name' :
+                       verificationType === 'agent' ? 'Search Handling Agent Code' :
+                       verificationType === 'ownership' ? 'Search Ownership Code' :
                        'Enter Customer Code' }}
                 </label>
                 <div class="control">
@@ -71,9 +93,8 @@
                         [value]="code"
                         (input)="onCodeInput($event)"
                         [placeholder]="verificationType === 'gstin' ? 'Enter GSTIN' :
-                            verificationType === 'agent' ? 'Enter code or company name' :
-                            verificationType === 'ownership' ? 'Enter code or company name' :
-                            'Enter Customer Code'"
+                            searchMode === 'NAME' ? 'Enter Company Name' :
+                            'Enter Code'"
                         [disabled]="loading"
                     />
                 </div>
@@ -84,6 +105,7 @@
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 6px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                     {{ loading ? 'Searching...' :
                         verificationType === 'gstin' ? 'Verify GSTIN' :
+                        searchMode === 'NAME' ? 'Search by Company Name' :
                         verificationType === 'agent' ? 'Search Handling Agent Code' :
                         verificationType === 'ownership' ? 'Search Ownership Code' :
                         'Verify Customer Code' }}

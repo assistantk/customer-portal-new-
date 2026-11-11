@@ -7,6 +7,27 @@ export interface MasterData {
   cities: Record<string, string[]>;
 }
 
+export interface GstinDuplicateRecord {
+  recordType?: string;
+  existingCode?: string;
+  companyName?: string;
+  gstin?: string;
+  pan?: string;
+  address?: string;
+  city?: string;
+  pincode?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  flaggedInconsistent?: boolean;
+}
+
+export interface GstinDuplicateCheckResult {
+  duplicate: boolean;
+  status: string;
+  message: string;
+  records: GstinDuplicateRecord[];
+}
+
 export interface GstinEntry {
   gstinId?: any;
   state: string;
@@ -19,6 +40,8 @@ export interface GstinEntry {
   scanError?: string;
   scanProgress?: string;
   registeredAddress?: string;
+  city?: string;
+  pincode?: string;
   gstinStatus?: string;
   addressStatus?: string;
   hasFile?: boolean;
@@ -27,6 +50,10 @@ export interface GstinEntry {
   dbVerificationMessage?: string;
   dbVerifying?: boolean;
   dbVerifyReqId?: number;
+  duplicateStatus?: 'idle' | 'checking' | 'available' | 'duplicate' | 'unavailable';
+  duplicateMessage?: string;
+  duplicateRecords?: GstinDuplicateRecord[];
+  duplicateCheckReqId?: number;
 }
 
 export interface CustomerPayload {
@@ -112,10 +139,14 @@ export class CustomerService {
   }
 
   /* ---------- Customer Lookup (Old User) ---------- */
-  lookupOldCustomerJDBC(code: string): Observable<any> {
+  lookupOldCustomerJDBC(code: string, searchMode: 'CODE' | 'NAME' = 'CODE'): Observable<any> {
     const trimmed = (code || '').trim().toUpperCase();
     return this.http.get<any>(`${this.API}/customers/old-lookup`, {
-      params: { code: trimmed },
+      params: {
+        code: trimmed,
+        searchMode,
+        searchType: searchMode === 'NAME' ? 'COMPANY_NAME' : 'CODE'
+      },
       withCredentials: true
     });
   }
@@ -136,18 +167,26 @@ export class CustomerService {
     });
   }
 
-  searchHandlingAgentsJDBC(query: string): Observable<any[]> {
+  searchHandlingAgentsJDBC(query: string, searchMode: 'CODE' | 'NAME' = 'CODE'): Observable<any[]> {
     const trimmed = (query || '').trim().toUpperCase();
     return this.http.get<any[]>(`${this.API}/customers/agent-search`, {
-      params: { query: trimmed },
+      params: {
+        query: trimmed,
+        searchMode,
+        searchType: searchMode === 'NAME' ? 'COMPANY_NAME' : 'CODE'
+      },
       withCredentials: true
     });
   }
 
-  searchOwnershipCodesJDBC(query: string): Observable<any[]> {
+  searchOwnershipCodesJDBC(query: string, searchMode: 'CODE' | 'NAME' = 'CODE'): Observable<any[]> {
     const trimmed = (query || '').trim().toUpperCase();
     return this.http.get<any[]>(`${this.API}/customers/ownership-search`, {
-      params: { query: trimmed },
+      params: {
+        query: trimmed,
+        searchMode,
+        searchType: searchMode === 'NAME' ? 'COMPANY_NAME' : 'CODE'
+      },
       withCredentials: true
     });
   }
@@ -226,6 +265,25 @@ export class CustomerService {
     );
   }
 
+  checkGstinDuplicate(gstin: string, currentCode?: string): Observable<GstinDuplicateCheckResult> {
+    const clean = (gstin || '').trim().toUpperCase();
+    let params: any = { gstin: clean };
+    if (currentCode) {
+      params.currentCode = currentCode;
+    }
+    return this.http.get<GstinDuplicateCheckResult>(`${this.API}/customers/check-gstin-duplicate`, {
+      params,
+      withCredentials: true
+    }).pipe(
+      catchError(() => of({
+        duplicate: false,
+        status: 'UNAVAILABLE',
+        message: 'Duplicate Check Unavailable – Unable to verify this GSTIN.',
+        records: []
+      }))
+    );
+  }
+
   /* ---------- New Customer Registration (Triggers DBA Email via Spring Boot) ---------- */
   registerCustomer(payload: CustomerPayload, gstinEntries: GstinEntry[]): Observable<any> {
     const codeType = payload.codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
@@ -245,6 +303,15 @@ export class CustomerService {
     const gstinNumbers = gstinEntries.map(g => g.gstin).filter(Boolean).join(',');
     formData.append('gstinNumbers', gstinNumbers);
 
+    const gstinDetails = JSON.stringify(gstinEntries.map(g => ({
+      gstin: g.gstin,
+      state: g.state,
+      address: g.registeredAddress || payload.address || '',
+      city: g.city || payload.city || '',
+      pincode: g.pincode || payload.pincode || ''
+    })));
+    formData.append('gstinDetails', gstinDetails);
+
     gstinEntries.forEach(entry => {
       if (entry.file) {
         formData.append('gstinFiles', entry.file);
@@ -263,7 +330,15 @@ export class CustomerService {
       .filter(Boolean)
       .join(',');
 
-    const updateBody = {
+    const gstinDetails = JSON.stringify(gstinEntries.map(g => ({
+      gstin: g.gstin,
+      state: g.state,
+      address: g.registeredAddress || payload.address || '',
+      city: g.city || payload.city || '',
+      pincode: g.pincode || payload.pincode || ''
+    })));
+
+    const updateBody: any = {
       customerCode: payload.customerCode,
       companyName: payload.companyName,
       address: payload.address,
@@ -275,6 +350,7 @@ export class CustomerService {
       panNumber: payload.panNumber,
       gstinNumbers: gstinNumbers,
       codeType: payload.codeType || 'GLOBAL',
+      gstinDetails: gstinDetails
     };
 
     return this.http.post<any>(`${this.API}/customers/old-update`, updateBody, {

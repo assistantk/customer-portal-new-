@@ -64,4 +64,79 @@ class CustomerControllerTest {
         verify(semGstinVerificationService, times(1))
                 .verifyGstin("07AAAAA0000A1Z4", "ACME LOGISTICS", "DELHI");
     }
+
+    @Test
+    void testLookupOld_withCodeMode_delegatesToLookupOldCustomerByCode() {
+        com.cris.customerportal.dto.OldCustomerResponse expected = new com.cris.customerportal.dto.OldCustomerResponse();
+        expected.setCustomerCode("SAEB");
+        expected.setCompanyName("SAMPLE CO");
+        when(customerService.lookupOldCustomerByCode("SAEB")).thenReturn(expected);
+
+        Object resp = controller.lookupOld("SAEB", "CODE", null);
+
+        assertSame(expected, resp);
+        verify(customerService, times(1)).lookupOldCustomerByCode("SAEB");
+        verify(customerService, never()).searchGlobalCustomersByCompanyName(anyString());
+    }
+
+    @Test
+    void testLookupOld_withNameMode_delegatesToSearchGlobalCustomersByCompanyName() {
+        com.cris.customerportal.dto.OldCustomerResponse item = new com.cris.customerportal.dto.OldCustomerResponse();
+        item.setCustomerCode("TISCO");
+        item.setCompanyName("TATA STEEL");
+        when(customerService.searchGlobalCustomersByCompanyName("TATA")).thenReturn(java.util.List.of(item));
+
+        Object resp = controller.lookupOld("TATA", "NAME", null);
+
+        assertTrue(resp instanceof java.util.List);
+        assertEquals(1, ((java.util.List<?>) resp).size());
+        verify(customerService, times(1)).searchGlobalCustomersByCompanyName("TATA");
+        verify(customerService, never()).lookupOldCustomerByCode(anyString());
+    }
+
+    @Test
+    void testSearchAgents_delegatesWithMode() {
+        com.cris.customerportal.dto.GlobalAgentResponse agent = new com.cris.customerportal.dto.GlobalAgentResponse();
+        agent.setCode("AG1");
+        when(customerService.searchHandlingAgents("AG1", "CODE")).thenReturn(java.util.List.of(agent));
+
+        java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> resp =
+                controller.searchAgents("AG1", "CODE", null);
+
+        assertEquals(1, resp.size());
+        verify(customerService, times(1)).searchHandlingAgents("AG1", "CODE");
+
+        controller.searchAgents("LOGISTICS", "NAME", null);
+        verify(customerService, times(1)).searchHandlingAgents("LOGISTICS", "NAME");
+    }
+
+    @Test
+    void testSearchOwnership_delegatesWithMode() {
+        java.util.Map<String, String> row = java.util.Map.of("ownershipCode", "OWN1", "companyName", "CORP");
+        when(customerService.searchOwnershipCodes("OWN1", "CODE")).thenReturn(java.util.List.of(row));
+
+        java.util.List<java.util.Map<String, String>> resp =
+                controller.searchOwnership("OWN1", "CODE", null);
+
+        assertEquals(1, resp.size());
+        verify(customerService, times(1)).searchOwnershipCodes("OWN1", "CODE");
+
+        controller.searchOwnership("CORP", "NAME", null);
+        verify(customerService, times(1)).searchOwnershipCodes("CORP", "NAME");
+    }
+
+    @Test
+    void testCheckGstinDuplicate_delegatesToService() {
+        com.cris.customerportal.dto.GstinDuplicateCheckResult expected =
+                new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "AVAILABLE", "GSTIN is available");
+        when(customerService.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD")).thenReturn(expected);
+
+        ResponseEntity<com.cris.customerportal.dto.GstinDuplicateCheckResult> resp =
+                controller.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD");
+
+        assertNotNull(resp);
+        assertEquals(200, resp.getStatusCodeValue());
+        assertSame(expected, resp.getBody());
+        verify(customerService, times(1)).checkGstinDuplicate("20APEPA6196G1Z9", "ABCD");
+    }
 }

@@ -38,6 +38,7 @@ public class CustomerServiceImpl implements CustomerService {
 
  private volatile boolean columnsResolved = false;
  private String glblCityCol = "MAVGNBLCUSTCITYNAME";
+ private String glblDtlsCityCol = "MAVGNBLCUSTCITYNAME";
  private String glblGstCol = "MAVCUSTGSTNUMB";
  private String glblDateCol = "MADEDMNDDATE";
 
@@ -109,6 +110,20 @@ public class CustomerServiceImpl implements CustomerService {
     if (hndgCols.contains("MADEDMDNDATE")) hndgDateCol = "MADEDMDNDATE";
     else if (hndgCols.contains("MADEDMNDDATE")) hndgDateCol = "MADEDMNDDATE";
    }
+
+   Set<String> glblDtlsCols = new HashSet<>();
+   try (ResultSet rs = meta.getColumns(null, "%", "MEMGLBLCUSTDTLS", "%")) {
+    if (rs != null) {
+     while (rs.next()) {
+      String col = rs.getString("COLUMN_NAME");
+      if (col != null) glblDtlsCols.add(col.toUpperCase(Locale.ROOT));
+     }
+    }
+   }
+   if (!glblDtlsCols.isEmpty()) {
+    if (glblDtlsCols.contains("MAVGNBLCUSTCITYNAME")) glblDtlsCityCol = "MAVGNBLCUSTCITYNAME";
+    else if (glblDtlsCols.contains("MAVGLBLCUSTCITYNAME")) glblDtlsCityCol = "MAVGLBLCUSTCITYNAME";
+   }
   } catch (Throwable t) {
    log.debug("initDbColumns: column metadata discovery fell back to defaults: {}",
            DataMaskingUtil.maskSensitive(t.getMessage()));
@@ -139,6 +154,21 @@ public class CustomerServiceImpl implements CustomerService {
       .map(com.cris.customerportal.dto.GstinRequest::gstin)
       .filter(Objects::nonNull)
       .collect(Collectors.joining(",")));
+  List<Map<String, String>> dList = new ArrayList<>();
+  for (com.cris.customerportal.dto.GstinRequest gr : r.gstins()) {
+   if (gr.gstin() != null) {
+    Map<String, String> m = new HashMap<>();
+    m.put("gstin", gr.gstin());
+    m.put("state", gr.state());
+    m.put("address", gr.address() != null ? gr.address() : r.address());
+    m.put("city", gr.city() != null ? gr.city() : r.city());
+    m.put("pincode", gr.pincode() != null ? gr.pincode() : r.pincode());
+    dList.add(m);
+   }
+  }
+  try {
+   formData.put("gstinDetails", new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(dList));
+  } catch (Exception ignore) {}
   return registerNewEntryJDBC(formData);
  }
 
@@ -272,23 +302,80 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
+ @Override
+ public java.util.List<com.cris.customerportal.dto.OldCustomerResponse> searchGlobalCustomersByCompanyName(String companyName) {
+  String term = companyName == null ? "" : companyName.trim().toUpperCase(Locale.ROOT);
+  if (term.isEmpty()) return Collections.emptyList();
+  initDbColumns();
+  String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+      + glblGstCol + " AS MAVCUSTGSTNUMB, "
+      + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE, MAVIMPLREMK, "
+      + "NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE "
+      + "FROM MEMGLBLCUST WHERE INSTR(UPPER(NVL(MAVGLBLCUSTNAME, '')), ?) > 0 "
+      + "ORDER BY MAVGLBLCUSTNAME";
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   ps.setString(1, term);
+   try (ResultSet rs = ps.executeQuery()) {
+    List<com.cris.customerportal.dto.OldCustomerResponse> responses = new ArrayList<>();
+    while (rs.next()) {
+     com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
+     response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
+     response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
+     response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
+     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+     response.setGstinNumbers(rs.getString("MAVCUSTGSTNUMB"));
+     response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
+     response.setPincode(rs.getString("MAVPCOCODE"));
+     response.setDivision(rs.getString("MAVIMPLREMK"));
+     response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
+     responses.add(response);
+    }
+    return responses;
+   }
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.searchGlobalCustomersByCompanyName: SQLState={} ErrorCode={} stackTrace={}",
+       e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
+   throw new RuntimeException("Database error occurred while searching global customers by company name", e);
+  }
+ }
+
+ @Override
  public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search) {
+  return searchHandlingAgents(search, "ALL");
+ }
+
+ @Override
+ public java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search, String searchMode) {
   String term = search == null ? "" : search.trim().toUpperCase(Locale.ROOT);
   if (term.isEmpty()) return Collections.emptyList();
   initDbColumns();
+  boolean isCodeOnly = "CODE".equalsIgnoreCase(searchMode);
+  boolean isNameOnly = "NAME".equalsIgnoreCase(searchMode) || "COMPANY_NAME".equalsIgnoreCase(searchMode);
+
+  String whereClause;
+  if (isCodeOnly) {
+   whereClause = "WHERE INSTR(UPPER(NVL(" + hndgCodeCol + ", '')), ?) > 0 ";
+  } else if (isNameOnly) {
+   whereClause = "WHERE INSTR(UPPER(NVL(" + hndgNameCol + ", '')), ?) > 0 ";
+  } else {
+   whereClause = "WHERE INSTR(UPPER(NVL(" + hndgCodeCol + ", '')), ?) > 0 OR INSTR(UPPER(NVL(" + hndgNameCol + ", '')), ?) > 0 ";
+  }
+
   String sql = "SELECT " + hndgCodeCol + " AS MAVHNDAGNTCODE, "
       + hndgNameCol + " AS MAVHNDAGNTNAME, "
       + hndgAddrCol + " AS MAVHNDAGNTADDRTEXT, "
       + hndgCityCol + " AS MAVHNDAGNTCITYNAME, "
       + hndgGstCol + " AS MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MAVIMPLREMK, "
       + hndgDateCol + " AS MAVVERIFICATIONDATE "
-      + "FROM MEMGLBLHNDGAGNT WHERE INSTR(UPPER(NVL(" + hndgCodeCol + ", '')), ?) > 0 "
-      + "OR INSTR(UPPER(NVL(" + hndgNameCol + ", '')), ?) > 0 "
-      + "ORDER BY " + hndgCodeCol;
+      + "FROM MEMGLBLHNDGAGNT " + whereClause
+      + "ORDER BY " + (isNameOnly ? hndgNameCol : hndgCodeCol);
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, term);
-   ps.setString(2, term);
+   if (!isCodeOnly && !isNameOnly) {
+    ps.setString(2, term);
+   }
    try (ResultSet rs = ps.executeQuery()) {
     List<com.cris.customerportal.dto.GlobalAgentResponse> responses = new ArrayList<>();
     while (rs.next()) {
@@ -312,17 +399,36 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
+ @Override
  public List<Map<String, String>> searchOwnershipCodes(String search) {
+  return searchOwnershipCodes(search, "ALL");
+ }
+
+ @Override
+ public List<Map<String, String>> searchOwnershipCodes(String search, String searchMode) {
   String term = search == null ? "" : search.trim().toUpperCase(Locale.ROOT);
   if (term.isEmpty()) return Collections.emptyList();
+  boolean isCodeOnly = "CODE".equalsIgnoreCase(searchMode);
+  boolean isNameOnly = "NAME".equalsIgnoreCase(searchMode) || "COMPANY_NAME".equalsIgnoreCase(searchMode);
+
+  String whereClause;
+  if (isCodeOnly) {
+   whereClause = "WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0 ";
+  } else if (isNameOnly) {
+   whereClause = "WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0 ";
+  } else {
+   whereClause = "WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0 OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0 ";
+  }
+
   String sql = "SELECT MAVWGONOWNRSHIPCODE, MAVWGONOWNRSHIPDESC FROM MEMWGONOWNRSHIP "
-      + "WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0 "
-      + "OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0 "
-      + "ORDER BY MAVWGONOWNRSHIPCODE";
+      + whereClause
+      + "ORDER BY " + (isNameOnly ? "MAVWGONOWNRSHIPDESC" : "MAVWGONOWNRSHIPCODE");
   try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
    ps.setString(1, term);
-   ps.setString(2, term);
+   if (!isCodeOnly && !isNameOnly) {
+    ps.setString(2, term);
+   }
    try (ResultSet rs = ps.executeQuery()) {
     List<Map<String, String>> responses = new ArrayList<>();
     while (rs.next()) {
@@ -438,6 +544,116 @@ public class CustomerServiceImpl implements CustomerService {
   return null;
  }
 
+ @Override
+ public com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin, String currentCode) {
+  if (gstin == null || gstin.trim().isEmpty()) {
+   return new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "AVAILABLE", "GSTIN is empty", Collections.emptyList());
+  }
+  String cleanGstin = gstin.trim().toUpperCase(Locale.ROOT);
+  initDbColumns();
+  List<com.cris.customerportal.dto.GstinDuplicateRecord> records = new ArrayList<>();
+
+  String sqlCustDtls = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, "
+      + glblDtlsCityCol + " AS CITY, MANPINCODE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, "
+      + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD') AS EFFECTIVE_FROM, "
+      + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD') AS EFFECTIVE_TO "
+      + "FROM MEMGLBLCUSTDTLS WHERE MAVCUSTGSTNUMB = ?";
+
+  String sqlHndgDtls = "SELECT MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, "
+      + "MAVHNDGAGNTCITYNAME AS CITY, MANPINCODE, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, "
+      + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD') AS EFFECTIVE_FROM, "
+      + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD') AS EFFECTIVE_TO "
+      + "FROM MEMGLBLHNDGAGNTDTLS WHERE MAVCUSTGSTNUMB = ?";
+
+  try (Connection conn = dataSource.getConnection()) {
+   if (conn != null) {
+    try (PreparedStatement ps = conn.prepareStatement(sqlCustDtls)) {
+     if (ps != null) {
+      ps.setString(1, cleanGstin);
+      try (ResultSet rs = ps.executeQuery()) {
+       if (rs != null) {
+        while (rs.next()) {
+         com.cris.customerportal.dto.GstinDuplicateRecord rec = new com.cris.customerportal.dto.GstinDuplicateRecord(
+             "Global Customer",
+             rs.getString("MAVGLBLCUSTCODE"),
+             rs.getString("MAVGLBLCUSTNAME"),
+             rs.getString("MAVCUSTGSTNUMB"),
+             rs.getString("MAVCUSTPANNUMB"),
+             rs.getString("MAVGLBLCUSTADDRTEXT"),
+             rs.getString("CITY"),
+             rs.getString("MANPINCODE"),
+             rs.getString("EFFECTIVE_FROM"),
+             rs.getString("EFFECTIVE_TO")
+         );
+         records.add(rec);
+        }
+       }
+      }
+     }
+    }
+    try (PreparedStatement ps = conn.prepareStatement(sqlHndgDtls)) {
+     if (ps != null) {
+      ps.setString(1, cleanGstin);
+      try (ResultSet rs = ps.executeQuery()) {
+       if (rs != null) {
+        while (rs.next()) {
+         com.cris.customerportal.dto.GstinDuplicateRecord rec = new com.cris.customerportal.dto.GstinDuplicateRecord(
+             "Handling Agent",
+             rs.getString("MAVHNDGAGNTCODE"),
+             rs.getString("MAVHNDGAGNTNAME"),
+             rs.getString("MAVCUSTGSTNUMB"),
+             rs.getString("MAVCUSTPANNUMB"),
+             rs.getString("MAVHNDGAGNTADDRTEXT"),
+             rs.getString("CITY"),
+             rs.getString("MANPINCODE"),
+             rs.getString("EFFECTIVE_FROM"),
+             rs.getString("EFFECTIVE_TO")
+         );
+         records.add(rec);
+        }
+       }
+      }
+     }
+    }
+   }
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.checkGstinDuplicate: error checking GSTIN {}: {}",
+       cleanGstin, e.getMessage(), e);
+   return new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "UNAVAILABLE",
+       "Duplicate Check Unavailable – Unable to verify this GSTIN.", Collections.emptyList());
+  }
+
+  boolean foundInCust = records.stream().anyMatch(r -> "Global Customer".equals(r.getRecordType()));
+  boolean foundInHndg = records.stream().anyMatch(r -> "Handling Agent".equals(r.getRecordType()));
+  if (foundInCust && foundInHndg) {
+   for (com.cris.customerportal.dto.GstinDuplicateRecord r : records) {
+    r.setFlaggedInconsistent(true);
+   }
+  }
+
+  boolean isDuplicate = false;
+  if (currentCode != null && !currentCode.trim().isEmpty()) {
+   String normCode = currentCode.trim().toUpperCase(Locale.ROOT);
+   for (com.cris.customerportal.dto.GstinDuplicateRecord r : records) {
+    if (r.getExistingCode() != null && !normCode.equalsIgnoreCase(r.getExistingCode().trim())) {
+     isDuplicate = true;
+     break;
+    }
+   }
+  } else {
+   isDuplicate = !records.isEmpty();
+  }
+
+  if (isDuplicate) {
+   return new com.cris.customerportal.dto.GstinDuplicateCheckResult(true, "DUPLICATE",
+       "Duplicate GSTIN Found – This GSTIN is already registered in the database. A new code cannot be generated for this GSTIN.",
+       records);
+  } else {
+   return new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "AVAILABLE",
+       "GSTIN is available", records);
+  }
+ }
+
  public static String normalizeAddress(String address) {
   if (address == null) return null;
   return address.replaceAll(",\\s+", ",").trim();
@@ -506,6 +722,16 @@ public class CustomerServiceImpl implements CustomerService {
    throw new IllegalArgumentException("Enter a valid 10-digit Indian mobile number.");
   }
 
+  for (String g : gstinNumbers) {
+   com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, null);
+   if ("UNAVAILABLE".equals(check.getStatus())) {
+    throw new IllegalStateException("Duplicate Check Unavailable – Unable to verify this GSTIN.");
+   }
+   if (check.isDuplicate()) {
+    throw new ResourceAlreadyExistsException("Duplicate GSTIN Found – This GSTIN is already registered in the database. A new code cannot be generated for this GSTIN: " + g);
+   }
+  }
+
   initDbColumns();
   String tableName = "global".equals(type) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
   String colName = "global".equals(type) ? "MAVGLBLCUSTCODE" : hndgCodeCol;
@@ -571,6 +797,71 @@ public class CustomerServiceImpl implements CustomerService {
    String userId = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
    String emailId = formData.get("email");
    emailRequests.add(new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql, userId, emailId));
+
+   if (gstinNumbers.size() > 1) {
+    Map<String, Map<String, String>> detailsMap = new HashMap<>();
+    String rawDetails = formData.get("gstinDetails");
+    if (rawDetails != null && !rawDetails.trim().isEmpty()) {
+     try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      List<Map<String, Object>> list = mapper.readValue(rawDetails, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+      if (list != null) {
+       for (Map<String, Object> item : list) {
+        Object gVal = item.get("gstin");
+        if (gVal != null) {
+         String gKey = gVal.toString().trim().toUpperCase(Locale.ROOT);
+         Map<String, String> itemMap = new HashMap<>();
+         if (item.get("address") != null) itemMap.put("address", item.get("address").toString());
+         if (item.get("city") != null) itemMap.put("city", item.get("city").toString());
+         if (item.get("pincode") != null) itemMap.put("pincode", item.get("pincode").toString());
+         detailsMap.put(gKey, itemMap);
+        }
+       }
+      }
+     } catch (Exception e) {
+      log.warn("CustomerServiceImpl.registerNewEntryJDBC: failed to parse gstinDetails: {}", e.getMessage());
+     }
+    }
+
+    String dtlsTable = "global".equals(type) ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
+    String dtlsCodeCol = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+    String dtlsNameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
+    String dtlsAddrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
+    String dtlsCityCol = "global".equals(type) ? glblDtlsCityCol : "MAVHNDGAGNTCITYNAME";
+
+    String dtlsSql = "INSERT INTO " + dtlsTable + " ("
+        + dtlsCodeCol + ", " + dtlsNameCol + ", " + dtlsAddrCol + ", " + dtlsCityCol
+        + ", MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) "
+        + "VALUES (?, ?, ?, ?, ?, SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
+
+    for (String g : gstinNumbers) {
+     Map<String, String> gDetail = detailsMap.get(g);
+     String gAddr = (gDetail != null && gDetail.get("address") != null && !gDetail.get("address").trim().isEmpty())
+         ? normalizeAddress(gDetail.get("address"))
+         : address;
+     if (gAddr != null && gAddr.length() > 100) {
+      throw new IllegalArgumentException("Address for GSTIN " + g + " cannot exceed 100 characters.");
+     }
+     String gCity = (gDetail != null && gDetail.get("city") != null && !gDetail.get("city").trim().isEmpty())
+         ? normalizeNullableValue(gDetail.get("city"))
+         : city;
+     String gPin = (gDetail != null && gDetail.get("pincode") != null && !gDetail.get("pincode").trim().isEmpty())
+         ? normalizeNullableValue(gDetail.get("pincode"))
+         : pincode;
+
+     List<String> dtlsParams = new ArrayList<>();
+     dtlsParams.add(finalCode);
+     dtlsParams.add(companyName);
+     dtlsParams.add(gAddr);
+     dtlsParams.add(gCity);
+     dtlsParams.add(gPin);
+     dtlsParams.add(g);
+     dtlsParams.add(pan);
+
+     String dtlsExecSql = formatBoundSql(dtlsSql, dtlsParams) + ";";
+     emailRequests.add(new DbaEmailService.SqlRequest("INSERT", dtlsTable, finalCode, dtlsExecSql, userId, emailId));
+    }
+   }
    dbaEmailService.sendDbaSqlEmail(emailRequests);
    return finalCode;
  }
@@ -748,12 +1039,101 @@ public class CustomerServiceImpl implements CustomerService {
     assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
   }
-  if (assignments.isEmpty()) throw new IllegalArgumentException("No changes detected for this record.");
-  String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
-      + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
-  List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-  emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));
-  dbaEmailService.sendDbaSqlEmail(emailRequests);
+   List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
+   if (!assignments.isEmpty()) {
+    String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
+        + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
+    emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));
+   }
+
+   String dtlsTable = isGlobal ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
+   String dtlsCodeCol = isGlobal ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+   String dtlsNameCol = isGlobal ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
+   String dtlsAddrCol = isGlobal ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
+   String dtlsCityCol = isGlobal ? glblDtlsCityCol : "MAVHNDGAGNTCITYNAME";
+
+   if (formData.containsKey("gstinDetails")) {
+    String rawDetails = formData.get("gstinDetails");
+    if (rawDetails != null && !rawDetails.trim().isEmpty()) {
+     try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      List<Map<String, Object>> list = mapper.readValue(rawDetails, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+      if (list != null) {
+       for (Map<String, Object> item : list) {
+        Object gVal = item.get("gstin");
+        if (gVal == null) continue;
+        String g = gVal.toString().trim().toUpperCase(Locale.ROOT);
+        if (g.isEmpty()) continue;
+        String gAddr = item.get("address") != null ? normalizeAddress(item.get("address").toString()) : updateAddress;
+        if (gAddr != null && gAddr.length() > 100) {
+         throw new IllegalArgumentException("Address for GSTIN " + g + " cannot exceed 100 characters.");
+        }
+        String gCity = item.get("city") != null ? normalizeNullableValue(item.get("city").toString()) : normalizeNullableValue(formData.get("city"));
+        String gPin = item.get("pincode") != null ? normalizeNullableValue(item.get("pincode").toString()) : normalizeNullableValue(formData.get("pincode"));
+
+        String existingDtlsAddr = null;
+        boolean existsInDtls = false;
+        String queryDtls = "SELECT " + dtlsAddrCol + " FROM " + dtlsTable + " WHERE " + dtlsCodeCol + " = ? AND MAVCUSTGSTNUMB = ?";
+        try (Connection conn = dataSource.getConnection()) {
+         if (conn != null) {
+          try (PreparedStatement ps = conn.prepareStatement(queryDtls)) {
+           if (ps != null) {
+            ps.setString(1, customerCode.trim());
+            ps.setString(2, g);
+            try (ResultSet rs = ps.executeQuery()) {
+             if (rs != null && rs.next()) {
+              existsInDtls = true;
+              existingDtlsAddr = rs.getString(1);
+             }
+            }
+           }
+          }
+         }
+        } catch (SQLException e) {
+         log.warn("CustomerServiceImpl.updateOldCustomerJDBC: dtls query error: {}", e.getMessage());
+        }
+
+        if (!existsInDtls) {
+         com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, customerCode.trim());
+         if (check.isDuplicate()) {
+          throw new ResourceAlreadyExistsException("Duplicate GSTIN Found – This GSTIN is already registered in the database: " + g);
+         }
+         String dtlsInsSql = "INSERT INTO " + dtlsTable + " ("
+             + dtlsCodeCol + ", " + dtlsNameCol + ", " + dtlsAddrCol + ", " + dtlsCityCol
+             + ", MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) "
+             + "VALUES (?, ?, ?, ?, ?, SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
+         List<String> dtlsParams = new ArrayList<>();
+         dtlsParams.add(customerCode.trim());
+         dtlsParams.add(requested.get(nameColumn) != null ? requested.get(nameColumn) : current.get(nameColumn));
+         dtlsParams.add(gAddr);
+         dtlsParams.add(gCity);
+         dtlsParams.add(gPin);
+         dtlsParams.add(g);
+         dtlsParams.add(requested.get(panColumn) != null ? requested.get(panColumn) : current.get(panColumn));
+         String dtlsExecSql = formatBoundSql(dtlsInsSql, dtlsParams) + ";";
+         emailRequests.add(new DbaEmailService.SqlRequest("INSERT", dtlsTable, customerCode.trim(), dtlsExecSql));
+        } else {
+         if (gAddr != null && !Objects.equals(normalizeAddress(existingDtlsAddr), gAddr)) {
+          String dtlsUpdSql = "UPDATE " + dtlsTable + " SET " + dtlsAddrCol + " = " + formatSqlValue(gAddr)
+              + " WHERE " + dtlsCodeCol + " = " + formatSqlValue(customerCode.trim())
+              + " AND MAVCUSTGSTNUMB = " + formatSqlValue(g) + ";";
+          emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", dtlsTable, customerCode.trim(), dtlsUpdSql));
+         }
+        }
+       }
+      }
+     } catch (ResourceAlreadyExistsException | IllegalArgumentException e) {
+      throw e;
+     } catch (Exception e) {
+      log.warn("CustomerServiceImpl.updateOldCustomerJDBC: failed to process gstinDetails: {}", e.getMessage());
+     }
+    }
+   }
+
+   if (emailRequests.isEmpty()) {
+    throw new IllegalArgumentException("No changes detected for this record.");
+   }
+   dbaEmailService.sendDbaSqlEmail(emailRequests);
  }
 
  private void validateCompanyNameLength(String companyName) {

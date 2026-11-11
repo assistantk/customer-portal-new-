@@ -8,12 +8,19 @@ public interface CustomerService {
   String generateUniqueCode(String baseCode);
   com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode);
   java.util.List<com.cris.customerportal.dto.OldCustomerResponse> lookupOldCustomerByGstin(String gstin);
+  java.util.List<com.cris.customerportal.dto.OldCustomerResponse> searchGlobalCustomersByCompanyName(String companyName);
   java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search);
+  java.util.List<com.cris.customerportal.dto.GlobalAgentResponse> searchHandlingAgents(String search, String searchMode);
   java.util.List<java.util.Map<String, String>> searchOwnershipCodes(String search);
+  java.util.List<java.util.Map<String, String>> searchOwnershipCodes(String search, String searchMode);
   String generateUniqueCodeJDBC(String companyName, String type);
   String registerNewEntryJDBC(java.util.Map<String, String> formData);
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);
   com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode);
+  com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin, String currentCode);
+  default com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin) {
+    return checkGstinDuplicate(gstin, null);
+  }
   // Ownership (MEMWGONOWNRSHIP)
   java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);
