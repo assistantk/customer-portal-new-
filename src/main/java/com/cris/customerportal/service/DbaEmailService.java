@@ -137,6 +137,102 @@ public class DbaEmailService {
         sendDbaSqlEmail(requests);
     }
 
+    public void sendDbaDeleteRequestEmail(
+            String parentTable,
+            String detailTable,
+            String codeColumn,
+            String code,
+            String companyName,
+            List<DeleteRequestService.DetailRecord> details,
+            String detailDeleteSql,
+            String parentDeleteSql) {
+        validateDeleteRequest(parentTable, detailTable, codeColumn, code, details,
+                detailDeleteSql, parentDeleteSql);
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(fromEmail);
+        message.setTo(dbaEmail);
+        message.setSubject(buildEmailSubject("DELETE", parentTable, code));
+
+        StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
+                + "Operation: DELETE\n"
+                + "Table: ").append(parentTable).append(", ").append(detailTable).append('\n')
+                .append("Code: ").append(code).append('\n')
+                .append("Company Name: ").append(safeEmailValue(companyName)).append("\n\n")
+                .append("Related detail records identified: ").append(details.size()).append('\n');
+        if (details.isEmpty()) {
+            body.append("No detail records were found for this code; the code-scoped detail DELETE is included.\n\n");
+        } else {
+            for (int i = 0; i < details.size(); i++) {
+                DeleteRequestService.DetailRecord detail = details.get(i);
+                body.append("Detail record ").append(i + 1)
+                        .append(": GSTIN=").append(safeEmailValue(detail.getGstin()))
+                        .append(", Address=").append(safeEmailValue(detail.getAddress()))
+                        .append(", Pincode=").append(safeEmailValue(detail.getPincode()))
+                        .append(", PAN=").append(safeEmailValue(detail.getPan()))
+                        .append('\n');
+            }
+            body.append('\n');
+        }
+        body.append("SQL QUERY:\n")
+                .append("----------------------------------------1 DELETE FROM DETAIL TABLE---------------------------\n\n")
+                .append(detailDeleteSql).append("\n\n")
+                .append("----------------------------------------2 DELETE FROM PARENT TABLE---------------------------\n\n")
+                .append(parentDeleteSql).append("\n\n")
+                .append(userFooter());
+        message.setText(body.toString());
+
+        log.info("DbaEmailService.sendDbaDeleteRequestEmail: detailRecords={} tables={}\n{}",
+                details.size(), parentTable + ", " + detailTable,
+                DataMaskingUtil.maskSqlLiteralsForLog(detailDeleteSql + "\n" + parentDeleteSql));
+        log.info("DbaEmailService.sendDbaDeleteRequestEmail: final email body immediately before sending:\n{}",
+                DataMaskingUtil.maskEmailBodyForLog(message.getText()));
+        try {
+            mailSender.send(message);
+            log.info("DbaEmailService.sendDbaDeleteRequestEmail: email successfully dispatched to DBA");
+        } catch (MailException e) {
+            log.error("DbaEmailService.sendDbaDeleteRequestEmail: failed to send DBA SQL notification email: {} stackTrace={}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
+            throw e;
+        }
+    }
+
+    private void validateDeleteRequest(
+            String parentTable,
+            String detailTable,
+            String codeColumn,
+            String code,
+            List<DeleteRequestService.DetailRecord> details,
+            String detailDeleteSql,
+            String parentDeleteSql) {
+        boolean global = "MEMGLBLCUST".equals(parentTable)
+                && "MEMGLBLCUSTDTLS".equals(detailTable)
+                && "MAVGLBLCUSTCODE".equals(codeColumn);
+        boolean handling = "MEMGLBLHNDGAGNT".equals(parentTable)
+                && "MEMGLBLHNDGAGNTDTLS".equals(detailTable)
+                && "MAVHNDGAGNTCODE".equals(codeColumn);
+        if ((!global && !handling) || code == null || code.trim().isEmpty()
+                || details == null
+                || !isDeleteForCode(detailDeleteSql, detailTable, codeColumn, code)
+                || !isDeleteForCode(parentDeleteSql, parentTable, codeColumn, code)) {
+            throw new IllegalArgumentException("The delete request must contain valid detail and parent DELETE statements for the selected code.");
+        }
+    }
+
+    private boolean isDeleteForCode(String sql, String table, String codeColumn, String code) {
+        if (sql == null) {
+            return false;
+        }
+        String expected = "DELETE FROM " + table + " WHERE " + codeColumn + " = '"
+                + code.replace("'", "''") + "';";
+        return expected.equalsIgnoreCase(sql.trim());
+    }
+
+    private String safeEmailValue(String value) {
+        return value == null ? "N/A" : value.replaceAll("[\\r\\n\\t]", " ").trim();
+    }
+
     public void sendDbaSqlEmail(Collection<SqlRequest> requests) {
         sendDbaSqlEmail(requests, null);
     }
