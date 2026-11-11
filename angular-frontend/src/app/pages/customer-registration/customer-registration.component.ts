@@ -1957,8 +1957,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.gstins.length <= 1) {
       this.selectedGstinAddressIndex = 0;
     }
-    if (this.gstins[this.selectedGstinAddressIndex]?.registeredAddress) {
-      this.form.address = this.gstins[this.selectedGstinAddressIndex].registeredAddress;
+    const selectedAddress = this.gstins[this.selectedGstinAddressIndex]?.registeredAddress;
+    if (selectedAddress) {
+      this.form.address = selectedAddress;
     }
     this.cdr.markForCheck();
   }

@@ -743,7 +743,7 @@ public class CustomerServiceImpl implements CustomerService {
   if (companyName != null) companyName = companyName.trim();
   String codeCompanyName = companyName;
   if ("global".equals(type) && companyName != null) {
-   companyName = withGlobalCompanyNamePrefix(companyName);
+   companyName = withCompanyNamePrefix(companyName);
   }
     String providedCode = firstValue(formData, "customerCode", "globalCustomerCode", "handlingAgentCode");
 
@@ -798,75 +798,100 @@ public class CustomerServiceImpl implements CustomerService {
    String emailId = formData.get("email");
    emailRequests.add(new DbaEmailService.SqlRequest("INSERT", tableName, finalCode, executableSql, userId, emailId));
 
-   if (gstinNumbers.size() > 1) {
-    Map<String, Map<String, String>> detailsMap = new HashMap<>();
-    String rawDetails = formData.get("gstinDetails");
-    if (rawDetails != null && !rawDetails.trim().isEmpty()) {
-     try {
-      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-      List<Map<String, Object>> list = mapper.readValue(rawDetails, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
-      if (list != null) {
-       for (Map<String, Object> item : list) {
-        Object gVal = item.get("gstin");
-        if (gVal != null) {
-         String gKey = gVal.toString().trim().toUpperCase(Locale.ROOT);
-         Map<String, String> itemMap = new HashMap<>();
-         if (item.get("address") != null) itemMap.put("address", item.get("address").toString());
-         if (item.get("city") != null) itemMap.put("city", item.get("city").toString());
-         if (item.get("pincode") != null) itemMap.put("pincode", item.get("pincode").toString());
-         detailsMap.put(gKey, itemMap);
-        }
-       }
-      }
-     } catch (Exception e) {
-      log.warn("CustomerServiceImpl.registerNewEntryJDBC: failed to parse gstinDetails: {}", e.getMessage());
-     }
-    }
+   Map<String, Map<String, String>> detailsMap = parseGstinDetails(formData.get("gstinDetails"), gstinNumbers);
+   String dtlsTable = "global".equals(type) ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
+   String dtlsCodeCol = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
+   String dtlsNameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
+   String dtlsAddrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
+   String dtlsCityCol = "global".equals(type) ? glblDtlsCityCol : "MAVHNDGAGNTCITYNAME";
 
-    String dtlsTable = "global".equals(type) ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
-    String dtlsCodeCol = "global".equals(type) ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
-    String dtlsNameCol = "global".equals(type) ? "MAVGLBLCUSTNAME" : "MAVHNDGAGNTNAME";
-    String dtlsAddrCol = "global".equals(type) ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
-    String dtlsCityCol = "global".equals(type) ? glblDtlsCityCol : "MAVHNDGAGNTCITYNAME";
+   for (String g : gstinNumbers) {
+    Map<String, String> gDetail = detailsMap.get(g);
+    String gAddr = gDetail != null && gDetail.get("address") != null && !gDetail.get("address").trim().isEmpty()
+        ? normalizeAddress(gDetail.get("address"))
+        : address;
+    if (gAddr != null && gAddr.length() > 100) {
+     throw new IllegalArgumentException("Address for GSTIN " + g + " cannot exceed 100 characters.");
+    }
+    String gCity = gDetail != null && gDetail.get("city") != null && !gDetail.get("city").trim().isEmpty()
+        ? normalizeNullableValue(gDetail.get("city"))
+        : city;
+    String gPin = gDetail != null && gDetail.get("pincode") != null && !gDetail.get("pincode").trim().isEmpty()
+        ? gDetail.get("pincode")
+        : pincode;
+    gPin = normalizeRegistrationPincode(gPin);
 
     String dtlsSql = "INSERT INTO " + dtlsTable + " ("
         + dtlsCodeCol + ", " + dtlsNameCol + ", " + dtlsAddrCol + ", " + dtlsCityCol
         + ", MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) "
-        + "VALUES (?, ?, ?, ?, ?, SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
-
-    for (String g : gstinNumbers) {
-     Map<String, String> gDetail = detailsMap.get(g);
-     String gAddr = (gDetail != null && gDetail.get("address") != null && !gDetail.get("address").trim().isEmpty())
-         ? normalizeAddress(gDetail.get("address"))
-         : address;
-     if (gAddr != null && gAddr.length() > 100) {
-      throw new IllegalArgumentException("Address for GSTIN " + g + " cannot exceed 100 characters.");
-     }
-     String gCity = (gDetail != null && gDetail.get("city") != null && !gDetail.get("city").trim().isEmpty())
-         ? normalizeNullableValue(gDetail.get("city"))
-         : city;
-     String gPin = (gDetail != null && gDetail.get("pincode") != null && !gDetail.get("pincode").trim().isEmpty())
-         ? normalizeNullableValue(gDetail.get("pincode"))
-         : pincode;
-
-     List<String> dtlsParams = new ArrayList<>();
-     dtlsParams.add(finalCode);
-     dtlsParams.add(companyName);
-     dtlsParams.add(gAddr);
-     dtlsParams.add(gCity);
-     dtlsParams.add(gPin);
-     dtlsParams.add(g);
-     dtlsParams.add(pan);
-
-     String dtlsExecSql = formatBoundSql(dtlsSql, dtlsParams) + ";";
-     emailRequests.add(new DbaEmailService.SqlRequest("INSERT", dtlsTable, finalCode, dtlsExecSql, userId, emailId));
-    }
+        + "VALUES (?, ?, ?, ?, " + (gPin == null ? "NULL" : gPin) + ", SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
+    String detailName = withCompanyNamePrefix(companyName);
+    List<String> dtlsParams = Arrays.asList(finalCode, detailName, gAddr, gCity, g, pan);
+    String dtlsExecSql = formatBoundSql(dtlsSql, dtlsParams) + ";";
+    emailRequests.add(new DbaEmailService.SqlRequest("INSERT", dtlsTable, finalCode, dtlsExecSql, userId, emailId));
    }
-   dbaEmailService.sendDbaSqlEmail(emailRequests);
+   if (emailRequests.size() != gstinNumbers.size() + 1) {
+    log.error("CustomerServiceImpl.registerNewEntryJDBC: required GSTIN detail SQL count mismatch for table={} code={} expected={} actual={}",
+        tableName, finalCode, gstinNumbers.size(), emailRequests.size() - 1);
+    throw new IllegalStateException("Could not generate all required GSTIN detail queries. Registration email was not sent.");
+   }
+   dbaEmailService.sendDbaRegistrationSqlEmail(emailRequests);
    return finalCode;
  }
 
- private String withGlobalCompanyNamePrefix(String companyName) {
+ private Map<String, Map<String, String>> parseGstinDetails(String rawDetails, List<String> gstinNumbers) {
+  Map<String, Map<String, String>> detailsMap = new HashMap<>();
+  if (rawDetails == null || rawDetails.trim().isEmpty()) {
+   return detailsMap;
+  }
+
+  final List<Map<String, Object>> details;
+  try {
+   com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+   details = mapper.readValue(rawDetails,
+       new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+  } catch (Exception e) {
+   log.error("CustomerServiceImpl.registerNewEntryJDBC: unable to parse GSTIN details ({}): {}; registration email not sent",
+       e.getClass().getSimpleName(), DataMaskingUtil.maskSensitive(e.getMessage()));
+   throw new IllegalArgumentException("GSTIN details could not be processed. Please resubmit the registration.", e);
+  }
+  if (details == null) {
+   throw new IllegalArgumentException("GSTIN details could not be processed. Please resubmit the registration.");
+  }
+
+  Set<String> requestedGstins = new HashSet<>(gstinNumbers);
+  for (Map<String, Object> item : details) {
+   if (item == null || item.get("gstin") == null) {
+    throw new IllegalArgumentException("Each GSTIN detail must identify its GSTIN.");
+   }
+   String gstin = item.get("gstin").toString().replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if (!requestedGstins.contains(gstin)) {
+    throw new IllegalArgumentException("GSTIN details do not match the submitted GSTIN list.");
+   }
+   Map<String, String> itemDetails = new HashMap<>();
+   if (item.get("address") != null) itemDetails.put("address", item.get("address").toString());
+   if (item.get("city") != null) itemDetails.put("city", item.get("city").toString());
+   if (item.get("pincode") != null) itemDetails.put("pincode", item.get("pincode").toString());
+   if (detailsMap.putIfAbsent(gstin, itemDetails) != null) {
+    throw new IllegalArgumentException("Duplicate GSTIN details were submitted.");
+   }
+  }
+  if (!detailsMap.keySet().containsAll(requestedGstins)) {
+   throw new IllegalArgumentException("GSTIN details are missing for one or more submitted GSTINs.");
+  }
+  return detailsMap;
+ }
+
+ private String normalizeRegistrationPincode(String pincode) {
+  if (pincode == null || pincode.trim().isEmpty()) return null;
+  String normalized = pincode.trim();
+  if (!normalized.matches("^[1-9][0-9]{5}$")) {
+   throw new IllegalArgumentException("Invalid pincode for GSTIN detail.");
+  }
+  return normalized;
+ }
+
+ private String withCompanyNamePrefix(String companyName) {
   if (companyName.length() >= 3
       && companyName.regionMatches(true, 0, "M/S", 0, 3)
       && (companyName.length() == 3 || Character.isWhitespace(companyName.charAt(3)))) {
@@ -1153,7 +1178,7 @@ public class CustomerServiceImpl implements CustomerService {
   if (normalized == null) return null;
   if (column.equalsIgnoreCase("MAVGLBLCUSTNAME") || column.equalsIgnoreCase("MAVHNDGAGNTNAME")
       || column.equalsIgnoreCase("MAVHNDAGNTNAME")) {
-   normalized = withGlobalCompanyNamePrefix(normalized);
+   normalized = withCompanyNamePrefix(normalized);
   } else if (column.equalsIgnoreCase("MAVGLBLCUSTADDRTEXT")
       || column.equalsIgnoreCase("MAVHNDGAGNTADDRTEXT")
       || column.equalsIgnoreCase("MAVHNDAGNTADDRTEXT")) {
