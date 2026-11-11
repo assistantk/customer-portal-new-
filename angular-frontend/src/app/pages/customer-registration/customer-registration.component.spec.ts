@@ -389,9 +389,11 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       }));
 
       vi.useFakeTimers();
+      component.selectedGstinAddressIndex = 1;
       component.handleOldCodeChange('SAEB');
       vi.advanceTimersByTime(800);
 
+      expect(component.selectedGstinAddressIndex).toBe(0);
       expect(customerServiceMock.lookupOldCustomerJDBC).toHaveBeenCalledWith('SAEB');
       expect(component.form.companyName).toBe('Legacy Company');
       expect(component.form.address).toBe('Railway Road');
@@ -403,6 +405,50 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.verifiedCustomerCode).toBe('SAEB');
       expect(component.lookupDone).toBe(true);
       expect(component.lookupLoading).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('maps each returned GSTIN address independently and keeps State separate', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        companyName: 'Legacy Company',
+        customerCode: 'SAEB',
+        address: 'Head Office Road',
+        city: 'Delhi',
+        pincode: '110001',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '27ABCDE1234F1Z5,07ABCDE1234F1Z5',
+        gstins: [
+          {
+            gstin: '27ABCDE1234F1Z5',
+            state: 'Maharashtra',
+            registeredAddress: 'Location One, Industrial Road'
+          },
+          {
+            gstin: '07ABCDE1234F1Z5',
+            state: 'Delhi',
+            registeredAddress: 'Location Two, Railway Colony'
+          }
+        ]
+      }));
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('SAEB');
+      vi.advanceTimersByTime(800);
+
+      expect(component.gstins.map(({ state, registeredAddress }) => ({ state, registeredAddress }))).toEqual([
+        { state: 'Maharashtra', registeredAddress: 'Location One, Industrial Road' },
+        { state: 'Delhi', registeredAddress: 'Location Two, Railway Colony' }
+      ]);
+      expect(component.form.address).toBe('Location One, Industrial Road');
+
+      component.onSelectGstinAddress(1);
+      expect(component.form.address).toBe('Location Two, Railway Colony');
+      expect(component.gstins[0].registeredAddress).toBe('Location One, Industrial Road');
+      expect(component.gstins[1].state).toBe('Delhi');
+
+      component.onSelectGstinAddress(0);
+      expect(component.form.address).toBe('Location One, Industrial Road');
+      expect(component.gstins[1].registeredAddress).toBe('Location Two, Railway Colony');
       vi.useRealTimers();
     });
 
@@ -2185,7 +2231,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       // Changing old code type also resets disabled states
       component.isOldPanDisabled = true;
       component.isOldGstDisabled = true;
-      component.handleOldCodeTypeChange({ target: { value: 'NEW_CODE_TYPE' } } as unknown as Event);
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
       expect(component.isOldPanDisabled).toBe(false);
       expect(component.isOldGstDisabled).toBe(false);
     });

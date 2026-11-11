@@ -137,26 +137,149 @@ public class DbaEmailService {
         sendDbaSqlEmail(requests);
     }
 
+    public void sendDbaDeleteRequestEmail(
+            String parentTable,
+            String detailTable,
+            String codeColumn,
+            String code,
+            String companyName,
+            List<DeleteRequestService.DetailRecord> details,
+            String detailDeleteSql,
+            String parentDeleteSql) {
+        validateDeleteRequest(parentTable, detailTable, codeColumn, code, details,
+                detailDeleteSql, parentDeleteSql);
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(fromEmail);
+        message.setTo(dbaEmail);
+        message.setSubject(buildEmailSubject("DELETE", parentTable, code));
+
+        StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
+                + "Operation: DELETE\n"
+                + "Table: ").append(parentTable).append(", ").append(detailTable).append('\n')
+                .append("Code: ").append(code).append('\n')
+                .append("Company Name: ").append(safeEmailValue(companyName)).append("\n\n")
+                .append("Related detail records identified: ").append(details.size()).append('\n');
+        if (details.isEmpty()) {
+            body.append("No detail records were found for this code; the code-scoped detail DELETE is included.\n\n");
+        } else {
+            for (int i = 0; i < details.size(); i++) {
+                DeleteRequestService.DetailRecord detail = details.get(i);
+                body.append("Detail record ").append(i + 1)
+                        .append(": GSTIN=").append(safeEmailValue(detail.getGstin()))
+                        .append(", Address=").append(safeEmailValue(detail.getAddress()))
+                        .append(", Pincode=").append(safeEmailValue(detail.getPincode()))
+                        .append(", PAN=").append(safeEmailValue(detail.getPan()))
+                        .append('\n');
+            }
+            body.append('\n');
+        }
+        body.append("SQL QUERY:\n")
+                .append("----------------------------------------1 DELETE FROM DETAIL TABLE---------------------------\n\n")
+                .append(detailDeleteSql).append("\n\n")
+                .append("----------------------------------------2 DELETE FROM PARENT TABLE---------------------------\n\n")
+                .append(parentDeleteSql).append("\n\n")
+                .append(userFooter());
+        message.setText(body.toString());
+
+        log.info("DbaEmailService.sendDbaDeleteRequestEmail: detailRecords={} tables={}\n{}",
+                details.size(), parentTable + ", " + detailTable,
+                DataMaskingUtil.maskSqlLiteralsForLog(detailDeleteSql + "\n" + parentDeleteSql));
+        log.info("DbaEmailService.sendDbaDeleteRequestEmail: final email body immediately before sending:\n{}",
+                DataMaskingUtil.maskEmailBodyForLog(message.getText()));
+        try {
+            mailSender.send(message);
+            log.info("DbaEmailService.sendDbaDeleteRequestEmail: email successfully dispatched to DBA");
+        } catch (MailException e) {
+            log.error("DbaEmailService.sendDbaDeleteRequestEmail: failed to send DBA SQL notification email: {} stackTrace={}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()), DataMaskingUtil.formatThrowable(e));
+            throw e;
+        }
+    }
+
+    private void validateDeleteRequest(
+            String parentTable,
+            String detailTable,
+            String codeColumn,
+            String code,
+            List<DeleteRequestService.DetailRecord> details,
+            String detailDeleteSql,
+            String parentDeleteSql) {
+        boolean global = "MEMGLBLCUST".equals(parentTable)
+                && "MEMGLBLCUSTDTLS".equals(detailTable)
+                && "MAVGLBLCUSTCODE".equals(codeColumn);
+        boolean handling = "MEMGLBLHNDGAGNT".equals(parentTable)
+                && "MEMGLBLHNDGAGNTDTLS".equals(detailTable)
+                && "MAVHNDGAGNTCODE".equals(codeColumn);
+        if ((!global && !handling) || code == null || code.trim().isEmpty()
+                || details == null
+                || !isDeleteForCode(detailDeleteSql, detailTable, codeColumn, code)
+                || !isDeleteForCode(parentDeleteSql, parentTable, codeColumn, code)) {
+            throw new IllegalArgumentException("The delete request must contain valid detail and parent DELETE statements for the selected code.");
+        }
+    }
+
+    private boolean isDeleteForCode(String sql, String table, String codeColumn, String code) {
+        if (sql == null) {
+            return false;
+        }
+        String expected = "DELETE FROM " + table + " WHERE " + codeColumn + " = '"
+                + code.replace("'", "''") + "';";
+        return expected.equalsIgnoreCase(sql.trim());
+    }
+
+    private String safeEmailValue(String value) {
+        return value == null ? "N/A" : value.replaceAll("[\\r\\n\\t]", " ").trim();
+    }
+
     public void sendDbaSqlEmail(Collection<SqlRequest> requests) {
+        sendDbaSqlEmail(requests, null);
+    }
+
+    public void sendDbaRegistrationSqlEmail(Collection<SqlRequest> requests) {
+        try {
+            List<SqlRequest> registrationInserts = orderedRegistrationInsertSet(requests);
+            if (registrationInserts == null) {
+                throw new IllegalArgumentException("Registration email requires a parent INSERT and GSTIN detail INSERT queries.");
+            }
+            sendDbaSqlEmail(requests, registrationInserts);
+        } catch (IllegalArgumentException e) {
+            log.error("DbaEmailService.sendDbaRegistrationSqlEmail: invalid registration SQL set; email not sent: {}",
+                    DataMaskingUtil.maskSensitive(e.getMessage()));
+            throw e;
+        }
+    }
+
+    private void sendDbaSqlEmail(Collection<SqlRequest> requests, List<SqlRequest> registrationInserts) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
 
-        List<SqlRequest> ownershipPair = orderedOwnershipInsertPair(requests);
-        SqlRequest firstRequest = ownershipPair != null
-                ? ownershipPair.get(0)
+        List<SqlRequest> ownershipPair = registrationInserts == null
+                ? orderedOwnershipInsertPair(requests)
+                : null;
+        List<SqlRequest> orderedPair = registrationInserts != null ? registrationInserts : ownershipPair;
+        SqlRequest firstRequest = orderedPair != null
+                ? orderedPair.get(0)
                 : requests == null || requests.isEmpty() ? null : requests.iterator().next();
-        String tableField = ownershipPair == null
-                ? firstRequest == null ? null : firstRequest.table()
-                : "MEMWGONOWNRSHIP, MEMWGONOWNRPRTY";
+        String tableField = registrationInserts != null
+                ? registrationInserts.get(0).table() + ", " + registrationInserts.get(1).table()
+                : ownershipPair == null
+                    ? firstRequest == null ? null : firstRequest.table()
+                    : "MEMWGONOWNRSHIP, MEMWGONOWNRPRTY";
         message.setSubject(buildEmailSubject(
                 firstRequest == null ? "QUERY" : firstRequest.operation(),
-                tableField,
+                ownershipPair == null
+                        ? firstRequest == null ? null : firstRequest.table()
+                        : tableField,
                 firstRequest == null ? null : firstRequest.code()));
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
                 + "Kindly execute the attached/below script on rfrn3t and training.\n\n");
-        if (ownershipPair != null) {
+        if (registrationInserts != null) {
+            appendRegistrationInsertSet(body, registrationInserts, tableField);
+        } else if (ownershipPair != null) {
             appendOwnershipInsertPair(body, ownershipPair);
         } else if (requests != null) {
             appendSqlRequests(body, requests);
@@ -164,7 +287,7 @@ public class DbaEmailService {
         body.append(userFooter());
         message.setText(body.toString());
 
-        Collection<SqlRequest> orderedRequests = ownershipPair == null ? requests : ownershipPair;
+        Collection<SqlRequest> orderedRequests = orderedPair == null ? requests : orderedPair;
         String combinedSqlForLog = orderedRequests == null ? "" : orderedRequests.stream()
                 .map(request -> DataMaskingUtil.maskSqlLiteralsForLog(request.sql()))
                 .collect(java.util.stream.Collectors.joining("\n"));
@@ -211,6 +334,95 @@ public class DbaEmailService {
                 body.append('\n');
             }
         }
+    }
+
+    private void appendRegistrationInsertSet(StringBuilder body, List<SqlRequest> requests, String tableField) {
+        SqlRequest parent = requests.get(0);
+        body.append("Operation: INSERT\n")
+                .append("Table: ").append(tableField).append('\n')
+                .append("Code: ").append(parent.code()).append("\n\n")
+                .append("SQL QUERY:\n")
+                .append("----------------------------------------1 PARENT INSERT---------------------------\n\n")
+                .append(formatSqlForEmail(parent))
+                .append("\n\n");
+        for (int i = 1; i < requests.size(); i++) {
+            body.append("----------------------------------------")
+                    .append(i + 1)
+                    .append(" GSTIN DETAIL INSERT---------------------------\n\n")
+                    .append(formatSqlForEmail(requests.get(i)))
+                    .append("\n\n");
+        }
+    }
+
+    private List<SqlRequest> orderedRegistrationInsertSet(Collection<SqlRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return null;
+        }
+
+        SqlRequest parent = null;
+        String detailTable = null;
+        for (SqlRequest request : requests) {
+            if (request == null || !"INSERT".equalsIgnoreCase(request.operation())) {
+                continue;
+            }
+            if (isRegistrationParentTable(request.table())) {
+                if (parent != null) {
+                    throw new IllegalArgumentException("Registration email must contain exactly one parent INSERT query.");
+                }
+                parent = request;
+                detailTable = "MEMGLBLCUST".equalsIgnoreCase(request.table())
+                        ? "MEMGLBLCUSTDTLS"
+                        : "MEMGLBLHNDGAGNTDTLS";
+            }
+        }
+        if (parent == null) {
+            return null;
+        }
+
+        if (requests.size() < 2 || parent.code() == null || parent.sql() == null
+                || !startsWithInsertForTable(parent.sql(), parent.table())) {
+            throw new IllegalArgumentException("Registration email is missing a valid parent or GSTIN detail INSERT query.");
+        }
+        List<SqlRequest> details = new ArrayList<>();
+        for (SqlRequest request : requests) {
+            if (request == parent) {
+                continue;
+            }
+            if (request == null
+                    || !"INSERT".equalsIgnoreCase(request.operation())
+                    || !detailTable.equalsIgnoreCase(request.table())
+                    || !parent.code().equalsIgnoreCase(request.code())
+                    || !startsWithInsertForTable(request.sql(), detailTable)) {
+                throw new IllegalArgumentException("Registration email contains an invalid GSTIN detail INSERT query.");
+            }
+            details.add(request);
+        }
+        if (details.isEmpty()) {
+            throw new IllegalArgumentException("Registration email requires at least one GSTIN detail INSERT query.");
+        }
+
+        List<SqlRequest> ordered = new ArrayList<>(details.size() + 1);
+        ordered.add(parent);
+        ordered.addAll(details);
+        return ordered;
+    }
+
+    private boolean isRegistrationParentTable(String table) {
+        return "MEMGLBLCUST".equalsIgnoreCase(table) || "MEMGLBLHNDGAGNT".equalsIgnoreCase(table);
+    }
+
+    private boolean startsWithInsertForTable(String sql, String table) {
+        if (sql == null || table == null) {
+            return false;
+        }
+        String prefix = "INSERT INTO " + table;
+        String normalized = sql.trim();
+        if (!normalized.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            return false;
+        }
+        return normalized.length() > prefix.length()
+                && (Character.isWhitespace(normalized.charAt(prefix.length()))
+                    || normalized.charAt(prefix.length()) == '(');
     }
 
     private void appendOwnershipInsertPair(StringBuilder body, List<SqlRequest> requests) {

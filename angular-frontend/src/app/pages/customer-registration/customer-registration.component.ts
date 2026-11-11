@@ -206,9 +206,6 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
     this.selectedGstinAddressIndex = idx;
     this.form.address = this.gstins[idx]?.registeredAddress || '';
-    if (this.form.address) {
-      this.form.address = this.getNormalizedAddress(this.form.address);
-    }
     this.cdr.markForCheck();
   }
 
@@ -1000,6 +997,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.form.email = '';
     this.form.mobile = '';
     this.gstins = [{ ...blankGstin }];
+    this.selectedGstinAddressIndex = 0;
     this.isOldPanDisabled = false;
     this.isOldGstDisabled = false;
     this.lookupDone = false;
@@ -1033,7 +1031,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               const storedCode = customer.customerCode || customer.code || code.trim();
               this.verifiedCustomerCode = String(storedCode).trim();
               this.form.customerCode = this.verifiedCustomerCode;
-              this.form.address = (customer.address || '').replace(/,\s+/g, ',').trim();
+              this.form.address = customer.address || '';
               this.form.city = customer.city || '';
               this.form.pincode = customer.pincode || customer.pcoCode || '';
               this.form.email = customer.email || customer.emailId || '';
@@ -1041,7 +1039,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               this.applyOldRecordDivision(customer);
 
               const panAvailable = this.isValueAvailable(customer.panNumber);
-              const gstAvailable = this.isGstAvailable(customer.gstinNumbers);
+              const gstAvailable = this.isGstAvailable(customer.gstinNumbers)
+                || (Array.isArray(customer.gstins) && customer.gstins.length > 0);
 
               this.isOldPanDisabled = panAvailable;
               this.isOldGstDisabled = gstAvailable;
@@ -1053,19 +1052,38 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               }
 
               if (gstAvailable) {
-                const cleanGstins = (customer.gstinNumbers || '').replace(/[\[\]"'\s]/g, '');
-                const loadedGstins: GstinEntry[] = cleanGstins
-                  .split(',')
-                  .map((g: string) => g.trim())
-                  .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
-                  .map((g: string, idx: number) => ({
-                    ...blankGstin,
-                    gstinId: `old-${idx}`,
-                    gstin: g.toUpperCase(),
-                    state: getStateNameFromGstinCode(g.slice(0, 2)) || '',
-                    registeredAddress: idx === 0 ? this.form.address : ''
-                  }));
-                this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin, registeredAddress: this.form.address }];
+                const responseGstins = Array.isArray(customer.gstins) ? customer.gstins : [];
+                const loadedGstins: GstinEntry[] = responseGstins.length > 0
+                  ? responseGstins
+                    .filter((entry: any) => entry && (entry.gstin || entry.gstinNumber))
+                    .map((entry: any, idx: number) => {
+                      const gstin = String(entry.gstin || entry.gstinNumber).replace(/\s/g, '').toUpperCase();
+                      return {
+                        ...blankGstin,
+                        gstinId: entry.gstinId ?? `old-${idx}`,
+                        gstin,
+                        state: entry.state || getStateNameFromGstinCode(gstin.slice(0, 2)) || '',
+                        registeredAddress: entry.registeredAddress ?? entry.address ?? (idx === 0 ? this.form.address : ''),
+                        city: entry.city || '',
+                        pincode: entry.pincode || ''
+                      };
+                    })
+                  : (customer.gstinNumbers || '')
+                    .replace(/[\[\]"'\s]/g, '')
+                    .split(',')
+                    .map((g: string) => g.trim())
+                    .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
+                    .map((g: string, idx: number) => ({
+                      ...blankGstin,
+                      gstinId: `old-${idx}`,
+                      gstin: g.toUpperCase(),
+                      state: getStateNameFromGstinCode(g.slice(0, 2)) || '',
+                      registeredAddress: idx === 0 ? this.form.address : ''
+                    }));
+                this.gstins = loadedGstins.length > 0
+                  ? loadedGstins
+                  : [{ ...blankGstin, registeredAddress: this.form.address }];
+                this.form.address = this.gstins[0].registeredAddress || this.form.address;
               } else {
                 this.gstins = [{ ...blankGstin, registeredAddress: this.form.address }];
               }
@@ -1957,8 +1975,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.gstins.length <= 1) {
       this.selectedGstinAddressIndex = 0;
     }
-    if (this.gstins[this.selectedGstinAddressIndex]?.registeredAddress) {
-      this.form.address = this.gstins[this.selectedGstinAddressIndex].registeredAddress;
+    const selectedAddress = this.gstins[this.selectedGstinAddressIndex]?.registeredAddress;
+    if (selectedAddress) {
+      this.form.address = selectedAddress;
     }
     this.cdr.markForCheck();
   }

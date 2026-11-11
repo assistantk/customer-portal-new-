@@ -11,6 +11,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -73,16 +75,54 @@ public class DeleteRequestService {
                     "Company name does not match the selected code. Please verify the company name.");
         }
 
-        String sql = buildDeleteSql(record.mapping, record.code);
-        dbaEmailService.sendDbaQueryEmail(
-                "DELETE", record.mapping.table, record.code, verifiedCompanyName, sql);
-        log.info("DeleteRequestService.sendRequest: DBA email sent for codeType={} table={}",
-                codeType, record.mapping.table);
+        List<DetailRecord> details = findDetails(record.mapping, record.code);
+        String detailsDeleteSql = buildDeleteSql(
+                record.mapping.detailTable, record.mapping.codeColumn, record.code);
+        String parentDeleteSql = buildDeleteSql(
+                record.mapping.table, record.mapping.codeColumn, record.code);
+        dbaEmailService.sendDbaDeleteRequestEmail(
+                record.mapping.table,
+                record.mapping.detailTable,
+                record.mapping.codeColumn,
+                record.code,
+                verifiedCompanyName,
+                details,
+                detailsDeleteSql,
+                parentDeleteSql);
+        log.info("DeleteRequestService.sendRequest: DBA email sent for codeType={} table={} detailRecords={}",
+                codeType, record.mapping.table, details.size());
     }
 
-    private String buildDeleteSql(CodeMapping mapping, String code) {
-        return "DELETE FROM " + mapping.table
-                + " WHERE " + mapping.codeColumn + " = '" + escapeSqlLiteral(code) + "';";
+    private List<DetailRecord> findDetails(CodeMapping mapping, String code) {
+        String sql = "SELECT MAVCUSTGSTNUMB, " + mapping.detailAddressColumn
+                + ", MANPINCODE, MAVCUSTPANNUMB FROM " + mapping.detailTable
+                + " WHERE " + mapping.codeColumn + " = ?";
+        List<DetailRecord> details = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, code);
+            try (ResultSet results = statement.executeQuery()) {
+                while (results.next()) {
+                    details.add(new DetailRecord(
+                            results.getString(1),
+                            results.getString(2),
+                            results.getString(3),
+                            results.getString(4)));
+                }
+            }
+            return details;
+        } catch (SQLException e) {
+            log.error("Delete request detail lookup failed: table={} SQLState={} ErrorCode={} stackTrace={}",
+                    mapping.detailTable, e.getSQLState(), e.getErrorCode(),
+                    DataMaskingUtil.formatThrowable(e));
+            throw new DatabaseUnavailableException(
+                    "Unable to retrieve related detail records. The delete request was not sent.", e);
+        }
+    }
+
+    private String buildDeleteSql(String table, String codeColumn, String code) {
+        return "DELETE FROM " + table
+                + " WHERE " + codeColumn + " = '" + escapeSqlLiteral(code) + "';";
     }
 
     private String escapeSqlLiteral(String value) {
@@ -92,10 +132,14 @@ public class DeleteRequestService {
     private CodeMapping mappingFor(String codeType) {
         String normalizedType = codeType == null ? "" : codeType.trim();
         if ("GLOBAL_CUSTOMER".equals(normalizedType)) {
-            return new CodeMapping("MEMGLBLCUST", "MAVGLBLCUSTCODE", "MAVGLBLCUSTNAME");
+            return new CodeMapping(
+                    "MEMGLBLCUST", "MAVGLBLCUSTCODE", "MAVGLBLCUSTNAME",
+                    "MEMGLBLCUSTDTLS", "MAVGLBLCUSTADDRTEXT");
         }
         if ("HANDLING_AGENT".equals(normalizedType)) {
-            return new CodeMapping("MEMGLBLHNDGAGNT", "MAVHNDGAGNTCODE", "MAVHNDGAGNTNAME");
+            return new CodeMapping(
+                    "MEMGLBLHNDGAGNT", "MAVHNDGAGNTCODE", "MAVHNDGAGNTNAME",
+                    "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTADDRTEXT");
         }
         throw new IllegalArgumentException("Select a supported code type.");
     }
@@ -143,15 +187,39 @@ public class DeleteRequestService {
         }
     }
 
+    public static final class DetailRecord {
+        private final String gstin;
+        private final String address;
+        private final String pincode;
+        private final String pan;
+
+        private DetailRecord(String gstin, String address, String pincode, String pan) {
+            this.gstin = gstin;
+            this.address = address;
+            this.pincode = pincode;
+            this.pan = pan;
+        }
+
+        public String getGstin() { return gstin; }
+        public String getAddress() { return address; }
+        public String getPincode() { return pincode; }
+        public String getPan() { return pan; }
+    }
+
     private static final class CodeMapping {
         private final String table;
         private final String codeColumn;
         private final String nameColumn;
+        private final String detailTable;
+        private final String detailAddressColumn;
 
-        private CodeMapping(String table, String codeColumn, String nameColumn) {
+        private CodeMapping(String table, String codeColumn, String nameColumn,
+                            String detailTable, String detailAddressColumn) {
             this.table = table;
             this.codeColumn = codeColumn;
             this.nameColumn = nameColumn;
+            this.detailTable = detailTable;
+            this.detailAddressColumn = detailAddressColumn;
         }
     }
 }

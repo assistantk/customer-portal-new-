@@ -260,14 +260,14 @@ class CustomerServiceImplTest {
         assertTrue(body.startsWith("Dear DBA Team,\n\n"
             + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
             + "Operation: INSERT\n"
-            + "Table: MEMGLBLCUST\n"
+            + "Table: MEMGLBLCUST, MEMGLBLCUSTDTLS\n"
             + "Code: MSBC\n\n"
             + "SQL QUERY:\n"
-            + "----------------------------------------1 INSERT---------------------------\n\n"));
+            + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"
         ));
-        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: MSBC\n\nSQL QUERY:\n"));
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC\n\nSQL QUERY:\n"));
         assertFalse(body.contains("Prasanta Mondal"));
         assertFalse(body.contains("Chief Manager / FOIS"));
         assertFalse(body.contains("Centre for Railway"));
@@ -301,7 +301,8 @@ class CustomerServiceImplTest {
             "gstinNumbers", "20APEPA6196G1Z9",
             "panNumber", "APEPA6196G"
         )));
-        assertTrue(emailedBody(mailSender).contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: MSBC"));
+        assertTrue(emailedBody(mailSender).contains(
+            "Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC"));
     }
 
     @Test
@@ -433,7 +434,7 @@ class CustomerServiceImplTest {
         ));
 
         String body = emailedBody(mailSender);
-        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST\nCode: ASEB"));
+        assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: ASEB"));
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
                 + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
@@ -2476,6 +2477,64 @@ class CustomerServiceImplTest {
         return service;
     }
 
+    private String sendRegistrationAndCaptureEmail(String codeType, String gstinNumbers, String gstinDetails)
+            throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(false);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", codeType);
+        formData.put("customerCode", "ABCD");
+        formData.put("companyName", "Example Company");
+        formData.put("address", "Shop 1, Delhi");
+        formData.put("city", "Delhi");
+        formData.put("pincode", "110001");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "APEPA6196G");
+        formData.put("gstinNumbers", gstinNumbers);
+        if (gstinDetails != null) {
+            formData.put("gstinDetails", gstinDetails);
+        }
+
+        service(dataSource, mailSender).registerNewEntryJDBC(formData);
+        return emailedBody(mailSender);
+    }
+
+    private void assertRegistrationEmail(
+            String body, String parentTable, String detailTable, String... gstins) {
+        assertTrue(body.contains("Operation: INSERT\nTable: " + parentTable + ", " + detailTable
+                + "\nCode: ABCD\n\nSQL QUERY:\n"));
+        assertTrue(body.contains("----------------------------------------1 PARENT INSERT"));
+        assertEquals(1, countOccurrences(body, "INSERT INTO " + parentTable + " "));
+        assertEquals(gstins.length, countOccurrences(body, "INSERT INTO " + detailTable + " "));
+        assertEquals(gstins.length + 1, countOccurrences(body, "'M/S EXAMPLE COMPANY'"));
+        assertTrue(body.contains("----------------------------------------2 GSTIN DETAIL INSERT"));
+        assertTrue(body.contains("UserID: Not available"));
+        assertTrue(body.contains("Email ID: Not available"));
+        assertTrue(body.contains("Phone Number: Not available"));
+        for (String gstin : gstins) {
+            assertTrue(body.contains("'" + gstin + "'"), "Missing GSTIN " + gstin);
+        }
+    }
+
+    private int countOccurrences(String value, String target) {
+        int count = 0;
+        int offset = 0;
+        while ((offset = value.indexOf(target, offset)) >= 0) {
+            count++;
+            offset += target.length();
+        }
+        return count;
+    }
+
     private Map<String, String> originalOldCustomerValues(String address) {
         Map<String, String> values = new HashMap<>();
         values.put("MAVGLBLCUSTCODE", "AB12");
@@ -2672,7 +2731,7 @@ class CustomerServiceImplTest {
         assertEquals("ABCD", code);
 
         ArgumentCaptor<List<DbaEmailService.SqlRequest>> captor = ArgumentCaptor.forClass(List.class);
-        verify(dbaEmailService).sendDbaSqlEmail(captor.capture());
+        verify(dbaEmailService).sendDbaRegistrationSqlEmail(captor.capture());
         List<DbaEmailService.SqlRequest> requests = captor.getValue();
 
         // 1 Parent INSERT + 2 Detail INSERTs = 3 total requests
@@ -2687,7 +2746,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void registerNewEntryJDBC_singleGstin_generatesOnlyParentInsert() throws SQLException {
+    void registerNewEntryJDBC_singleGstin_generatesParentAndDetailInserts() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection conn = mock(Connection.class);
         PreparedStatement psExists = mock(PreparedStatement.class);
@@ -2719,12 +2778,106 @@ class CustomerServiceImplTest {
         assertEquals("ABCD", code);
 
         ArgumentCaptor<List<DbaEmailService.SqlRequest>> captor = ArgumentCaptor.forClass(List.class);
-        verify(dbaEmailService).sendDbaSqlEmail(captor.capture());
+        verify(dbaEmailService).sendDbaRegistrationSqlEmail(captor.capture());
         List<DbaEmailService.SqlRequest> requests = captor.getValue();
 
-        // Exactly 1 Parent INSERT (preserving single GSTIN workflow)
-        assertEquals(1, requests.size());
+        assertEquals(2, requests.size());
         assertEquals("MEMGLBLCUST", requests.get(0).table());
+        assertEquals("MEMGLBLCUSTDTLS", requests.get(1).table());
+        assertTrue(requests.get(1).sql().contains("20APEPA6196G1Z9"));
+        assertTrue(requests.get(1).sql().contains("'Shop 1,Delhi'"));
+    }
+
+    @Test
+    void registrationEmail_containsGlobalParentAndSingleGstinDetailInsert() throws SQLException {
+        String gstin = "20APEPA6196G1Z9";
+        String body = sendRegistrationAndCaptureEmail("global", gstin, null);
+
+        assertRegistrationEmail(body, "MEMGLBLCUST", "MEMGLBLCUSTDTLS", gstin);
+        assertTrue(body.contains("'SHOP 1,DELHI'"));
+        assertTrue(body.contains("'DELHI', 110001, SYSDATE"));
+    }
+
+    @Test
+    void registrationEmail_containsGlobalParentAndEveryMultipleGstinDetailInsert() throws SQLException {
+        String gstins = "20APEPA6196G1Z9,20APEPA6196G2Z8";
+        String details = "[{\"gstin\":\"20APEPA6196G1Z9\",\"address\":\"Shop 1, Delhi\",\"city\":\"Delhi\",\"pincode\":\"110001\"},"
+                + "{\"gstin\":\"20APEPA6196G2Z8\",\"address\":\"Warehouse 2, Haryana\",\"city\":\"Gurgaon\",\"pincode\":\"122001\"}]";
+        String body = sendRegistrationAndCaptureEmail("global", gstins, details);
+
+        assertRegistrationEmail(body, "MEMGLBLCUST", "MEMGLBLCUSTDTLS",
+                "20APEPA6196G1Z9", "20APEPA6196G2Z8");
+        assertTrue(body.contains("'SHOP 1,DELHI'"));
+        assertTrue(body.contains("'WAREHOUSE 2,HARYANA'"));
+        assertTrue(body.contains("'GURGAON', 122001, SYSDATE"));
+    }
+
+    @Test
+    void registrationEmail_containsHandlingAgentParentAndSingleGstinDetailInsert() throws SQLException {
+        String gstin = "09APEPA6196G1ZJ";
+        String body = sendRegistrationAndCaptureEmail("handling_agent", gstin, null);
+
+        assertRegistrationEmail(body, "MEMGLBLHNDGAGNT", "MEMGLBLHNDGAGNTDTLS", gstin);
+        assertTrue(body.contains("'SHOP 1,DELHI'"));
+        assertTrue(body.contains("'DELHI', 110001, SYSDATE"));
+    }
+
+    @Test
+    void registrationEmail_containsHandlingAgentParentAndEveryMultipleGstinDetailInsert() throws SQLException {
+        String gstins = "09APEPA6196G1ZJ,20APEPA6196G2Z8";
+        String details = "[{\"gstin\":\"09APEPA6196G1ZJ\",\"address\":\"Shop 1, Delhi\",\"city\":\"Delhi\",\"pincode\":\"110001\"},"
+                + "{\"gstin\":\"20APEPA6196G2Z8\",\"address\":\"Warehouse 2, Haryana\",\"city\":\"Gurgaon\",\"pincode\":\"122001\"}]";
+        String body = sendRegistrationAndCaptureEmail("handling_agent", gstins, details);
+
+        assertRegistrationEmail(body, "MEMGLBLHNDGAGNT", "MEMGLBLHNDGAGNTDTLS",
+                "09APEPA6196G1ZJ", "20APEPA6196G2Z8");
+        assertTrue(body.contains("'SHOP 1,DELHI'"));
+        assertTrue(body.contains("'WAREHOUSE 2,HARYANA'"));
+        assertTrue(body.contains("'GURGAON', 122001, SYSDATE"));
+    }
+
+    @Test
+    void registrationEmail_doesNotSendWhenRequiredDetailInsertIsMissing() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        List<DbaEmailService.SqlRequest> requests = List.of(new DbaEmailService.SqlRequest(
+                "INSERT", "MEMGLBLCUST", "ABCD", "INSERT INTO MEMGLBLCUST VALUES ('ABCD');"));
+
+        assertThrows(IllegalArgumentException.class, () -> emailService.sendDbaRegistrationSqlEmail(requests));
+        assertThrows(IllegalArgumentException.class, () -> emailService.sendDbaRegistrationSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLCUSTDTLS", "ABCD", "INSERT INTO MEMGLBLCUSTDTLS VALUES ('ABCD');"))));
+        verifyNoInteractions(mailSender);
+    }
+
+    @Test
+    void registerNewEntryJDBC_doesNotSendEmailWhenGstinDetailsAreMalformed() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(false);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "ABCD");
+        formData.put("companyName", "ABC INDUSTRIES");
+        formData.put("address", "Shop 1, Delhi");
+        formData.put("city", "Delhi");
+        formData.put("pincode", "110001");
+        formData.put("zone", "Northern Railway");
+        formData.put("operatingDivision", "Delhi (DLI)");
+        formData.put("panNumber", "APEPA6196G");
+        formData.put("gstinNumbers", "20APEPA6196G1Z9");
+        formData.put("gstinDetails", "{malformed");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(formData));
+        verifyNoInteractions(mailSender);
     }
 
     @Test
