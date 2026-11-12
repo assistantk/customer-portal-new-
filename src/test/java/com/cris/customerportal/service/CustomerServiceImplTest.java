@@ -416,7 +416,7 @@ class CustomerServiceImplTest {
             + "SQL QUERY:\n"
             + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S: BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"
+            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S: BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'APEPA6196G');"
         ));
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S: BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"
@@ -592,7 +592,7 @@ class CustomerServiceImplTest {
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
                 + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
-                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'10ABACA6462C1ZD','ABACA6462C');"
+                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'ABACA6462C');"
         ));
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', 'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
@@ -630,7 +630,7 @@ class CustomerServiceImplTest {
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR',"
                 + "'PATNA ROAD','PATNA',NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,"
-                + "'10ABACA6462C1ZD','ABACA6462C');"
+                + "'ABACA6462C');"
         ));
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR', 'PATNA ROAD', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
@@ -665,7 +665,7 @@ class CustomerServiceImplTest {
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED',"
                 + "'22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,"
-                + "'SR.DCM/MDU',NULL,'09AAACJ2055K1ZJ','AAACJ2055K');"
+                + "'SR.DCM/MDU',NULL,'AAACJ2055K');"
         ));
         assertTrue(emailedBody(mailSender).contains(
             "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K', SYSDATE, NULL);"
@@ -3443,7 +3443,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void registerNewEntryJDBC_includesOnlyFirstGstinInParentInsert_andSavesAllGstinsInDetailTable() throws SQLException {
+    void registerNewEntryJDBC_parentInsertContainsNoGstin_andSavesAllGstinsInDetailTable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement existsPs = mock(PreparedStatement.class);
@@ -3472,15 +3472,13 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
 
-        // 1. Parent INSERT must contain the first GSTIN right before PAN
+        // 1. Parent INSERT must NOT contain any GSTIN
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('ABPC','M/S ABP PRIVATE LIMITED','DELHI ROAD','DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/DLI',NULL,'07ABCDE1234F1Z1','ABCDE1234F');"
+            "INSERT INTO MEMGLBLCUST VALUES('ABPC','M/S ABP PRIVATE LIMITED','DELHI ROAD','DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/DLI',NULL,'ABCDE1234F');"
         ));
+        assertFalse(body.contains("07ABCDE1234F1Z1','ABCDE1234F'"));
 
-        // 2. Parent INSERT must NOT contain the second GSTIN
-        assertFalse(body.contains("INSERT INTO MEMGLBLCUST VALUES(" + ".*" + "27ABCDE1234F1Z2"));
-
-        // 3. Both GSTINs must have detail table INSERTs
+        // 2. Both GSTINs must have detail table INSERTs
         assertTrue(body.contains(
             "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ABPC', 'M/S ABP PRIVATE LIMITED', 'DELHI ROAD', 'DELHI', 110001, SYSDATE, NULL, '07ABCDE1234F1Z1', 'ABCDE1234F', SYSDATE, NULL);"
         ));
@@ -3490,7 +3488,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void registerNewHandlingAgent_includesOnlyFirstGstinInParentInsert_andSavesAllGstinsInDetailTable() throws SQLException {
+    void registerNewHandlingAgent_parentInsertContainsNoGstin_andSavesAllGstinsInDetailTable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement existsPs = mock(PreparedStatement.class);
@@ -3519,10 +3517,11 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
 
-        // 1. Parent INSERT must contain the first GSTIN right before PAN
+        // 1. Parent INSERT must NOT contain any GSTIN
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED','22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,'SR.DCM/MDU',NULL,'09AAACJ2055K1Z1','AAACJ2055K');"
+            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED','22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,'SR.DCM/MDU',NULL,'AAACJ2055K');"
         ));
+        assertFalse(body.contains("09AAACJ2055K1Z1','AAACJ2055K'"));
 
         // 2. Both GSTINs must have detail table INSERTs
         assertTrue(body.contains(
