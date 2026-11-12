@@ -685,7 +685,7 @@ describe('PdfGeneratorService', () => {
         });
         expect(doc.getNumberOfPages()).toBe(1);
         expect(doc.output()).toContain('/Subtype /Image');
-        expect(doc.output()).toContain('Freight Code Generator | Page 1 of 1');
+        expect(doc.output()).toContain('Freight Customer Code | Page 1 of 1');
       });
 
       it('renders signature on final page of multi-page landscape verification PDF without overlapping data', () => {

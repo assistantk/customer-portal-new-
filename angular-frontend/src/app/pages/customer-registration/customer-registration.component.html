@@ -628,6 +628,7 @@
                         <div class="control">
                             <select id="addressGstinSelect" class="form-select" [ngModel]="selectedGstinAddressIndex" (ngModelChange)="onSelectGstinAddress($event)"
                                 style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 0.875rem; background: var(--surface, #ffffff);">
+                                <option *ngIf="selectedGstinAddressIndex < 0" [value]="-1" disabled>Select a GSTIN</option>
                                 <option *ngFor="let g of gstins; let i = index" [value]="i">
                                     {{ g.gstin || ('GSTIN ' + (i + 1)) }} {{ g.state ? '(' + g.state + ')' : '' }}
                                 </option>
@@ -986,6 +987,11 @@
                             <tr><th style="background: #f8fafc; padding: 7px 12px; text-align: left; color: #475569;">Effective To</th><td style="padding: 7px 12px;">{{ rec.effectiveTo || 'Active' }}</td></tr>
                         </tbody>
                     </table>
+                    <div style="padding: 8px 12px; text-align: right; background: #f8fafc;">
+                        <button type="button" class="btn btn-primary" (click)="onGstinUpdateExistingRecord(rec)" style="padding: 6px 14px; border: 1px solid #2563eb; border-radius: 6px; background: #eff6ff; color: #1d4ed8; font-size: 0.84rem; font-weight: 600; cursor: pointer;">
+                            Update this record
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer" style="border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: right;">
@@ -1009,7 +1015,7 @@
             <div class="modal-body">
                 <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;">
                     <p style="font-size: 0.9rem; color: #9f1239; margin: 0; line-height: 1.5; font-weight: 500;">
-                        This PAN is already registered in the Freight Code Generator. The company already has an existing code. You cannot generate another code for the same company. Would you like to add a new GSTIN or update the existing company details?
+                        This PAN is already registered in Freight Customer Code. The company already has an existing code. You cannot generate another code for the same company. Would you like to add a new GSTIN or update the existing company details?
                     </p>
                 </div>
 

@@ -75,6 +75,16 @@ export const divisionsByZone: Record<string, string[]> = {
 const gstinRe = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const panRe = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const mobileRe = /^[6-9][0-9]{9}$/;
+const duplicateUpdateContextKey = 'customer.registration.duplicateUpdateContext';
+let duplicateUpdateContextFallback: string | null = null;
+
+interface DuplicateUpdateContext {
+  codeType: 'GLOBAL' | 'HANDLING_AGENT';
+  companyCode: string;
+  gstin?: string;
+  pan?: string;
+  expiresAt: number;
+}
 
 const normalizeDocumentNumber = (value: any) => String(value || '').replace(/\s+/g, '').toUpperCase();
 
@@ -157,7 +167,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (this.deleteCodeType === 'HANDLING_AGENT') {
         return 'Handling Agent Code Logo';
       }
-      return 'Freight Code Generator';
+      return 'Freight Customer Code';
     }
 
     if ((this.mode === 'old' || this.mode === 'new')
@@ -166,7 +176,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
     return this.mode === 'new'
       ? 'Global Customer Code Logo'
-      : 'Freight Code Generator';
+      : 'Freight Customer Code';
   }
   form: CustomerPayload = { ...blank };
   gstins: GstinEntry[] = [{ ...blankGstin }];
@@ -326,10 +336,41 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.panDuplicateStatus = 'idle';
 
     const targetType: 'GLOBAL' | 'HANDLING_AGENT' = targetComp.codeType === 'handling_agent' ? 'HANDLING_AGENT' : 'GLOBAL';
+    const context = this.createDuplicateUpdateContext({
+      codeType: targetType,
+      companyCode: targetComp.companyCode,
+      pan: targetComp.pan || this.form.panNumber
+    });
+    this.persistDuplicateUpdateContext(context);
     this.switchMode('old');
     this.codeType = targetType;
     this.form.customerCode = targetComp.companyCode;
     this.triggerOldLookup(targetComp.companyCode, targetType);
+  }
+
+  onGstinUpdateExistingRecord(record: GstinDuplicateRecord): void {
+    const companyCode = (record.existingCode || '').trim();
+    const gstin = normalizeDocumentNumber(record.gstin);
+    if (!companyCode || !gstin) {
+      this.notice = 'The existing record is missing its code or GSTIN. Please use Update Code to search manually.';
+      this.cdr.markForCheck();
+      return;
+    }
+
+    const context = this.createDuplicateUpdateContext({
+      codeType: this.isHandlingAgentRecord(record) ? 'HANDLING_AGENT' : 'GLOBAL',
+      companyCode,
+      gstin,
+      pan: record.pan
+    });
+    this.persistDuplicateUpdateContext(context);
+
+    this.showDuplicateModal = false;
+    this.selectedDuplicateRecords = [];
+    this.switchMode('old');
+    this.codeType = context.codeType;
+    this.form.customerCode = context.companyCode;
+    this.triggerOldLookup(context.companyCode, context.codeType);
   }
 
   isMultipleGstin(): boolean {
@@ -344,7 +385,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.gstins[this.selectedGstinAddressIndex].registeredAddress = this.form.address;
     }
     this.selectedGstinAddressIndex = idx;
-    this.form.address = this.gstins[idx]?.registeredAddress || '';
+    const selected = this.gstins[idx];
+    this.form.address = selected?.registeredAddress || '';
+    this.form.city = selected?.city || '';
+    this.form.pincode = selected?.pincode || '';
     this.cdr.markForCheck();
   }
 
@@ -358,6 +402,117 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.showDuplicateModal = false;
     this.selectedDuplicateRecords = [];
     this.cdr.markForCheck();
+  }
+
+  private isHandlingAgentRecord(record: GstinDuplicateRecord): boolean {
+    return (record.recordType || '').toLowerCase().replace(/[_-]/g, ' ').includes('handling agent');
+  }
+
+  private createDuplicateUpdateContext(
+    context: Omit<DuplicateUpdateContext, 'expiresAt'>
+  ): DuplicateUpdateContext {
+    return {
+      ...context,
+      companyCode: context.companyCode.trim().toUpperCase(),
+      gstin: context.gstin ? normalizeDocumentNumber(context.gstin) : undefined,
+      pan: context.pan ? normalizeDocumentNumber(context.pan) : undefined,
+      expiresAt: Date.now() + 5 * 60 * 1000
+    };
+  }
+
+  private persistDuplicateUpdateContext(context: DuplicateUpdateContext): void {
+    const serialized = JSON.stringify(context);
+    try {
+      if (typeof sessionStorage === 'undefined') {
+        duplicateUpdateContextFallback = serialized;
+      } else {
+        sessionStorage.setItem(duplicateUpdateContextKey, serialized);
+        duplicateUpdateContextFallback = null;
+      }
+    } catch (error) {
+      console.error('Unable to preserve duplicate-update context:', error);
+      duplicateUpdateContextFallback = serialized;
+      this.notice = 'Browser storage is unavailable; the detected record will be preserved while this app remains open.';
+      this.cdr.markForCheck();
+    }
+  }
+
+  private readDuplicateUpdateContext(): DuplicateUpdateContext | null {
+    let saved: string | null = null;
+    try {
+      saved = typeof sessionStorage === 'undefined'
+        ? duplicateUpdateContextFallback
+        : sessionStorage.getItem(duplicateUpdateContextKey) || duplicateUpdateContextFallback;
+    } catch (error) {
+      console.error('Unable to read duplicate-update context:', error);
+      saved = duplicateUpdateContextFallback;
+    }
+
+    if (!saved) return null;
+    try {
+      const context = JSON.parse(saved) as DuplicateUpdateContext;
+      if (!context.companyCode || !['GLOBAL', 'HANDLING_AGENT'].includes(context.codeType)
+        || !Number.isFinite(context.expiresAt) || context.expiresAt <= Date.now()) {
+        this.clearDuplicateUpdateContext();
+        return null;
+      }
+      return context;
+    } catch (error) {
+      console.error('Unable to parse duplicate-update context:', error);
+      this.clearDuplicateUpdateContext();
+      return null;
+    }
+  }
+
+  private clearDuplicateUpdateContext(): void {
+    duplicateUpdateContextFallback = null;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(duplicateUpdateContextKey);
+      }
+    } catch (error) {
+      console.error('Unable to clear duplicate-update context:', error);
+    }
+  }
+
+  private applyDuplicateUpdateContext(context: DuplicateUpdateContext): void {
+    if (context.pan) this.form.panNumber = context.pan;
+
+    if (context.gstin) {
+      const index = this.gstins.findIndex(entry =>
+        normalizeDocumentNumber(entry.gstin) === context.gstin
+      );
+      if (index >= 0) {
+        this.selectGstinDetail(index);
+      } else {
+        this.selectedGstinAddressIndex = -1;
+        this.form.address = '';
+        this.form.city = '';
+        this.form.pincode = '';
+        this.notice = `GSTIN ${context.gstin} was not returned for code ${context.companyCode}. Please verify the record before updating.`;
+      }
+      return;
+    }
+
+    const recordsWithGstin = this.gstins
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => Boolean(entry.gstin.trim()));
+    if (recordsWithGstin.length === 1) {
+      this.selectGstinDetail(recordsWithGstin[0].index);
+    } else if (recordsWithGstin.length > 1) {
+      this.selectedGstinAddressIndex = -1;
+      this.form.address = '';
+      this.form.city = '';
+      this.form.pincode = '';
+    }
+  }
+
+  private selectGstinDetail(index: number): void {
+    this.selectedGstinAddressIndex = index;
+    const selected = this.gstins[index];
+    this.form.address = selected?.registeredAddress || '';
+    this.form.city = selected?.city || '';
+    this.form.pincode = selected?.pincode || '';
   }
 
   triggerGstinDuplicateCheck(index: number, gstin: string): void {
@@ -619,6 +774,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             this.resetFieldsPreservingZoneDivision();
           }
         });
+    }
+
+    const pendingUpdate = this.readDuplicateUpdateContext();
+    if (pendingUpdate) {
+      this.mode = 'old';
+      this.oldCodeType = pendingUpdate.codeType;
+      this.form.customerCode = pendingUpdate.companyCode;
+      this.triggerOldLookup(pendingUpdate.companyCode, pendingUpdate.codeType);
     }
   }
 
@@ -1255,9 +1418,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                         gstinId: entry.gstinId ?? `old-${idx}`,
                         gstin,
                         effectiveFrom: entry.effectiveFrom || '',
+                        effectiveTo: entry.effectiveTo || '',
+                        implementationDate: entry.implementationDate || '',
                         persistedDetail: true,
                         state: entry.state || getStateNameFromGstinCode(gstin.slice(0, 2)) || '',
-                        registeredAddress: entry.registeredAddress ?? entry.address ?? (idx === 0 ? this.form.address : ''),
+                        registeredAddress: entry.registeredAddress ?? entry.address ?? '',
                         city: entry.city || '',
                         pincode: entry.pincode || ''
                       };
@@ -1277,9 +1442,23 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 this.gstins = loadedGstins.length > 0
                   ? loadedGstins
                   : [{ ...blankGstin, registeredAddress: this.form.address }];
-                this.form.address = this.gstins[0].registeredAddress || this.form.address;
+                if (responseGstins.length > 0) {
+                  this.form.address = this.gstins[0].registeredAddress || '';
+                  this.form.city = this.gstins[0].city || '';
+                  this.form.pincode = this.gstins[0].pincode || '';
+                } else {
+                  this.form.address = this.gstins[0].registeredAddress || this.form.address;
+                }
               } else {
                 this.gstins = [{ ...blankGstin, registeredAddress: this.form.address }];
+              }
+
+              const duplicateContext = this.readDuplicateUpdateContext();
+              if (duplicateContext
+                && duplicateContext.codeType === type
+                && duplicateContext.companyCode === this.verifiedCustomerCode) {
+                this.applyDuplicateUpdateContext(duplicateContext);
+                this.clearDuplicateUpdateContext();
               }
 
               this.removedGstinIds = [];
@@ -1290,6 +1469,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             },
             error: (err: any) => {
               if (requestId !== this.lookupRequestId) return;
+              const duplicateContext = this.readDuplicateUpdateContext();
+              if (duplicateContext?.codeType === type
+                && duplicateContext.companyCode === code.trim().toUpperCase()) {
+                this.clearDuplicateUpdateContext();
+              }
               this.verifiedCustomerCode = null;
               console.error('Lookup error:', err);
               this.lookupDone = false;
@@ -2072,6 +2256,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               refresh$.subscribe({
                 next: (refreshed: any) => {
                   if (refreshed) {
+                    const selectedGstinBeforeRefresh = this.gstins[this.selectedGstinAddressIndex]?.gstin;
                     this.lastLookupRecord = refreshed;
                     this.form.companyName = refreshed.companyName || this.form.companyName;
                     this.form.address = (refreshed.address || this.form.address).replace(/,\s+/g, ',').trim();
@@ -2083,7 +2268,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                     this.applyOldRecordDivision(refreshed);
 
                     const panAvailable = this.isValueAvailable(refreshed.panNumber);
-                    const gstAvailable = this.isGstAvailable(refreshed.gstinNumbers);
+                    const gstAvailable = this.isGstAvailable(refreshed.gstinNumbers)
+                      || (Array.isArray(refreshed.gstins) && refreshed.gstins.length > 0);
 
                     this.isOldPanDisabled = panAvailable;
                     this.isOldGstDisabled = gstAvailable;
@@ -2100,6 +2286,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                             gstinId: entry.gstinId ?? `old-${idx}`,
                             gstin: String(entry.gstin || entry.gstinNumber || '').trim().toUpperCase(),
                             effectiveFrom: entry.effectiveFrom || '',
+                            effectiveTo: entry.effectiveTo || '',
+                            implementationDate: entry.implementationDate || '',
                             persistedDetail: true,
                             state: entry.state || getStateNameFromGstinCode(String(entry.gstin || entry.gstinNumber || '').slice(0, 2)) || '',
                             registeredAddress: entry.registeredAddress ?? entry.address ?? '',
@@ -2118,6 +2306,19 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                             state: getStateNameFromGstinCode(g.slice(0, 2)) || ''
                           }));
                       this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
+                      if (detailRows.length > 0) {
+                        const selectedIndex = selectedGstinBeforeRefresh
+                          ? loadedGstins.findIndex(entry => entry.gstin === selectedGstinBeforeRefresh)
+                          : this.selectedGstinAddressIndex;
+                        if (selectedIndex >= 0 && selectedIndex < loadedGstins.length) {
+                          this.selectGstinDetail(selectedIndex);
+                        } else {
+                          this.selectedGstinAddressIndex = -1;
+                          this.form.address = '';
+                          this.form.city = '';
+                          this.form.pincode = '';
+                        }
+                      }
                     } else {
                       this.gstins = [{ ...blankGstin }];
                     }

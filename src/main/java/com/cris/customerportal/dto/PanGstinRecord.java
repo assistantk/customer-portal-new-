@@ -5,16 +5,23 @@ public class PanGstinRecord {
     private String address;
     private String city;
     private String pincode;
+    private String implementationDate;
     private String effectiveFrom;
     private String effectiveTo;
 
     public PanGstinRecord() {}
 
     public PanGstinRecord(String gstin, String address, String city, String pincode, String effectiveFrom, String effectiveTo) {
+        this(gstin, address, city, pincode, null, effectiveFrom, effectiveTo);
+    }
+
+    public PanGstinRecord(String gstin, String address, String city, String pincode,
+            String implementationDate, String effectiveFrom, String effectiveTo) {
         this.gstin = gstin;
         this.address = address;
         this.city = city;
         this.pincode = pincode;
+        this.implementationDate = implementationDate;
         this.effectiveFrom = effectiveFrom;
         this.effectiveTo = effectiveTo;
     }
@@ -51,6 +58,14 @@ public class PanGstinRecord {
         this.pincode = pincode;
     }
 
+    public String getImplementationDate() {
+        return implementationDate;
+    }
+
+    public void setImplementationDate(String implementationDate) {
+        this.implementationDate = implementationDate;
+    }
+
     public String getEffectiveFrom() {
         return effectiveFrom;
     }
@@ -67,4 +82,3 @@ public class PanGstinRecord {
         this.effectiveTo = effectiveTo;
     }
 }
-

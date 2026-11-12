@@ -139,6 +139,61 @@ describe('VerificationComponent - PDF Generation Integration', () => {
     expect(component.customers).toEqual([{ ownershipCode: 'MCC' }]);
   });
 
+  it('uses the address and dates from each GSTIN detail row in verification output', () => {
+    component.verificationType = 'customer';
+    component.verifiedSearchValue = 'MSGG';
+    component.customers = [{
+      customerCode: 'MSGG',
+      companyName: 'M/S GREEN GLOBE TRADELINKS',
+      address: 'PARENT ADDRESS MUST NOT BE USED',
+      creationDate: 'PARENT DATE MUST NOT BE USED',
+      gstins: [
+        {
+          gstin: '07CBDPG4131J1ZS',
+          address: '18B LOCK GATE ROAD, DELHI',
+          city: 'DELHI',
+          pincode: '110064',
+          implementationDate: '2026-11-12',
+          effectiveFrom: '2026-11-12',
+          effectiveTo: '2027-11-11'
+        },
+        {
+          gstin: '19CBDPG4131J1ZS',
+          address: '18B LOCK GATE ROAD, KOLKATA',
+          city: 'KOLKATA',
+          pincode: '700002',
+          implementationDate: '2026-11-11',
+          effectiveFrom: '2026-11-11',
+          effectiveTo: '2027-11-10'
+        }
+      ]
+    }];
+
+    expect(component.getGstinDetails(component.customers[0]).map((detail) => detail.address))
+      .toEqual(['18B LOCK GATE ROAD, DELHI', '18B LOCK GATE ROAD, KOLKATA']);
+    component.printVerificationPreview();
+
+    const data = mockPdfGenerator.previewVerificationPdf.mock.calls[0][0];
+    const index = (column: string) => data.columns.indexOf(column);
+    expect(data.rows).toHaveLength(2);
+    expect(data.rows[0][index('gstin')]).toBe('07CBDPG4131J1ZS');
+    expect(data.rows[0][index('address')]).toBe('18B LOCK GATE ROAD, DELHI');
+    expect(data.rows[0][index('city')]).toBe('DELHI');
+    expect(data.rows[0][index('pincode')]).toBe('110064');
+    expect(data.rows[0][index('implementationDate')]).toBe('2026-11-12');
+    expect(data.rows[0][index('effectiveFrom')]).toBe('2026-11-12');
+    expect(data.rows[0][index('effectiveTo')]).toBe('2027-11-11');
+    expect(data.rows[1][index('gstin')]).toBe('19CBDPG4131J1ZS');
+    expect(data.rows[1][index('address')]).toBe('18B LOCK GATE ROAD, KOLKATA');
+    expect(data.rows[1][index('city')]).toBe('KOLKATA');
+    expect(data.rows[1][index('pincode')]).toBe('700002');
+    expect(data.rows[1][index('implementationDate')]).toBe('2026-11-11');
+    expect(data.rows[1][index('effectiveFrom')]).toBe('2026-11-11');
+    expect(data.rows[1][index('effectiveTo')]).toBe('2027-11-10');
+    expect(data.rows.flat()).not.toContain('PARENT ADDRESS MUST NOT BE USED');
+    expect(data.rows.flat()).not.toContain('PARENT DATE MUST NOT BE USED');
+  });
+
   it('defaults to search by Code and toggles searchMode mutually exclusively', () => {
     expect(component.searchMode).toBe('CODE');
 

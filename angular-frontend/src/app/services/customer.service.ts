@@ -62,6 +62,8 @@ export interface GstinEntry {
   stateCode?: string;
   gstin: string;
   effectiveFrom?: string;
+  effectiveTo?: string;
+  implementationDate?: string;
   persistedDetail?: boolean;
   file?: File | null;
   existingFileName?: string;

@@ -272,6 +272,7 @@ public class CustomerServiceImpl implements CustomerService {
    }
    String sql = "SELECT MAVCUSTGSTNUMB, " + addressColumn + " AS REGISTERED_ADDRESS, "
        + cityColumn + " AS CITY, MANPINCODE, "
+       + "TO_CHAR(MADIMPLDATE, 'YYYY-MM-DD HH24:MI:SS') AS IMPLEMENTATION_DATE, "
        + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_FROM, "
        + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_TO "
        + "FROM " + table + " WHERE " + codeColumn + " = ? "
@@ -288,6 +289,7 @@ public class CustomerServiceImpl implements CustomerService {
            results.getString("REGISTERED_ADDRESS"),
            results.getString("CITY"),
            results.getString("MANPINCODE"),
+           results.getString("IMPLEMENTATION_DATE"),
            results.getString("EFFECTIVE_FROM"),
            results.getString("EFFECTIVE_TO")));
       }
@@ -365,7 +367,18 @@ public class CustomerServiceImpl implements CustomerService {
 
      for (String code : matchedCodes) {
       try {
-       responses.add(lookupOldCustomerByCode(code));
+       com.cris.customerportal.dto.OldCustomerResponse response = lookupOldCustomerByCode(code);
+       List<com.cris.customerportal.dto.PanGstinRecord> matchedDetails = response.getGstins().stream()
+           .filter(detail -> detail.getGstin() != null
+               && detail.getGstin().toUpperCase(Locale.ROOT).contains(term))
+           .collect(Collectors.toList());
+       if (!matchedDetails.isEmpty()) {
+        response.setGstins(matchedDetails);
+        response.setGstinNumbers(matchedDetails.stream()
+            .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+            .collect(Collectors.joining(",")));
+        responses.add(response);
+       }
       } catch (ResourceNotFoundException ignore) {}
      }
     }
@@ -433,8 +446,13 @@ public class CustomerServiceImpl implements CustomerService {
       responses.add(response);
      }
      for (com.cris.customerportal.dto.OldCustomerResponse r : responses) {
-      List<String> gstins = fetchGstinsForGlobalCustomer(conn, r.getCustomerCode());
-      r.setGstinNumbers(gstins.isEmpty() ? null : String.join(",", gstins));
+      List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+          conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", r.getCustomerCode(),
+          "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
+      r.setGstins(details);
+      r.setGstinNumbers(details.isEmpty() ? null : details.stream()
+          .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+          .collect(Collectors.joining(",")));
      }
      return responses;
     }
@@ -495,8 +513,13 @@ public class CustomerServiceImpl implements CustomerService {
       responses.add(response);
      }
      for (com.cris.customerportal.dto.GlobalAgentResponse r : responses) {
-      List<String> gstins = fetchGstinsForHandlingAgent(conn, r.getCode());
-      r.setGstinNumbers(gstins.isEmpty() ? null : String.join(",", gstins));
+      List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+          conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", r.getCode(),
+          "MAVHNDGAGNTADDRTEXT", "MAVHNDGAGNTCITYNAME");
+      r.setGstins(details);
+      r.setGstinNumbers(details.isEmpty() ? null : details.stream()
+          .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+          .collect(Collectors.joining(",")));
      }
      return responses;
     }
@@ -1012,7 +1035,7 @@ public class CustomerServiceImpl implements CustomerService {
     return new com.cris.customerportal.dto.PanDuplicateCheckResult(false, "AVAILABLE", "Available – No duplicate company record found for this PAN.", Collections.emptyList());
    }
 
-   return new com.cris.customerportal.dto.PanDuplicateCheckResult(true, "DUPLICATE", "Company Already Exists – This PAN is already registered in the Freight Code Generator.", companies);
+   return new com.cris.customerportal.dto.PanDuplicateCheckResult(true, "DUPLICATE", "Company Already Exists – This PAN is already registered in Freight Customer Code.", companies);
   }
 
  public static String normalizeAddress(String address) {
@@ -1261,12 +1284,23 @@ public class CustomerServiceImpl implements CustomerService {
  }
 
  private String withCompanyNamePrefix(String companyName) {
-  if (companyName.length() >= 3
-      && companyName.regionMatches(true, 0, "M/S", 0, 3)
-      && (companyName.length() == 3 || Character.isWhitespace(companyName.charAt(3)))) {
-   return companyName;
+  String normalized = companyName.trim();
+  if (hasCompanyNamePrefix(normalized)) {
+   if (normalized.length() == 3) {
+    return "M/S";
+   }
+   if (Character.isWhitespace(normalized.charAt(3))) {
+    return "M/S " + normalized.substring(3).trim();
+   }
+   return normalized;
   }
-  return "M/S " + companyName;
+  return "M/S " + normalized;
+ }
+
+ private boolean hasCompanyNamePrefix(String companyName) {
+  return companyName.length() >= 3
+      && companyName.regionMatches(true, 0, "M/S", 0, 3)
+      && (companyName.length() == 3 || !Character.isLetterOrDigit(companyName.charAt(3)));
  }
 
  public void updateOldCustomerJDBC(java.util.Map<String, String> formData) {
@@ -1505,7 +1539,9 @@ public class CustomerServiceImpl implements CustomerService {
      if (!gstinPattern.matcher(g).matches()) {
       throw new IllegalArgumentException("Enter valid 15-character GSTIN numbers: " + g);
      }
-     submittedGstins.add(g);
+     if (!submittedGstins.add(g)) {
+      throw new IllegalArgumentException("Duplicate GSTIN Found – The same GSTIN cannot be entered more than once: " + g);
+     }
 
      String gAddr = item.get("address") != null ? normalizeAddress(item.get("address").toString()) : updateAddress;
      if (gAddr != null && gAddr.length() > 100) {
@@ -1522,7 +1558,10 @@ public class CustomerServiceImpl implements CustomerService {
        }
       }
       com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, customerCode.trim());
-      if (check.isDuplicate()) {
+      if ("UNAVAILABLE".equals(check.getStatus())) {
+       throw new IllegalStateException("Duplicate Check Unavailable – Unable to verify this GSTIN.");
+      }
+      if (check.isDuplicate() || !check.getRecords().isEmpty()) {
        throw new ResourceAlreadyExistsException("Duplicate GSTIN Found – This GSTIN is already registered in the database: " + g);
       }
       String dtlsInsSql = "INSERT INTO " + dtlsTable + " ("
@@ -2091,10 +2130,14 @@ public class CustomerServiceImpl implements CustomerService {
 
  private String withOwnershipDescriptionPrefix(String description) {
   String normalized = description == null ? "" : description.trim();
-  if (normalized.length() >= 3
-      && normalized.regionMatches(true, 0, "M/S", 0, 3)
-      && (normalized.length() == 3 || Character.isWhitespace(normalized.charAt(3)))) {
-   return "M/S " + normalized.substring(3).trim();
+  if (hasCompanyNamePrefix(normalized)) {
+   if (normalized.length() == 3) {
+    return "M/S";
+   }
+   if (Character.isWhitespace(normalized.charAt(3))) {
+    return "M/S " + normalized.substring(3).trim();
+   }
+   return normalized;
   }
   return "M/S " + normalized;
  }

@@ -304,7 +304,7 @@ export class PdfGeneratorService {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text('FREIGHT CODE GENERATOR - REGISTRATION ACKNOWLEDGEMENT', 105, 29, { align: 'center' });
+    doc.text('FREIGHT CUSTOMER CODE - REGISTRATION ACKNOWLEDGEMENT', 105, 29, { align: 'center' });
 
     // Divider line
     doc.setDrawColor(203, 213, 225);
@@ -501,7 +501,7 @@ export class PdfGeneratorService {
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
       doc.text(
-        `This is a system generated document from the Freight Code Generator portal (CRIS). Page ${p} of ${finalPageCount}`,
+        `This is a system generated document from the Freight Customer Code portal (CRIS). Page ${p} of ${finalPageCount}`,
         105,
         285,
         { align: 'center' }
@@ -690,7 +690,7 @@ export class PdfGeneratorService {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Freight Code Generator | Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 4, {
+      doc.text(`Freight Customer Code | Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 4, {
         align: 'center'
       });
     }
@@ -778,7 +778,7 @@ export class PdfGeneratorService {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(30, 58, 138);
-    doc.text('Freight Code Generator', margin, 13);
+    doc.text('Freight Customer Code', margin, 13);
     doc.setFontSize(13);
     doc.text('Customer Verification Report', margin, 22);
 

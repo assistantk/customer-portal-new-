@@ -83,7 +83,7 @@ class CustomerServiceImplTest {
         when(connection.getMetaData()).thenReturn(null);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("SAEB");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S SAMPLE COMPANY");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("RAILWAY ROAD");
@@ -109,6 +109,158 @@ class CustomerServiceImplTest {
                     && sql.contains("MAVIMPLREMK")
                     && sql.contains("NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE")
                     && !sql.contains("TO_CHAR(")));
+    }
+
+    @Test
+    void lookupOldGlobalCustomerReturnsEachGstinWithItsOwnDetailAddressAndDates() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement customerPs = mock(PreparedStatement.class);
+        PreparedStatement detailsPs = mock(PreparedStatement.class);
+        ResultSet customerRs = mock(ResultSet.class);
+        ResultSet detailsRs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(customerPs, detailsPs);
+        when(customerPs.executeQuery()).thenReturn(customerRs);
+        when(detailsPs.executeQuery()).thenReturn(detailsRs);
+        when(customerRs.next()).thenReturn(true, false);
+        when(customerRs.getString("MAVGLBLCUSTCODE")).thenReturn("MSGG");
+        when(customerRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S GREEN GLOBE TRADELINKS");
+        when(customerRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("PARENT ADDRESS");
+        when(detailsRs.next()).thenReturn(true, true, false);
+        when(detailsRs.getString("MAVCUSTGSTNUMB")).thenReturn("07CBDPG4131J1ZS", "19CBDPG4131J1ZS");
+        when(detailsRs.getString("REGISTERED_ADDRESS"))
+                .thenReturn("18B LOCK GATE ROAD, DELHI", "18B LOCK GATE ROAD, KOLKATA");
+        when(detailsRs.getString("CITY")).thenReturn("DELHI", "KOLKATA");
+        when(detailsRs.getString("MANPINCODE")).thenReturn("110064", "700002");
+        when(detailsRs.getString("IMPLEMENTATION_DATE")).thenReturn("2026-11-12", "2026-11-11");
+        when(detailsRs.getString("EFFECTIVE_FROM")).thenReturn("2026-11-12", "2026-11-11");
+        when(detailsRs.getString("EFFECTIVE_TO")).thenReturn(null, null);
+
+        com.cris.customerportal.dto.OldCustomerResponse result =
+                service(dataSource, mock(JavaMailSender.class)).lookupOldCustomerByCode("msgg");
+
+        assertEquals(2, result.getGstins().size());
+        assertEquals("07CBDPG4131J1ZS", result.getGstins().get(0).getGstin());
+        assertEquals("18B LOCK GATE ROAD, DELHI", result.getGstins().get(0).getAddress());
+        assertEquals("DELHI", result.getGstins().get(0).getCity());
+        assertEquals("110064", result.getGstins().get(0).getPincode());
+        assertEquals("2026-11-12", result.getGstins().get(0).getImplementationDate());
+        assertEquals("2026-11-12", result.getGstins().get(0).getEffectiveFrom());
+        assertNull(result.getGstins().get(0).getEffectiveTo());
+        assertEquals("19CBDPG4131J1ZS", result.getGstins().get(1).getGstin());
+        assertEquals("18B LOCK GATE ROAD, KOLKATA", result.getGstins().get(1).getAddress());
+        assertEquals("KOLKATA", result.getGstins().get(1).getCity());
+        assertEquals("700002", result.getGstins().get(1).getPincode());
+        assertEquals("2026-11-11", result.getGstins().get(1).getImplementationDate());
+        assertEquals("2026-11-11", result.getGstins().get(1).getEffectiveFrom());
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(connection, times(2)).prepareStatement(sqlCaptor.capture());
+        String detailsSql = sqlCaptor.getAllValues().get(1);
+        assertTrue(detailsSql.contains("FROM MEMGLBLCUSTDTLS WHERE MAVGLBLCUSTCODE = ?"));
+        assertTrue(detailsSql.contains("MAVGLBLCUSTADDRTEXT AS REGISTERED_ADDRESS"));
+        assertTrue(detailsSql.contains("MADIMPLDATE"));
+        assertTrue(detailsSql.contains("MADDATEEFCTFROM"));
+        assertTrue(detailsSql.contains("MADDATEEFCTTO"));
+        verify(detailsPs).setString(1, "MSGG");
+    }
+
+    @Test
+    void handlingAgentSearchReturnsGstinSpecificDetailRows() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement agentPs = mock(PreparedStatement.class);
+        PreparedStatement detailsPs = mock(PreparedStatement.class);
+        ResultSet agentRs = mock(ResultSet.class);
+        ResultSet detailsRs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getMetaData()).thenReturn(null);
+        when(connection.prepareStatement(anyString())).thenReturn(agentPs, detailsPs);
+        when(agentPs.executeQuery()).thenReturn(agentRs);
+        when(detailsPs.executeQuery()).thenReturn(detailsRs);
+        when(agentRs.next()).thenReturn(true, false);
+        when(agentRs.getString("MAVHNDAGNTCODE")).thenReturn("AG01");
+        when(agentRs.getString("MAVHNDAGNTNAME")).thenReturn("SAMPLE AGENT");
+        when(detailsRs.next()).thenReturn(true, false);
+        when(detailsRs.getString("MAVCUSTGSTNUMB")).thenReturn("07CBDPG4131J1ZS");
+        when(detailsRs.getString("REGISTERED_ADDRESS")).thenReturn("AGENT GSTIN ADDRESS");
+        when(detailsRs.getString("CITY")).thenReturn("DELHI");
+        when(detailsRs.getString("MANPINCODE")).thenReturn("110064");
+        when(detailsRs.getString("IMPLEMENTATION_DATE")).thenReturn("2026-11-12");
+        when(detailsRs.getString("EFFECTIVE_FROM")).thenReturn("2026-11-12");
+        when(detailsRs.getString("EFFECTIVE_TO")).thenReturn("2027-11-11");
+
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
+                service(dataSource, mock(JavaMailSender.class)).searchHandlingAgents("AG01", "CODE");
+
+        assertEquals(1, results.size());
+        assertEquals(1, results.get(0).getGstins().size());
+        assertEquals("07CBDPG4131J1ZS", results.get(0).getGstins().get(0).getGstin());
+        assertEquals("AGENT GSTIN ADDRESS", results.get(0).getGstins().get(0).getAddress());
+        assertEquals("DELHI", results.get(0).getGstins().get(0).getCity());
+        assertEquals("110064", results.get(0).getGstins().get(0).getPincode());
+        assertEquals("2026-11-12", results.get(0).getGstins().get(0).getImplementationDate());
+        assertEquals("2026-11-12", results.get(0).getGstins().get(0).getEffectiveFrom());
+        assertEquals("2027-11-11", results.get(0).getGstins().get(0).getEffectiveTo());
+        verify(detailsPs).setString(1, "AG01");
+        verify(connection).prepareStatement(argThat(sql ->
+                sql.contains("FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ?")
+                    && sql.contains("MAVHNDGAGNTADDRTEXT AS REGISTERED_ADDRESS")
+                    && sql.contains("MADIMPLDATE")
+                    && sql.contains("MADDATEEFCTFROM")
+                    && sql.contains("MADDATEEFCTTO")));
+    }
+
+    @Test
+    void lookupByGstinReturnsOnlyTheMatchingGlobalCustomerDetailRow() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection gstinConnection = mock(Connection.class);
+        Connection metadataConnection = mock(Connection.class);
+        Connection customerConnection = mock(Connection.class);
+        Connection agentConnection = mock(Connection.class);
+        PreparedStatement gstinPs = mock(PreparedStatement.class);
+        PreparedStatement customerPs = mock(PreparedStatement.class);
+        PreparedStatement detailsPs = mock(PreparedStatement.class);
+        PreparedStatement agentPs = mock(PreparedStatement.class);
+        ResultSet gstinRs = mock(ResultSet.class);
+        ResultSet customerRs = mock(ResultSet.class);
+        ResultSet detailsRs = mock(ResultSet.class);
+        ResultSet agentRs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(
+                metadataConnection, gstinConnection, customerConnection, agentConnection);
+        when(metadataConnection.getMetaData()).thenReturn(null);
+        when(gstinConnection.prepareStatement(anyString())).thenReturn(gstinPs);
+        when(gstinPs.executeQuery()).thenReturn(gstinRs);
+        when(gstinRs.next()).thenReturn(true, false);
+        when(gstinRs.getString("MAVGLBLCUSTCODE")).thenReturn("MSGG");
+        when(customerConnection.prepareStatement(anyString())).thenReturn(customerPs, detailsPs);
+        when(customerPs.executeQuery()).thenReturn(customerRs);
+        when(detailsPs.executeQuery()).thenReturn(detailsRs);
+        when(customerRs.next()).thenReturn(true, false);
+        when(customerRs.getString("MAVGLBLCUSTCODE")).thenReturn("MSGG");
+        when(customerRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S GREEN GLOBE TRADELINKS");
+        when(detailsRs.next()).thenReturn(true, true, false);
+        when(detailsRs.getString("MAVCUSTGSTNUMB")).thenReturn("07CBDPG4131J1ZS", "19CBDPG4131J1ZS");
+        when(detailsRs.getString("REGISTERED_ADDRESS"))
+                .thenReturn("18B LOCK GATE ROAD, DELHI", "18B LOCK GATE ROAD, KOLKATA");
+        when(detailsRs.getString("CITY")).thenReturn("DELHI", "KOLKATA");
+        when(detailsRs.getString("MANPINCODE")).thenReturn("110064", "700002");
+        when(agentConnection.prepareStatement(anyString())).thenReturn(agentPs);
+        when(agentPs.executeQuery()).thenReturn(agentRs);
+        when(agentRs.next()).thenReturn(false);
+
+        List<com.cris.customerportal.dto.OldCustomerResponse> results =
+                service(dataSource, mock(JavaMailSender.class)).lookupOldCustomerByGstin("07CBDPG4131J1ZS");
+
+        assertEquals(1, results.size());
+        assertEquals(1, results.get(0).getGstins().size());
+        assertEquals("07CBDPG4131J1ZS", results.get(0).getGstinNumbers());
+        assertEquals("18B LOCK GATE ROAD, DELHI", results.get(0).getGstins().get(0).getAddress());
+        assertEquals("DELHI", results.get(0).getGstins().get(0).getCity());
+        assertEquals("110064", results.get(0).getGstins().get(0).getPincode());
+        verify(gstinPs).setString(1, "%07CBDPG4131J1ZS%");
     }
 
     @Test
@@ -245,7 +397,7 @@ class CustomerServiceImplTest {
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
             "codeType", "global",
             "customerCode", "MSBC",
-            "companyName", " M/S BALAJI ENTERPRISES ",
+            "companyName", " M/S: BALAJI ENTERPRISES ",
             "address", "O'Brien Road",
             "city", "Dhanbad",
             "pincode", "440001",
@@ -264,10 +416,10 @@ class CustomerServiceImplTest {
             + "SQL QUERY:\n"
             + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'APEPA6196G');"
+            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S: BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'APEPA6196G');"
         ));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"
+            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S: BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"
         ));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC\n\nSQL QUERY:\n"));
         assertFalse(body.contains("Prasanta Mondal"));
@@ -540,6 +692,12 @@ class CustomerServiceImplTest {
                 "MEMGLBLHNDGAGNT",
                 "EXISTING",
                 "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('EXISTING', 'm/s Already Prefixed');"
+            ),
+            new DbaEmailService.SqlRequest(
+                "INSERT",
+                "MEMGLBLHNDGAGNT",
+                "PUNCTUATED",
+                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('PUNCTUATED', 'm/s: Already Prefixed');"
             )
         ));
 
@@ -551,7 +709,28 @@ class CustomerServiceImplTest {
                 + "'TEZPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/RNY',NULL,'18AMKPB8046M2ZM','AMKPB8046M');"
         ));
         assertTrue(body.contains("VALUES('EXISTING','M/S ALREADY PREFIXED');"));
+        assertTrue(body.contains("VALUES('PUNCTUATED','M/S: ALREADY PREFIXED');"));
         assertFalse(body.contains("'M/S M/S"));
+    }
+
+    @Test
+    void dbaSqlEmailDoesNotDuplicatePunctuationSeparatedMsPrefixInCompanyNameUpdates() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+
+        emailService.sendDbaSqlEmail(List.of(
+            new DbaEmailService.SqlRequest(
+                "UPDATE",
+                "MEMGLBLCUST",
+                "AB12",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S: GREEN GLOBE' "
+                    + "WHERE MAVGLBLCUSTCODE = 'AB12';"
+            )
+        ));
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("MAVGLBLCUSTNAME = 'M/S: GREEN GLOBE'"));
+        assertFalse(body.contains("M/S M/S"));
     }
 
     @Test
@@ -564,7 +743,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("Old Name");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Old Address");
@@ -603,7 +782,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("A");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("Old Name");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Old Address");
@@ -641,7 +820,7 @@ class CustomerServiceImplTest {
                 when(dataSource.getConnection()).thenReturn(connection);
                 when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
                 when(lookupPs.executeQuery()).thenReturn(lookupRs);
-                when(lookupRs.next()).thenReturn(true);
+                when(lookupRs.next()).thenReturn(true, false);
                 when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
                 when(lookupRs.getString("MAVHNDAGNTCODE")).thenReturn("ABCD");
                 when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S EXAMPLE COMPANY");
@@ -687,7 +866,7 @@ class CustomerServiceImplTest {
             when(dataSource.getConnection()).thenReturn(connection);
             when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
             when(lookupPs.executeQuery()).thenReturn(lookupRs);
-            when(lookupRs.next()).thenReturn(true);
+            when(lookupRs.next()).thenReturn(true, false);
             when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("ABCD");
             when(lookupRs.getString("MAVHNDAGNTCODE")).thenReturn("ABCD");
             when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S EXAMPLE COMPANY");
@@ -728,7 +907,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S ALPS MINING SERVICES");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Old Address");
@@ -763,7 +942,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVHNDAGNTNAME")).thenReturn("Old Cargo");
         when(lookupRs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("Port Road");
         when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("Mumbai");
@@ -826,15 +1005,24 @@ class CustomerServiceImplTest {
                 DataSource dataSource = mock(DataSource.class);
                 Connection connection = mock(Connection.class);
                 PreparedStatement lookupPs = mock(PreparedStatement.class);
+                PreparedStatement lookupDetailsPs = mock(PreparedStatement.class);
+                PreparedStatement updateDetailsPs = mock(PreparedStatement.class);
                 ResultSet lookupRs = mock(ResultSet.class);
+                ResultSet lookupDetailsRs = mock(ResultSet.class);
+                ResultSet updateDetailsRs = mock(ResultSet.class);
                 JavaMailSender mailSender = mock(JavaMailSender.class);
                 when(dataSource.getConnection()).thenReturn(connection);
-                when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+                when(connection.prepareStatement(anyString()))
+                    .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
                 when(lookupPs.executeQuery()).thenReturn(lookupRs);
-                when(lookupRs.next()).thenReturn(true);
+                when(lookupDetailsPs.executeQuery()).thenReturn(lookupDetailsRs);
+                when(updateDetailsPs.executeQuery()).thenReturn(updateDetailsRs);
+                when(lookupRs.next()).thenReturn(true, false);
                 Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
                 when(lookupRs.getString(anyString()))
                     .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+                stubSingleExistingGstinDetail(lookupDetailsRs);
+                stubSingleExistingGstinDetail(updateDetailsRs);
 
                 Map<String, String> formData = new HashMap<>(Map.of(
                     "codeType", codeType,
@@ -880,15 +1068,24 @@ class CustomerServiceImplTest {
                 DataSource dataSource = mock(DataSource.class);
                 Connection connection = mock(Connection.class);
                 PreparedStatement lookupPs = mock(PreparedStatement.class);
+                PreparedStatement lookupDetailsPs = mock(PreparedStatement.class);
+                PreparedStatement updateDetailsPs = mock(PreparedStatement.class);
                 ResultSet lookupRs = mock(ResultSet.class);
+                ResultSet lookupDetailsRs = mock(ResultSet.class);
+                ResultSet updateDetailsRs = mock(ResultSet.class);
                 JavaMailSender mailSender = mock(JavaMailSender.class);
                 when(dataSource.getConnection()).thenReturn(connection);
-                when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
+                when(connection.prepareStatement(anyString()))
+                    .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
                 when(lookupPs.executeQuery()).thenReturn(lookupRs);
-                when(lookupRs.next()).thenReturn(true);
+                when(lookupDetailsPs.executeQuery()).thenReturn(lookupDetailsRs);
+                when(updateDetailsPs.executeQuery()).thenReturn(updateDetailsRs);
+                when(lookupRs.next()).thenReturn(true, false);
                 Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD, MARKET AREA");
                 when(lookupRs.getString(anyString()))
                     .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+                stubSingleExistingGstinDetail(lookupDetailsRs);
+                stubSingleExistingGstinDetail(updateDetailsRs);
 
                 Map<String, String> unchanged = Map.of(
                     "codeType", codeType,
@@ -930,7 +1127,7 @@ class CustomerServiceImplTest {
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
         when(globalPs.executeQuery()).thenReturn(globalRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("SCOR");
         when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("SOUTH COAST RAILWAYS");
         when(globalRs.next()).thenReturn(true);
@@ -961,7 +1158,7 @@ class CustomerServiceImplTest {
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
         when(globalPs.executeQuery()).thenReturn(globalRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVWGONOWNRPRTYCODE")).thenReturn("SHLA");
         when(lookupRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S SUSHILA TRANSPORT PVT LTD");
         when(globalRs.next()).thenReturn(true);
@@ -1697,7 +1894,7 @@ class CustomerServiceImplTest {
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST"))).thenReturn(globalPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
         when(globalPs.executeQuery()).thenReturn(globalRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("Existing description");
         when(globalRs.next()).thenReturn(true);
         when(globalRs.getString("MAVGLBLCUSTNAME")).thenReturn("Updated description");
@@ -1754,7 +1951,99 @@ class CustomerServiceImplTest {
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
-        assertTrue(message.getValue().getText().contains("INSERT INTO RailTable (MixedColumn) VALUES ('RAIL AND CO');"));
+        assertTrue(message.getValue().getText().contains("INSERT INTO RailTable (MixedColumn) VALUES ('RAIL - CO');"));
+    }
+
+    @Test
+    void dbaRegistrationEmailReplacesAmpersandsInParentAndEveryGstinDetailInsert() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        List<DbaEmailService.SqlRequest> requests = List.of(
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLCUST", "ABCD",
+                        "INSERT INTO MEMGLBLCUST (CODE, NAME, ADDRESS, CITY) "
+                                + "VALUES ('ABCD', 'M/S ABC & XYZ', 'R&D Services', 'Delhi & NCR');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLCUSTDTLS", "ABCD",
+                        "INSERT INTO MEMGLBLCUSTDTLS (CODE, NAME, ADDRESS, CITY, GSTIN, PAN) "
+                                + "VALUES ('ABCD', 'M/S ABC & XYZ', 'Road & Lane', 'Delhi & NCR', 'GST&1', 'PAN&1');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLCUSTDTLS", "ABCD",
+                        "INSERT INTO MEMGLBLCUSTDTLS (CODE, NAME, ADDRESS, CITY, GSTIN, PAN) "
+                                + "VALUES ('ABCD', 'M/S ABC & XYZ', 'Plain Road', 'Delhi', 'GST&2', 'PAN&2');"));
+
+        emailService.sendDbaRegistrationSqlEmail(requests);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("'M/S ABC - XYZ'"));
+        assertTrue(body.contains("'R-D SERVICES'"));
+        assertTrue(body.contains("'DELHI - NCR'"));
+        assertTrue(body.contains("'ROAD - LANE'"));
+        assertTrue(body.contains("'GST-1', 'PAN-1'"));
+        assertTrue(body.contains("'GST-2', 'PAN-2'"));
+        assertTrue(body.contains("'PLAIN ROAD'"));
+        assertFalse(body.contains("&"));
+    }
+
+    @Test
+    void dbaHandlingAgentRegistrationEmailReplacesAmpersandsInParentAndDetailInserts() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        emailService.sendDbaRegistrationSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLHNDGAGNT", "AG01",
+                        "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME, ADDRESS, CITY) "
+                                + "VALUES ('AG01', 'A&B Handling', 'R&D Road', 'Delhi & NCR');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLHNDGAGNTDTLS", "AG01",
+                        "INSERT INTO MEMGLBLHNDGAGNTDTLS (CODE, NAME, ADDRESS, CITY, GSTIN, PAN) "
+                                + "VALUES ('AG01', 'A&B Handling', 'Address & Lane', 'Delhi & NCR', 'GST&1', 'PAN&1');")));
+
+        String body = emailedBody(mailSender);
+
+        assertTrue(body.contains("'M/S A-B HANDLING'"));
+        assertTrue(body.contains("'R-D ROAD'"));
+        assertTrue(body.contains("'DELHI - NCR'"));
+        assertTrue(body.contains("'ADDRESS - LANE'"));
+        assertTrue(body.contains("'GST-1', 'PAN-1'"));
+        assertFalse(body.contains("&"));
+    }
+
+    @Test
+    void dbaUpdateAndOwnershipSqlReplaceAmpersandsWithoutChangingNullOrOtherText() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
+        emailService.sendDbaSqlEmail(List.of(
+                new DbaEmailService.SqlRequest(
+                        "UPDATE", "MEMGLBLCUST", "ABCD",
+                        "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S ABC & XYZ', "
+                                + "MAVGLBLCUSTADDRTEXT = 'R&D Services', MAVGNBLCUSTCITYNAME = 'Delhi & NCR' "
+                                + "WHERE MAVGLBLCUSTCODE = 'ABCD';"),
+                new DbaEmailService.SqlRequest(
+                        "UPDATE", "MEMGLBLHNDGAGNT", "AG01",
+                        "UPDATE MEMGLBLHNDGAGNT SET MAVHNDGAGNTNAME = 'A&B Handling', "
+                                + "MAVHNDGAGNTADDRTEXT = 'Plain Road', MAVHNDGAGNTCITYNAME = NULL "
+                                + "WHERE MAVHNDGAGNTCODE = 'AG01';"),
+                new DbaEmailService.SqlRequest(
+                        "UPDATE", "MEMGLBLCUSTDTLS", "ABCD",
+                        "UPDATE MEMGLBLCUSTDTLS SET MAVGLBLCUSTADDRTEXT = 'Research & Development', "
+                                + "MAVCUSTGSTNUMB = 'GST&123' WHERE MAVGLBLCUSTCODE = 'ABCD';"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMWGONOWNRSHIP", "ABCD",
+                        "INSERT INTO MEMWGONOWNRSHIP VALUES ('ABCD', 'M/S A&B Enterprises', NULL, 'Y');")));
+
+        String body = emailedBody(mailSender);
+
+        assertTrue(body.contains("'M/S ABC - XYZ'"));
+        assertTrue(body.contains("'R-D SERVICES'"));
+        assertTrue(body.contains("'DELHI - NCR'"));
+        assertTrue(body.contains("'M/S A-B HANDLING'"));
+        assertTrue(body.contains("'PLAIN ROAD'"));
+        assertTrue(body.contains("MAVHNDGAGNTCITYNAME = NULL"));
+        assertTrue(body.contains("'RESEARCH - DEVELOPMENT'"));
+        assertTrue(body.contains("'GST-123'"));
+        assertTrue(body.contains("'M/S A-B ENTERPRISES'"));
+        assertFalse(body.contains("&"));
     }
 
     @Test
@@ -2011,7 +2300,7 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         String body = message.getValue().getText();
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('AB01','M/S ALPHA & BETA','12 MIXED ROAD, SECTOR B',"
+            "INSERT INTO MEMGLBLCUST VALUES('AB01','M/S ALPHA - BETA','12 MIXED ROAD, SECTOR B',"
                 + "'NEW TOWN',NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
         ));
         assertTrue(body.contains(
@@ -2038,7 +2327,7 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL & ROAD','MIXED CASE ADDRESS','NEW TOWN',"
+            "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL - ROAD','MIXED CASE ADDRESS','NEW TOWN',"
                 + "NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
         ));
     }
@@ -2231,7 +2520,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
         when(lookupRs.getString(anyString())).thenAnswer(inv -> originalRecord.get(inv.getArgument(0)));
 
@@ -2260,7 +2549,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S TEST CO");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ADDR");
@@ -2294,7 +2583,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S OLD COMPANY");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ROAD");
@@ -2327,7 +2616,7 @@ class CustomerServiceImplTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(lookupPs);
         when(lookupPs.executeQuery()).thenReturn(lookupRs);
-        when(lookupRs.next()).thenReturn(true);
+        when(lookupRs.next()).thenReturn(true, false);
         when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
         when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S OLD COMPANY");
         when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ROAD");
@@ -2486,6 +2775,17 @@ class CustomerServiceImplTest {
                 sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")
                 && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")));
         verify(ps).setString(1, "FREIGHT");
+    }
+
+    private void stubSingleExistingGstinDetail(ResultSet details) throws SQLException {
+        when(details.next()).thenReturn(true, false);
+        when(details.getString("MAVCUSTGSTNUMB")).thenReturn("27AAAAA1111A1Z5");
+        when(details.getString("REGISTERED_ADDRESS")).thenReturn("OLD ROAD");
+        when(details.getString("CITY")).thenReturn("PATNA");
+        when(details.getString("MANPINCODE")).thenReturn("800001");
+        when(details.getString("IMPLEMENTATION_DATE")).thenReturn("2026-01-01 00:00:00");
+        when(details.getString("EFFECTIVE_FROM")).thenReturn("2026-01-01 00:00:00");
+        when(details.getString("EFFECTIVE_TO")).thenReturn(null);
     }
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {

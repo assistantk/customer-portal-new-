@@ -84,6 +84,34 @@ class CustomerServiceGstinRemovalTest {
         fixture.assertNoDatabaseMutation();
     }
 
+    @Test
+    void refusesRepeatedGstinInUpdatePayload() throws Exception {
+        Fixture fixture = fixture(true, 2);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(fixture, "AB12", new String[] { GSTINS[0], GSTINS[0] },
+                        new String[0]));
+
+        verify(fixture.mailSender, never()).send(any(SimpleMailMessage.class));
+        fixture.assertNoDatabaseMutation();
+    }
+
+    @Test
+    void refusesGstinAlreadyRegisteredToAnotherRecordType() throws Exception {
+        String newGstin = "29ABCDE1234F1Z7";
+        for (boolean global : new boolean[] { true, false }) {
+            Fixture fixture = fixture(global, 1, true);
+            String code = global ? "AB12" : "AG12";
+
+            assertThrows(com.cris.customerportal.exception.ResourceAlreadyExistsException.class,
+                    () -> service(fixture, code, new String[] { GSTINS[0], newGstin },
+                            new String[0]));
+
+            verify(fixture.mailSender, never()).send(any(SimpleMailMessage.class));
+            fixture.assertNoDatabaseMutation();
+        }
+    }
+
     private void service(Fixture fixture, String code, String[] allGstins, String[] removals) throws Exception {
         List<Map<String, String>> removalRecords = new ArrayList<>();
         for (String gstin : removals) {
@@ -119,6 +147,10 @@ class CustomerServiceGstinRemovalTest {
     }
 
     private Fixture fixture(boolean global, int count) throws Exception {
+        return fixture(global, count, false);
+    }
+
+    private Fixture fixture(boolean global, int count, boolean foreignDuplicate) throws Exception {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
@@ -129,7 +161,8 @@ class CustomerServiceGstinRemovalTest {
             String sql = invocation.getArgument(0);
             preparedSql.add(sql);
             PreparedStatement statement = mock(PreparedStatement.class);
-            when(statement.executeQuery()).thenAnswer(query -> resultSetFor(sql, global, count));
+            when(statement.executeQuery()).thenAnswer(query ->
+                    resultSetFor(sql, global, count, foreignDuplicate));
             return statement;
         });
 
@@ -140,12 +173,37 @@ class CustomerServiceGstinRemovalTest {
         return new Fixture(global, service, mailSender, connection, preparedSql);
     }
 
-    private ResultSet resultSetFor(String sql, boolean global, int count) throws Exception {
+    private ResultSet resultSetFor(
+            String sql, boolean global, int count, boolean foreignDuplicate) throws Exception {
         String parentTable = global ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
         String detailTable = global ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
         String codeColumn = global ? "MAVGLBLCUSTCODE" : "MAVHNDGAGNTCODE";
         String addressColumn = global ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDGAGNTADDRTEXT";
         String cityColumn = global ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME";
+        if (sql.contains("WHERE MAVCUSTGSTNUMB = ?")) {
+            List<Map<String, String>> rows = new ArrayList<>();
+            boolean queriedForeignTable = global
+                    ? sql.contains("FROM MEMGLBLHNDGAGNTDTLS")
+                    : sql.contains("FROM MEMGLBLCUSTDTLS");
+            if (foreignDuplicate && queriedForeignTable) {
+                Map<String, String> duplicate = new HashMap<>();
+                duplicate.put("MAVGLBLCUSTCODE", "OTHERGC");
+                duplicate.put("MAVGLBLCUSTNAME", "Other Global Customer");
+                duplicate.put("MAVGLBLCUSTADDRTEXT", "Other Global Address");
+                duplicate.put("MAVGNBLCUSTCITYNAME", "Delhi");
+                duplicate.put("MAVHNDGAGNTCODE", "OTHERHA");
+                duplicate.put("MAVHNDGAGNTNAME", "Other Handling Agent");
+                duplicate.put("MAVHNDGAGNTADDRTEXT", "Other Agent Address");
+                duplicate.put("MAVHNDGAGNTCITYNAME", "Mumbai");
+                duplicate.put("MANPINCODE", "110001");
+                duplicate.put("MAVCUSTGSTNUMB", "29ABCDE1234F1Z7");
+                duplicate.put("MAVCUSTPANNUMB", "ABCDE1234F");
+                duplicate.put("EFFECTIVE_FROM", "2025-01-01");
+                duplicate.put("EFFECTIVE_TO", null);
+                rows.add(duplicate);
+            }
+            return resultSet(rows);
+        }
         if (sql.contains("FROM " + parentTable + " WHERE")) {
             Map<String, String> parent = new HashMap<>();
             parent.put(global ? "MAVGLBLCUSTCODE" : "MAVHNDAGNTCODE", global ? "AB12" : "AG12");
