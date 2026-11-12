@@ -28,11 +28,43 @@ export interface GstinDuplicateCheckResult {
   records: GstinDuplicateRecord[];
 }
 
+export interface PanGstinRecord {
+  gstin?: string;
+  address?: string;
+  city?: string;
+  pincode?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface PanCompanyRecord {
+  recordType: string;
+  codeType: string;
+  companyCode: string;
+  companyName: string;
+  pan: string;
+  primaryAddress?: string;
+  city?: string;
+  pincode?: string;
+  gstins: PanGstinRecord[];
+}
+
+export interface PanDuplicateCheckResult {
+  duplicate: boolean;
+  status: string;
+  message: string;
+  companies: PanCompanyRecord[];
+}
+
 export interface GstinEntry {
   gstinId?: any;
   state: string;
   stateCode?: string;
   gstin: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  implementationDate?: string;
+  persistedDetail?: boolean;
   file?: File | null;
   existingFileName?: string;
   scanning?: boolean;
@@ -73,6 +105,11 @@ export interface CustomerPayload {
   ownershipAddress?: string;
   ownershipPartyCode?: string;
   ownershipPartyAddress?: string;
+}
+
+export interface GstinRemoval {
+  gstin: string;
+  effectiveFrom?: string;
 }
 
 export type DeleteRequestCodeType = 'GLOBAL_CUSTOMER' | 'HANDLING_AGENT';
@@ -284,6 +321,21 @@ export class CustomerService {
     );
   }
 
+  checkPanDuplicate(pan: string): Observable<PanDuplicateCheckResult> {
+    const clean = (pan || '').trim().toUpperCase();
+    return this.http.get<PanDuplicateCheckResult>(`${this.API}/customers/check-pan-duplicate`, {
+      params: { pan: clean },
+      withCredentials: true
+    }).pipe(
+      catchError(() => of({
+        duplicate: false,
+        status: 'UNAVAILABLE',
+        message: 'Duplicate Check Unavailable – Unable to verify this PAN.',
+        companies: []
+      }))
+    );
+  }
+
   /* ---------- New Customer Registration (Triggers DBA Email via Spring Boot) ---------- */
   registerCustomer(payload: CustomerPayload, gstinEntries: GstinEntry[]): Observable<any> {
     const codeType = payload.codeType === 'HANDLING_AGENT' ? 'handling' : 'global';
@@ -324,7 +376,11 @@ export class CustomerService {
   }
 
   /* ---------- Update Existing Customer (Old User - Triggers DBA Email via Spring Boot) ---------- */
-  updateOldCustomerJDBC(payload: CustomerPayload, gstinEntries: GstinEntry[]): Observable<any> {
+  updateOldCustomerJDBC(
+    payload: CustomerPayload,
+    gstinEntries: GstinEntry[],
+    gstinRemovals: GstinRemoval[] = []
+  ): Observable<any> {
     const gstinNumbers = gstinEntries
       .map(g => g.gstin)
       .filter(Boolean)
@@ -350,7 +406,8 @@ export class CustomerService {
       panNumber: payload.panNumber,
       gstinNumbers: gstinNumbers,
       codeType: payload.codeType || 'GLOBAL',
-      gstinDetails: gstinDetails
+      gstinDetails: gstinDetails,
+      gstinRemovals: JSON.stringify(gstinRemovals)
     };
 
     return this.http.post<any>(`${this.API}/customers/old-update`, updateBody, {

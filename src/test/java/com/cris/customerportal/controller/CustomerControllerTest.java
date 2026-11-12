@@ -139,4 +139,19 @@ class CustomerControllerTest {
         assertSame(expected, resp.getBody());
         verify(customerService, times(1)).checkGstinDuplicate("20APEPA6196G1Z9", "ABCD");
     }
+
+    @Test
+    void testCheckPanDuplicate_delegatesToService() {
+        com.cris.customerportal.dto.PanDuplicateCheckResult expected =
+                new com.cris.customerportal.dto.PanDuplicateCheckResult(false, "AVAILABLE", "PAN is available");
+        when(customerService.checkPanDuplicate("ABCDE1234F")).thenReturn(expected);
+
+        ResponseEntity<com.cris.customerportal.dto.PanDuplicateCheckResult> resp =
+                controller.checkPanDuplicate("ABCDE1234F");
+
+        assertNotNull(resp);
+        assertEquals(200, resp.getStatusCodeValue());
+        assertSame(expected, resp.getBody());
+        verify(customerService, times(1)).checkPanDuplicate("ABCDE1234F");
+    }
 }

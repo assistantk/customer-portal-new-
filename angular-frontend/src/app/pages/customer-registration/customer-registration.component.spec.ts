@@ -357,9 +357,28 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({ city: '   ' }),
+        expect.any(Array),
         expect.any(Array)
       );
       expect(customerServiceMock.updateOldCustomerJDBC.mock.calls[0][0].operatingDivision).toBeUndefined();
+    });
+
+    it('rejects repeated GSTINs in an existing-record update', () => {
+      component.gstins.push({
+        state: 'Maharashtra',
+        gstin: '27ABCDE1234F1Z5',
+        file: null,
+        existingFileName: '',
+        scanning: false,
+        scanStatus: 'idle',
+        scanError: ''
+      });
+
+      expect(component.validate()).toBe(false);
+      expect(component.errors['gstin_1_gstin']).toBe('GSTIN already added');
+
+      component.submit();
+      expect(customerServiceMock.updateOldCustomerJDBC).not.toHaveBeenCalled();
     });
 
     it('sends the division only after the user changes it', () => {
@@ -373,6 +392,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           pincode: '400001',
           operatingDivision: 'Mumbai (CSTM)'
         }),
+        expect.any(Array),
         expect.any(Array)
       );
     });
@@ -453,6 +473,145 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     });
 
     it.each([
+      ['Global Customer', 'MSGG', 'lookupOldCustomerJDBC'],
+      ['Handling Agent', 'HA123', 'lookupHandlingAgentJDBC']
+    ])('loads the exact GSTIN detail after duplicate %s detection', (recordType, code, lookupMethod) => {
+      const targetGstin = '07ABCDE1234F1Z5';
+      const lookupResult = {
+        customerCode: code,
+        companyName: 'Existing Company',
+        address: 'Parent-table address',
+        city: 'Parent city',
+        pincode: '000000',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '19ABCDE1234F1Z5,07ABCDE1234F1Z5',
+        gstins: [
+          {
+            gstin: '19ABCDE1234F1Z5',
+            registeredAddress: 'Kolkata address',
+            city: 'Kolkata',
+            pincode: '700001',
+            effectiveFrom: '2020-01-01',
+            effectiveTo: ''
+          },
+          {
+            gstin: targetGstin,
+            registeredAddress: 'Delhi address',
+            city: 'Delhi',
+            pincode: '110064',
+            implementationDate: '2024-01-01',
+            effectiveFrom: '2024-02-01',
+            effectiveTo: '2025-01-31'
+          }
+        ]
+      };
+      customerServiceMock[lookupMethod].mockReturnValue(of(lookupResult));
+      component.mode = 'new';
+      vi.useFakeTimers();
+
+      component.onGstinUpdateExistingRecord({
+        recordType,
+        existingCode: code,
+        gstin: targetGstin,
+        pan: 'ABCDE1234F'
+      });
+      vi.advanceTimersByTime(800);
+
+      expect(component.mode).toBe('old');
+      expect(component.codeType).toBe(recordType === 'Handling Agent' ? 'HANDLING_AGENT' : 'GLOBAL');
+      expect(component.form.customerCode).toBe(code);
+      expect(component.gstins[component.selectedGstinAddressIndex].gstin).toBe(targetGstin);
+      expect(component.form.address).toBe('Delhi address');
+      expect(component.form.city).toBe('Delhi');
+      expect(component.form.pincode).toBe('110064');
+      expect(component.gstins[1]).toMatchObject({
+        implementationDate: '2024-01-01',
+        effectiveFrom: '2024-02-01',
+        effectiveTo: '2025-01-31'
+      });
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(customerServiceMock[lookupMethod]).toHaveBeenCalledWith(code);
+
+      vi.useRealTimers();
+    });
+
+    it('does not select an arbitrary GSTIN for a PAN update with multiple GSTIN details', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'MSGG',
+        companyName: 'Existing Company',
+        panNumber: 'ABCDE1234F',
+        gstins: [
+          { gstin: '19ABCDE1234F1Z5', registeredAddress: 'Kolkata address', city: 'Kolkata', pincode: '700001' },
+          { gstin: '07ABCDE1234F1Z5', registeredAddress: 'Delhi address', city: 'Delhi', pincode: '110064' }
+        ]
+      }));
+      component.mode = 'new';
+      component.form.panNumber = 'ABCDE1234F';
+      vi.useFakeTimers();
+
+      component.onPanUpdateExistingDetails({
+        recordType: 'Global Customer',
+        codeType: 'global',
+        companyCode: 'MSGG',
+        companyName: 'Existing Company',
+        pan: 'ABCDE1234F',
+        gstins: []
+      });
+      vi.advanceTimersByTime(800);
+
+      expect(component.form.customerCode).toBe('MSGG');
+      expect(component.form.panNumber).toBe('ABCDE1234F');
+      expect(component.selectedGstinAddressIndex).toBe(-1);
+      expect(component.form.address).toBe('');
+      expect(component.form.city).toBe('');
+      expect(component.form.pincode).toBe('');
+      expect(component.lookupDone).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it('restores a pending duplicate-update handoff after the registration component is recreated', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'MSGG',
+        companyName: 'Existing Company',
+        panNumber: 'ABCDE1234F',
+        gstins: [
+          { gstin: '19ABCDE1234F1Z5', registeredAddress: 'Kolkata address', city: 'Kolkata', pincode: '700001' },
+          { gstin: '07ABCDE1234F1Z5', registeredAddress: 'Delhi address', city: 'Delhi', pincode: '110064' }
+        ]
+      }));
+      component.mode = 'new';
+      vi.useFakeTimers();
+
+      component.onGstinUpdateExistingRecord({
+        recordType: 'Global Customer',
+        existingCode: 'MSGG',
+        gstin: '07ABCDE1234F1Z5',
+        pan: 'ABCDE1234F'
+      });
+      component.ngOnDestroy();
+
+      const recreatedComponent = new CustomerRegistrationComponent(
+        customerServiceMock as CustomerService,
+        panOcrServiceMock as PanOcrService,
+        notificationService,
+        cdrMock,
+        undefined,
+        undefined,
+        authServiceMock
+      );
+      recreatedComponent.ngOnInit();
+      vi.advanceTimersByTime(800);
+
+      expect(recreatedComponent.form.customerCode).toBe('MSGG');
+      expect(recreatedComponent.gstins[recreatedComponent.selectedGstinAddressIndex].gstin).toBe('07ABCDE1234F1Z5');
+      expect(recreatedComponent.form.address).toBe('Delhi address');
+
+      recreatedComponent.ngOnDestroy();
+      vi.useRealTimers();
+    });
+
+    it.each([
       ['A', 'a'],
       ['BD', 'BD'],
       ['MCC', 'MCC'],
@@ -524,8 +683,88 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           expect.objectContaining({ gstin: '27ABCDE1234F1Z5' }),
           expect.objectContaining({ gstin: '07ABCDE1234F1Z5' }),
           expect.objectContaining({ gstin: '06ABCDE1234F1Z5' })
-        ])
+        ]),
+        []
       );
+    });
+
+    it('confirms a specific persisted GSTIN removal and submits it without altering other GSTINs', () => {
+      component.isOldGstDisabled = true;
+      component.gstins = [
+        ['27ABCDE1234F1Z5', '2025-01-01 10:00:00'],
+        ['29ABCDE1234F1Z7', '2025-01-02 10:00:00'],
+        ['06ABCDE1234F1Z3', '2025-01-03 10:00:00'],
+        ['07ABCDE1234F1Z4', '2025-01-04 10:00:00']
+      ].map(([gstin, effectiveFrom], index) => ({
+        state: `State ${index}`,
+        gstin,
+        gstinId: `detail-${index}`,
+        effectiveFrom,
+        persistedDetail: true,
+        registeredAddress: `Address ${index}`,
+        file: null
+      }));
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true }));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      component.requestGstinRemoval(component.gstins[1]);
+
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('29ABCDE1234F1Z7'));
+      expect(component.pendingGstinRemovals).toEqual([{
+        gstin: '29ABCDE1234F1Z7',
+        effectiveFrom: '2025-01-02 10:00:00'
+      }]);
+      expect(component.gstins).toHaveLength(4);
+      expect(component.canRequestGstinRemoval(component.gstins[0])).toBe(true);
+
+      component.submit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({ customerCode: 'OLD1' }),
+        expect.arrayContaining([
+          expect.objectContaining({ gstin: '27ABCDE1234F1Z5' }),
+          expect.objectContaining({ gstin: '29ABCDE1234F1Z7' }),
+          expect.objectContaining({ gstin: '06ABCDE1234F1Z3' }),
+          expect.objectContaining({ gstin: '07ABCDE1234F1Z4' })
+        ]),
+        [{ gstin: '29ABCDE1234F1Z7', effectiveFrom: '2025-01-02 10:00:00' }]
+      );
+      confirmSpy.mockRestore();
+    });
+
+    it('loads per-GSTIN effective dates for the existing Update removal controls', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'OLD1',
+        companyName: 'Old User Logistics',
+        address: '456 Railway Road',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '27ABCDE1234F1Z5,29ABCDE1234F1Z7',
+        gstins: [
+          { gstin: '27ABCDE1234F1Z5', address: 'Delhi Road', effectiveFrom: '2025-01-01 10:00:00' },
+          { gstin: '29ABCDE1234F1Z7', address: 'Karnataka Road', effectiveFrom: '2025-01-02 10:00:00' }
+        ]
+      }));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('OLD1');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.gstins).toHaveLength(2);
+      expect(component.gstins[1]).toMatchObject({
+        gstin: '29ABCDE1234F1Z7',
+        registeredAddress: 'Karnataka Road',
+        effectiveFrom: '2025-01-02 10:00:00',
+        persistedDetail: true
+      });
+
+      component.requestGstinRemoval(component.gstins[1]);
+      expect(component.pendingGstinRemovals).toEqual([{
+        gstin: '29ABCDE1234F1Z7',
+        effectiveFrom: '2025-01-02 10:00:00'
+      }]);
+      confirmSpy.mockRestore();
     });
 
     it('keeps fetched Old User details and all GSTIN rows when OCR scans another GSTIN', async () => {
@@ -1291,7 +1530,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
     it('shows the selected code-type logo and switches immediately between both delete options', () => {
       component.mode = 'delete';
       expect(component.currentLogo).toBe('assets/portal-logo.webp');
-      expect(component.currentLogoAlt).toBe('Freight Code Generator');
+      expect(component.currentLogoAlt).toBe('Freight Customer Code');
 
       component.onDeleteCodeTypeChange({ target: { value: 'GLOBAL_CUSTOMER' } } as unknown as Event);
       expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
@@ -1497,7 +1736,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.mode = 'old';
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.webp');
-      expect(component.currentLogoAlt).toBe('Freight Code Generator');
+      expect(component.currentLogoAlt).toBe('Freight Customer Code');
     });
 
     it('should dynamically switch logo when toggling to HANDLING_AGENT in old mode', () => {
@@ -1513,7 +1752,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.handleOldCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/portal-logo.webp');
-      expect(component.currentLogoAlt).toBe('Freight Code Generator');
+      expect(component.currentLogoAlt).toBe('Freight Customer Code');
     });
 
     it('should dynamically switch logo when toggling codeType in new mode', () => {

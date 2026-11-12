@@ -74,13 +74,35 @@ export class VerificationComponent implements OnInit, OnDestroy {
   }
 
   getGstinList(c: any): string[] {
-    const rawGstins = c?.gstinNumbers;
-    if (rawGstins == null || String(rawGstins).trim() === "") {
-      return ["-"];
+    return this.getGstinDetails(c).map((detail) => detail.gstin);
+  }
+
+  getGstinDetails(record: any): Array<{
+    gstin: string;
+    address?: string;
+    city?: string;
+    pincode?: string;
+    implementationDate?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+  }> {
+    if (Array.isArray(record?.gstins) && record.gstins.length > 0) {
+      return record.gstins
+        .filter((detail: any) => detail && typeof detail === "object")
+        .map((detail: any) => ({
+          gstin: String(detail.gstin || "-"),
+          address: detail.address,
+          city: detail.city,
+          pincode: detail.pincode,
+          implementationDate: detail.implementationDate,
+          effectiveFrom: detail.effectiveFrom,
+          effectiveTo: detail.effectiveTo
+        }));
     }
-    const clean = String(rawGstins).replace(/[\[\]"\s]/g, "");
-    const list = clean.split(",").filter(Boolean);
-    return list.length > 0 ? list : ["-"];
+
+    const rawGstins = String(record?.gstinNumbers || "").replace(/[\[\]"\s]/g, "");
+    const gstins = rawGstins.split(",").filter(Boolean);
+    return (gstins.length > 0 ? gstins : ["-"]).map((gstin) => ({ gstin }));
   }
 
   verifyCode(e?: Event): void {
@@ -215,35 +237,51 @@ export class VerificationComponent implements OnInit, OnDestroy {
     const records = (this.customers || []).filter((record) => record != null && typeof record === "object");
     const displayedColumns = [
       "customerCode",
-      "gstinNumbers",
+      "gstin",
       "companyName",
       "address",
+      "city",
+      "pincode",
       "panNumber",
       "division",
-      "city",
-      "creationDate"
+      "implementationDate",
+      "effectiveFrom",
+      "effectiveTo"
     ];
     const allColumns = [...displayedColumns];
     records.forEach((record) => {
       Object.keys(record).forEach((key) => {
-        if (!allColumns.includes(key)) allColumns.push(key);
+        if (key !== "gstins" && key !== "gstinNumbers" && key !== "creationDate" && !allColumns.includes(key)) {
+          allColumns.push(key);
+        }
       });
     });
 
     const rows = records.flatMap((record) =>
-      this.getGstinList(record).map((gstin) =>
+      this.getGstinDetails(record).map((detail) =>
         allColumns.map((column) => {
           if (column === "customerCode") {
-            return this.pdfCellValue(record.customerCode || (this.searchMode === "CODE" ? this.verifiedSearchValue : "-"));
+            return this.pdfCellValue(
+              record.customerCode || record.code || record.ownershipCode
+                || (this.searchMode === "CODE" ? this.verifiedSearchValue : "-")
+            );
           }
-          if (column === "gstinNumbers") return gstin;
+          if (column === "gstin" || column === "address" || column === "city" || column === "pincode"
+              || column === "implementationDate" || column === "effectiveFrom" || column === "effectiveTo") {
+            return this.pdfCellValue(detail[column as keyof typeof detail]);
+          }
           return this.pdfCellValue(record[column]);
         })
       )
     );
 
     const firstRecord = records[0] as Record<string, unknown> | undefined;
-    const recordDate = (firstRecord?.['creationDate'] || firstRecord?.['date'] || firstRecord?.['createdDate'] || null) as string | Date | null;
+    const firstDetail = firstRecord ? this.getGstinDetails(firstRecord)[0] : undefined;
+    const hasDetailRecords = Array.isArray(firstRecord?.['gstins']) && firstRecord['gstins'].length > 0;
+    const recordDate = (firstDetail?.implementationDate || firstDetail?.effectiveFrom
+      || (!hasDetailRecords
+        ? firstRecord?.['creationDate'] || firstRecord?.['date'] || firstRecord?.['createdDate'] || null
+        : null)) as string | Date | null;
 
     return {
       searchType: this.verificationType === "gstin"

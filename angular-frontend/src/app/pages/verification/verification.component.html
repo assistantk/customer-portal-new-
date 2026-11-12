@@ -162,15 +162,24 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let agent of customers">
-                            <td class="verification-identifier">{{ agent.code || verifiedSearchValue }}</td>
-                            <td class="verification-identifier">{{ agent.gstinNumbers || '-' }}</td>
-                            <td>{{ agent.companyName || '-' }}</td>
-                            <td>{{ agent.address || '-' }}</td>
-                            <td class="verification-identifier">{{ agent.panNumber || '-' }}</td>
-                            <td>{{ agent.division || '-' }}</td>
-                            <td>{{ agent.creationDate || '-' }}</td>
-                        </tr>
+                        <ng-container *ngFor="let agent of customers">
+                            <tr *ngFor="let g of getGstinDetails(agent)">
+                                <td class="verification-identifier">{{ agent.code || verifiedSearchValue }}</td>
+                                <td class="verification-identifier">{{ g.gstin }}</td>
+                                <td>{{ agent.companyName || '-' }}</td>
+                                <td>
+                                    {{ g.address || '-' }}
+                                    <small *ngIf="g.city || g.pincode"><br>{{ g.city || '' }} {{ g.pincode || '' }}</small>
+                                </td>
+                                <td class="verification-identifier">{{ agent.panNumber || '-' }}</td>
+                                <td>{{ agent.division || '-' }}</td>
+                                <td>
+                                    Impl: {{ g.implementationDate || '-' }}<br>
+                                    From: {{ g.effectiveFrom || '-' }}<br>
+                                    To: {{ g.effectiveTo || '-' }}
+                                </td>
+                            </tr>
+                        </ng-container>
                     </tbody>
                 </table>
             </div>
@@ -192,20 +201,27 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <ng-container *ngFor="let c of customers; let i = index">
-                            <tr *ngFor="let g of getGstinList(c); let gIdx = index">
+                        <ng-container *ngFor="let c of customers">
+                            <tr *ngFor="let g of getGstinDetails(c)">
                                 <td class="verification-identifier">
                                     {{ c.customerCode || (verificationType === 'gstin' ? '-' : verifiedSearchValue || code) }}
                                 </td>
-                                <td class="verification-identifier" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+                                <td class="verification-identifier" [style.color]="g.gstin === '-' ? '#64748b' : 'inherit'">{{ g.gstin }}</td>
                                 <td *ngIf="verificationType === 'gstin'" class="verification-identifier">
                                     {{ getHandlingAgentCodes(c).join(', ') || 'No Handling Agent Code found' }}
                                 </td>
                                 <td>{{ c.companyName || '-' }}</td>
-                                <td>{{ c.address || '-' }}</td>
+                                <td>
+                                    {{ g.address || '-' }}
+                                    <small *ngIf="g.city || g.pincode"><br>{{ g.city || '' }} {{ g.pincode || '' }}</small>
+                                </td>
                                 <td class="verification-identifier">{{ c.panNumber || '-' }}</td>
                                 <td>{{ c.division || '-' }}</td>
-                                <td>{{ c.creationDate || '-' }}</td>
+                                <td>
+                                    Impl: {{ g.implementationDate || '-' }}<br>
+                                    From: {{ g.effectiveFrom || '-' }}<br>
+                                    To: {{ g.effectiveTo || '-' }}
+                                </td>
                             </tr>
                         </ng-container>
                     </tbody>

@@ -104,7 +104,7 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
     if (this.codeType === 'HANDLING_AGENT') {
       return 'Handling Agent Code Logo';
     }
-    return 'Freight Code Generator';
+    return 'Freight Customer Code';
   }
 
   onLogoError(): void {

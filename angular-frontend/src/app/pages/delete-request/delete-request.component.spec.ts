@@ -24,7 +24,7 @@ describe('DeleteRequestComponent', () => {
     expect(component.codeType).toBe('');
     expect(component.pageTitle).toBe('Disable Code');
     expect(component.currentLogo).toBe('assets/portal-logo.webp');
-    expect(component.currentLogoAlt).toBe('Freight Code Generator');
+    expect(component.currentLogoAlt).toBe('Freight Customer Code');
 
     component.code = 'AEIP';
     component.verifyCode();

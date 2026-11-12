@@ -92,7 +92,7 @@ public class DbaEmailService {
             String sql = formatRegistrationInsert || formatUpdate
                     ? formatSqlForEmail(new SqlRequest(
                             audit.getOperationType(), audit.getTableName(), audit.getCustomerCode(), auditSql))
-                    : formatStringLiterals(toEmailSql(audit));
+                    : formatSqlTextLiterals(formatStringLiterals(toEmailSql(audit)));
             String text = buildEmailBody(operation, tableName, customerCode, sql, userFooter());
 
             message.setText(text);
@@ -571,6 +571,10 @@ public class DbaEmailService {
     }
 
     private String formatSqlForEmail(SqlRequest request) {
+        return formatSqlTextLiterals(formatSqlForEmailWithoutTextNormalization(request));
+    }
+
+    private String formatSqlForEmailWithoutTextNormalization(SqlRequest request) {
         String sql = request.sql();
         if ("DELETE".equalsIgnoreCase(request.operation())
                 && ("MEMGLBLCUST".equalsIgnoreCase(request.table())
@@ -623,6 +627,35 @@ public class DbaEmailService {
         }
         String normalizedValues = normalizeHandlingAgentInsertName(valuesPart);
         return (insertPrefix + " " + compactSqlValues(normalizedValues)).toUpperCase(Locale.ROOT);
+    }
+
+    private String formatSqlTextLiterals(String sql) {
+        if (sql == null || sql.indexOf('&') < 0) {
+            return sql;
+        }
+
+        StringBuilder normalized = new StringBuilder(sql.length());
+        boolean inString = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char current = sql.charAt(i);
+            if (current == '\'') {
+                normalized.append(current);
+                if (inString && i + 1 < sql.length() && sql.charAt(i + 1) == '\'') {
+                    normalized.append(sql.charAt(++i));
+                } else {
+                    inString = !inString;
+                }
+            } else if (inString) {
+                normalized.append(normalizeTextForDbaSql(String.valueOf(current)));
+            } else {
+                normalized.append(current);
+            }
+        }
+        return normalized.toString();
+    }
+
+    private String normalizeTextForDbaSql(String value) {
+        return value == null ? null : value.replace("&", "-");
     }
 
     private String normalizeHandlingAgentInsertName(String valuesPart) {
@@ -770,14 +803,22 @@ public class DbaEmailService {
         }
         String value = expression.substring(1, expression.length() - 1).replace("''", "'");
         String normalized = value.trim();
-        if (normalized.length() > 3
-                && normalized.regionMatches(true, 0, "M/S", 0, 3)
-                && Character.isWhitespace(normalized.charAt(3))) {
-            normalized = "M/S " + normalized.substring(4).trim();
+        if (hasCompanyNamePrefix(normalized)) {
+            if (normalized.length() == 3) {
+                normalized = "M/S";
+            } else if (Character.isWhitespace(normalized.charAt(3))) {
+                normalized = "M/S " + normalized.substring(3).trim();
+            }
         } else {
             normalized = "M/S " + normalized;
         }
         return "'" + normalized.replace("'", "''") + "'";
+    }
+
+    private boolean hasCompanyNamePrefix(String value) {
+        return value.length() >= 3
+                && value.regionMatches(true, 0, "M/S", 0, 3)
+                && (value.length() == 3 || !Character.isLetterOrDigit(value.charAt(3)));
     }
 
     private String normalizeAddressUpdates(String sql) {
@@ -943,7 +984,7 @@ public class DbaEmailService {
                 }
             } else if (inString) {
                 String character = String.valueOf(current);
-                formatted.append(character.equals("&") ? "AND" : character.toUpperCase(Locale.ROOT));
+                formatted.append(normalizeTextForDbaSql(character).toUpperCase(Locale.ROOT));
             } else {
                 formatted.append(current);
             }

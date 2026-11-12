@@ -8,7 +8,7 @@ import { SessionLifecycleService } from './services/session-lifecycle.service';
   styleUrl: './app.css'
 })
 export class App implements OnDestroy {
-  title = 'Freight Code Generator';
+  title = 'Freight Customer Code';
 
   constructor(private sessionLifecycle: SessionLifecycleService) {
     this.sessionLifecycle.start();
