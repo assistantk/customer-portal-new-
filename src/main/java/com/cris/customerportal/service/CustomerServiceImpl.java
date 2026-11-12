@@ -5,6 +5,7 @@ import com.cris.customerportal.config.DataMaskingUtil;
 import com.cris.customerportal.dto.CustomerLookupResponse;
 import com.cris.customerportal.dto.CustomerRegistrationRequest;
 import com.cris.customerportal.entity.Customer;
+import com.cris.customerportal.exception.DatabaseUnavailableException;
 import com.cris.customerportal.exception.ResourceAlreadyExistsException;
 import com.cris.customerportal.exception.ResourceNotFoundException;
 import com.cris.customerportal.repository.CustomerRepository;
@@ -259,6 +260,43 @@ public class CustomerServiceImpl implements CustomerService {
    return list;
   }
 
+  private List<com.cris.customerportal.dto.PanGstinRecord> fetchGstinDetails(
+      Connection conn,
+      String table,
+      String codeColumn,
+      String code,
+      String addressColumn,
+      String cityColumn) throws SQLException {
+   if (code == null || code.trim().isEmpty()) {
+    return Collections.emptyList();
+   }
+   String sql = "SELECT MAVCUSTGSTNUMB, " + addressColumn + " AS REGISTERED_ADDRESS, "
+       + cityColumn + " AS CITY, MANPINCODE, "
+       + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_FROM, "
+       + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_TO "
+       + "FROM " + table + " WHERE " + codeColumn + " = ? "
+       + "ORDER BY MADDATEEFCTFROM, MAVCUSTGSTNUMB";
+   List<com.cris.customerportal.dto.PanGstinRecord> details = new ArrayList<>();
+   try (PreparedStatement statement = conn.prepareStatement(sql)) {
+    statement.setString(1, code.trim().toUpperCase(Locale.ROOT));
+    try (ResultSet results = statement.executeQuery()) {
+    while (results.next()) {
+      String gstin = results.getString("MAVCUSTGSTNUMB");
+      if (gstin != null && !gstin.trim().isEmpty()) {
+       details.add(new com.cris.customerportal.dto.PanGstinRecord(
+           gstin.trim(),
+           results.getString("REGISTERED_ADDRESS"),
+           results.getString("CITY"),
+           results.getString("MANPINCODE"),
+           results.getString("EFFECTIVE_FROM"),
+           results.getString("EFFECTIVE_TO")));
+      }
+     }
+    }
+   }
+   return details;
+  }
+
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
@@ -280,8 +318,13 @@ public class CustomerServiceImpl implements CustomerService {
      response.setDivision(rs.getString("MAVIMPLREMK"));
      response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
      
-     List<String> gstins = fetchGstinsForGlobalCustomer(conn, response.getCustomerCode());
-     response.setGstinNumbers(gstins.isEmpty() ? null : String.join(",", gstins));
+     List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+         conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", response.getCustomerCode(),
+         "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
+     response.setGstins(details);
+     response.setGstinNumbers(details.isEmpty() ? null : details.stream()
+         .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+         .collect(Collectors.joining(",")));
      return response;
     } else {
      throw new ResourceNotFoundException("No record found for this Global Customer Code.");
@@ -1377,33 +1420,59 @@ public class CustomerServiceImpl implements CustomerService {
 
    // Existing GSTINs in detail table
    Map<String, String> existingDtls = new LinkedHashMap<>();
-   if (formData.containsKey("gstinDetails") || formData.containsKey("gstinNumbers")) {
-    String queryDtls = "SELECT MAVCUSTGSTNUMB, " + dtlsAddrCol + " FROM " + dtlsTable + " WHERE " + dtlsCodeCol + " = ?";
+   List<ExistingGstinDetail> existingGstinDetails = new ArrayList<>();
+   int existingGstinRecordCount = 0;
+   List<Map<String, Object>> requestedGstinRemovals = parseGstinRemovals(
+       formData.get("gstinRemovals"));
+   if (formData.containsKey("gstinDetails")
+       || formData.containsKey("gstinNumbers")
+       || formData.containsKey("gstinRemovals")) {
+    String queryDtls = "SELECT MAVCUSTGSTNUMB, " + dtlsAddrCol
+        + ", TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_FROM "
+        + "FROM " + dtlsTable + " WHERE " + dtlsCodeCol + " = ?";
     try (Connection conn = dataSource.getConnection();
          PreparedStatement ps = conn.prepareStatement(queryDtls)) {
      if (ps != null) {
       ps.setString(1, customerCode.trim());
       try (ResultSet rs = ps.executeQuery()) {
        if (rs != null) {
-        int count = 0;
-        while (rs.next() && ++count <= 50) {
+        while (rs.next()) {
          String g = rs.getString("MAVCUSTGSTNUMB");
          String a = rs.getString(dtlsAddrCol);
          if (g != null && !g.trim().isEmpty()) {
-          existingDtls.put(g.trim().toUpperCase(Locale.ROOT), a);
+          String normalizedGstin = g.trim().toUpperCase(Locale.ROOT);
+          String effectiveFrom = rs.getString("EFFECTIVE_FROM");
+          existingDtls.putIfAbsent(normalizedGstin, a);
+          existingGstinRecordCount++;
+          ExistingGstinDetail existingDetail = findGstinDetail(
+              existingGstinDetails, normalizedGstin, effectiveFrom);
+          if (existingDetail == null) {
+           existingGstinDetails.add(new ExistingGstinDetail(
+               normalizedGstin, a, effectiveFrom));
+          } else {
+           existingDetail.duplicateCount++;
+          }
          }
         }
        }
       }
      }
     } catch (SQLException e) {
+     if (!requestedGstinRemovals.isEmpty()) {
+      log.error("CustomerServiceImpl.updateOldCustomerJDBC: cannot verify GSTIN removal rows: {}",
+          DataMaskingUtil.formatThrowable(e));
+      throw new DatabaseUnavailableException(
+          "Unable to verify the selected GSTIN detail records. No request email was sent.", e);
+     }
      log.warn("CustomerServiceImpl.updateOldCustomerJDBC: dtls query error: {}", e.getMessage());
     }
    }
 
    // Handle GSTIN details / additions / removals
    Set<String> submittedGstins = new LinkedHashSet<>();
-   if (formData.containsKey("gstinDetails") || formData.containsKey("gstinNumbers")) {
+   if (formData.containsKey("gstinDetails")
+       || formData.containsKey("gstinNumbers")
+       || formData.containsKey("gstinRemovals")) {
     List<Map<String, Object>> list = new ArrayList<>();
     String rawDetails = formData.get("gstinDetails");
     if (rawDetails != null && !rawDetails.trim().isEmpty()) {
@@ -1471,7 +1540,8 @@ public class CustomerServiceImpl implements CustomerService {
       String dtlsExecSql = formatBoundSql(dtlsInsSql, dtlsParams) + ";";
       emailRequests.add(new DbaEmailService.SqlRequest("INSERT", dtlsTable, customerCode.trim(), dtlsExecSql));
      } else {
-      if (item.containsKey("address") && item.get("address") != null) {
+      if (item.containsKey("address") && item.get("address") != null
+          && !isGstinMarkedForRemoval(requestedGstinRemovals, g)) {
        String existingDtlsAddr = existingDtls.get(g);
        if (gAddr != null && !Objects.equals(normalizeAddress(existingDtlsAddr), gAddr)) {
         String dtlsUpdSql = "UPDATE " + dtlsTable + " SET " + dtlsAddrCol + " = " + formatSqlValue(gAddr)
@@ -1483,21 +1553,174 @@ public class CustomerServiceImpl implements CustomerService {
      }
     }
 
-    // Handle GSTIN removals if submitted list was provided and is non-empty
-    if (!submittedGstins.isEmpty() && !existingDtls.isEmpty()) {
-     for (String existingG : existingDtls.keySet()) {
-      if (!submittedGstins.contains(existingG)) {
-       String dtlsDelSql = "DELETE FROM " + dtlsTable + " WHERE " + dtlsCodeCol + " = " + formatSqlValue(customerCode.trim())
-           + " AND MAVCUSTGSTNUMB = " + formatSqlValue(existingG) + ";";
-       emailRequests.add(new DbaEmailService.SqlRequest("DELETE", dtlsTable, customerCode.trim(), dtlsDelSql));
+    List<ExistingGstinDetail> removalTargets = new ArrayList<>();
+    if (formData.containsKey("gstinRemovals")) {
+     removalTargets.addAll(resolveRequestedGstinRemovals(
+         requestedGstinRemovals, existingGstinDetails));
+    } else if (!submittedGstins.isEmpty()) {
+     for (ExistingGstinDetail existing : existingGstinDetails) {
+      if (!submittedGstins.contains(existing.gstin)) {
+       removalTargets.add(existing);
       }
      }
+    }
+
+    int newlyAddedGstinCount = (int) submittedGstins.stream()
+        .filter(gstin -> !existingDtls.containsKey(gstin))
+        .count();
+    validateGstinRemovalCount(existingGstinRecordCount + newlyAddedGstinCount, removalTargets);
+    for (ExistingGstinDetail removal : removalTargets) {
+     String dtlsDelSql = buildGstinRemovalSql(
+         dtlsTable, dtlsCodeCol, customerCode.trim(), removal);
+     emailRequests.add(new DbaEmailService.SqlRequest(
+         "DELETE", dtlsTable, customerCode.trim(), oldCustomer.getCompanyName(), dtlsDelSql));
     }
    }
    if (emailRequests.isEmpty()) {
     throw new IllegalArgumentException("No changes detected for this record.");
    }
    dbaEmailService.sendDbaSqlEmail(emailRequests);
+ }
+
+ private List<Map<String, Object>> parseGstinRemovals(String rawRemovals) {
+  if (rawRemovals == null || rawRemovals.trim().isEmpty()) {
+   return Collections.emptyList();
+  }
+  try {
+   List<Map<String, Object>> removals = new com.fasterxml.jackson.databind.ObjectMapper()
+       .readValue(rawRemovals,
+           new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+   return removals == null ? Collections.emptyList() : removals;
+  } catch (Exception e) {
+   throw new IllegalArgumentException("The selected GSTIN removal list is invalid.", e);
+  }
+ }
+
+ private boolean isGstinMarkedForRemoval(
+     List<Map<String, Object>> requestedRemovals, String gstin) {
+  for (Map<String, Object> removal : requestedRemovals) {
+   if (removal != null && removal.get("gstin") != null
+       && gstin.equalsIgnoreCase(removal.get("gstin").toString().replaceAll("\\s+", ""))) {
+    return true;
+   }
+  }
+  return false;
+ }
+
+ private List<ExistingGstinDetail> resolveRequestedGstinRemovals(
+     List<Map<String, Object>> requestedRemovals,
+     List<ExistingGstinDetail> existingDetails) {
+  List<ExistingGstinDetail> targets = new ArrayList<>();
+  Set<String> selectedRows = new HashSet<>();
+  Pattern gstinPattern = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$");
+
+  for (Map<String, Object> request : requestedRemovals) {
+   if (request == null || request.get("gstin") == null) {
+    throw new IllegalArgumentException("Each GSTIN removal must identify a GSTIN.");
+   }
+   String gstin = request.get("gstin").toString().replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if (!gstinPattern.matcher(gstin).matches()) {
+    throw new IllegalArgumentException("The selected GSTIN is invalid.");
+   }
+
+   String requestedDate = request.get("effectiveFrom") == null
+       ? null : request.get("effectiveFrom").toString().trim();
+   if (requestedDate != null && requestedDate.isEmpty()) {
+    requestedDate = null;
+   }
+   if (requestedDate != null) {
+    validateEffectiveFromFormat(requestedDate);
+   }
+
+   List<ExistingGstinDetail> matches = new ArrayList<>();
+   for (ExistingGstinDetail detail : existingDetails) {
+    if (!gstin.equals(detail.gstin)) {
+     continue;
+    }
+    if (requestedDate == null
+        || requestedDate.equals(detail.effectiveFrom)
+        || (requestedDate.length() == 10 && detail.effectiveFrom != null
+            && detail.effectiveFrom.startsWith(requestedDate + " "))) {
+     matches.add(detail);
+    }
+   }
+   if (matches.size() != 1) {
+    throw new IllegalArgumentException(matches.isEmpty()
+        ? "The selected GSTIN detail record was not found for this code."
+        : "The selected GSTIN matches multiple detail records. Select its effective-from date.");
+   }
+
+   ExistingGstinDetail target = matches.get(0);
+   if (target.duplicateCount > 1) {
+    throw new IllegalArgumentException(
+        "The selected GSTIN detail row is not uniquely identifiable by code, GSTIN, and effective-from date.");
+   }
+   String rowKey = target.gstin + "\u0000" + (target.effectiveFrom == null ? "" : target.effectiveFrom);
+   if (!selectedRows.add(rowKey)) {
+    throw new IllegalArgumentException("The same GSTIN detail record cannot be selected more than once.");
+   }
+   targets.add(target);
+  }
+  return targets;
+ }
+
+ private void validateEffectiveFromFormat(String effectiveFrom) {
+  try {
+   if (effectiveFrom.matches("\\d{4}-\\d{2}-\\d{2}")) {
+    java.time.LocalDate.parse(effectiveFrom);
+   } else if (effectiveFrom.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}")) {
+    java.time.LocalDateTime.parse(effectiveFrom,
+        java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss")
+            .withResolverStyle(java.time.format.ResolverStyle.STRICT));
+   } else {
+    throw new IllegalArgumentException("The selected GSTIN effective-from date is invalid.");
+   }
+  } catch (java.time.DateTimeException e) {
+   throw new IllegalArgumentException("The selected GSTIN effective-from date is invalid.", e);
+  }
+ }
+
+ private void validateGstinRemovalCount(int existingCount, List<ExistingGstinDetail> targets) {
+  int rowsToRemove = targets.stream().mapToInt(detail -> detail.duplicateCount).sum();
+  if (!targets.isEmpty() && existingCount - rowsToRemove < 1) {
+   throw new IllegalArgumentException("At least one GSTIN must remain associated with the company code.");
+  }
+ }
+
+ private ExistingGstinDetail findGstinDetail(
+     List<ExistingGstinDetail> details, String gstin, String effectiveFrom) {
+  for (ExistingGstinDetail detail : details) {
+   if (detail.gstin.equals(gstin) && Objects.equals(detail.effectiveFrom, effectiveFrom)) {
+    return detail;
+   }
+  }
+  return null;
+ }
+
+ private String buildGstinRemovalSql(
+     String table, String codeColumn, String code, ExistingGstinDetail detail) {
+  StringBuilder sql = new StringBuilder("DELETE FROM ").append(table)
+      .append(" WHERE ").append(codeColumn).append(" = ").append(formatSqlValue(code))
+      .append(" AND MAVCUSTGSTNUMB = ").append(formatSqlValue(detail.gstin));
+  if (detail.effectiveFrom != null) {
+   sql.append(" AND MADDATEEFCTFROM = TO_DATE(")
+       .append(formatSqlValue(detail.effectiveFrom))
+       .append(", 'YYYY-MM-DD HH24:MI:SS')");
+  }
+  return sql.append(';').toString();
+ }
+
+ private static final class ExistingGstinDetail {
+  private final String gstin;
+  private final String address;
+  private final String effectiveFrom;
+  private int duplicateCount = 1;
+
+  private ExistingGstinDetail(String gstin, String address, String effectiveFrom) {
+   this.gstin = gstin;
+   this.address = address;
+   this.effectiveFrom = effectiveFrom;
+  }
  }
 
  private void validateCompanyNameLength(String companyName) {
@@ -1555,8 +1778,13 @@ public class CustomerServiceImpl implements CustomerService {
        response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
        response.setStatus("Active");
 
-       List<String> gstins = fetchGstinsForHandlingAgent(conn, response.getCode());
-       response.setGstinNumbers(gstins.isEmpty() ? null : String.join(",", gstins));
+       List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+           conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", response.getCode(),
+           "MAVHNDGAGNTADDRTEXT", "MAVHNDGAGNTCITYNAME");
+       response.setGstins(details);
+       response.setGstinNumbers(details.isEmpty() ? null : details.stream()
+           .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+           .collect(Collectors.joining(",")));
        return response;
       } else {
        throw new ResourceNotFoundException("Handling agent code not found.");

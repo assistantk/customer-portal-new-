@@ -17,6 +17,7 @@ public class OldCustomerResponse {
     private String division;
     private String creationDate;
     private List<String> handlingAgentCodes = new ArrayList<>();
+    private List<PanGstinRecord> gstins = new ArrayList<>();
 
     public String getCity() { return city; }
     public void setCity(String city) { this.city = city; }
@@ -57,5 +58,10 @@ public class OldCustomerResponse {
     public List<String> getHandlingAgentCodes() { return handlingAgentCodes; }
     public void setHandlingAgentCodes(List<String> handlingAgentCodes) {
         this.handlingAgentCodes = handlingAgentCodes == null ? new ArrayList<>() : new ArrayList<>(handlingAgentCodes);
+    }
+
+    public List<PanGstinRecord> getGstins() { return gstins; }
+    public void setGstins(List<PanGstinRecord> gstins) {
+        this.gstins = gstins == null ? new ArrayList<>() : new ArrayList<>(gstins);
     }
 }

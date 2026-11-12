@@ -61,6 +61,8 @@ export interface GstinEntry {
   state: string;
   stateCode?: string;
   gstin: string;
+  effectiveFrom?: string;
+  persistedDetail?: boolean;
   file?: File | null;
   existingFileName?: string;
   scanning?: boolean;
@@ -101,6 +103,11 @@ export interface CustomerPayload {
   ownershipAddress?: string;
   ownershipPartyCode?: string;
   ownershipPartyAddress?: string;
+}
+
+export interface GstinRemoval {
+  gstin: string;
+  effectiveFrom?: string;
 }
 
 export type DeleteRequestCodeType = 'GLOBAL_CUSTOMER' | 'HANDLING_AGENT';
@@ -367,7 +374,11 @@ export class CustomerService {
   }
 
   /* ---------- Update Existing Customer (Old User - Triggers DBA Email via Spring Boot) ---------- */
-  updateOldCustomerJDBC(payload: CustomerPayload, gstinEntries: GstinEntry[]): Observable<any> {
+  updateOldCustomerJDBC(
+    payload: CustomerPayload,
+    gstinEntries: GstinEntry[],
+    gstinRemovals: GstinRemoval[] = []
+  ): Observable<any> {
     const gstinNumbers = gstinEntries
       .map(g => g.gstin)
       .filter(Boolean)
@@ -393,7 +404,8 @@ export class CustomerService {
       panNumber: payload.panNumber,
       gstinNumbers: gstinNumbers,
       codeType: payload.codeType || 'GLOBAL',
-      gstinDetails: gstinDetails
+      gstinDetails: gstinDetails,
+      gstinRemovals: JSON.stringify(gstinRemovals)
     };
 
     return this.http.post<any>(`${this.API}/customers/old-update`, updateBody, {

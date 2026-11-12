@@ -53,6 +53,18 @@
                         <div *ngFor="let g of gstins; let i = index; trackBy: trackByGstin" class="header-gstin-item">
                             <div class="header-gstin-item-head">
                                 <h4>GSTIN {{ i + 1 }}</h4>
+                                <button *ngIf="mode === 'old' && g.persistedDetail && isGstinRemovalPending(g)"
+                                    type="button" class="remove-btn" (click)="cancelGstinRemoval(g)"
+                                    [attr.aria-label]="'Cancel removal request for GSTIN ' + g.gstin">
+                                    Cancel removal
+                                </button>
+                                <button *ngIf="mode === 'old' && g.persistedDetail && !isGstinRemovalPending(g)"
+                                    type="button" class="remove-btn" (click)="requestGstinRemoval(g)"
+                                    [disabled]="!canRequestGstinRemoval(g)"
+                                    [title]="canRequestGstinRemoval(g) ? 'Request removal of this GSTIN' : 'At least one GSTIN must remain'"
+                                    [attr.aria-label]="'Request removal of GSTIN ' + g.gstin">
+                                    Remove GSTIN
+                                </button>
                                 <button *ngIf="i > 0 && !isGstinEntryDisabled(i)" type="button" class="remove-btn"
                                     (click)="removeGstin(i)">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
@@ -65,6 +77,13 @@
                                     </svg>
                                 </button>
                             </div>
+                            <small *ngIf="mode === 'old' && g.persistedDetail" class="gstin-db-status"
+                                style="display: block; margin: 0 0 6px 2px;">
+                                Effective from: {{ g.effectiveFrom || 'Not recorded' }}
+                                <span *ngIf="isGstinRemovalPending(g)" class="error">
+                                    — removal request selected; DBA approval is still required
+                                </span>
+                            </small>
                             <div class="field gstin-number-field">
                                 <label [attr.for]="'gstin-' + i">GSTIN No. <b>*</b></label>
                                 <div class="control gstin-control" [class.readonly-control]="isGstinEntryDisabled(i)"

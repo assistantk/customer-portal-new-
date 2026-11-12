@@ -1,5 +1,8 @@
 package com.cris.customerportal.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class GlobalAgentResponse {
     private String code;
     private String companyName;
@@ -16,6 +19,7 @@ public class GlobalAgentResponse {
     private String edMndFlag;
     private String division;
     private String creationDate;
+    private List<PanGstinRecord> gstins = new ArrayList<>();
 
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
@@ -58,4 +62,9 @@ public class GlobalAgentResponse {
 
     public String getCreationDate() { return creationDate; }
     public void setCreationDate(String creationDate) { this.creationDate = creationDate; }
+
+    public List<PanGstinRecord> getGstins() { return gstins; }
+    public void setGstins(List<PanGstinRecord> gstins) {
+        this.gstins = gstins == null ? new ArrayList<>() : new ArrayList<>(gstins);
+    }
 }

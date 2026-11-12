@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { catchError, finalize, filter, map, of, Subscription, switchMap, timeout, firstValueFrom } from 'rxjs';
-import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, SemGstinVerificationResult, GstinDuplicateRecord, GstinDuplicateCheckResult, PanDuplicateCheckResult, PanCompanyRecord, PanGstinRecord } from '../../services/customer.service';
+import { CustomerService, GstinEntry, CustomerPayload, DeleteRequestCodeType, GstinRemoval, SemGstinVerificationResult, GstinDuplicateRecord, GstinDuplicateCheckResult, PanDuplicateCheckResult, PanCompanyRecord, PanGstinRecord } from '../../services/customer.service';
 import { PanOcrService, cleanAndShortenAddress, getStateNameFromGstinCode } from '../../services/pan-ocr.service';
 import { generateCustomerCode } from '../../services/customer-code-generator';
 import { NotificationService } from '../../services/notification.service';
@@ -185,6 +185,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   addressManuallyEdited = false;
   ocrAutoFillApplied = false;
   removedGstinIds: any[] = [];
+  pendingGstinRemovals: GstinRemoval[] = [];
   gstinCollapsed = false;
   isOldPanDisabled = false;
   isOldGstDisabled = false;
@@ -421,6 +422,50 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   isGstinEntryDisabled(index: number): boolean {
     return this.isGstDisabled && Boolean(this.gstins[index]?.gstinId);
+  }
+
+  isGstinRemovalPending(entry: GstinEntry): boolean {
+    return this.pendingGstinRemovals.some(removal =>
+      removal.gstin === entry.gstin
+      && (removal.effectiveFrom || '') === (entry.effectiveFrom || '')
+    );
+  }
+
+  canRequestGstinRemoval(entry: GstinEntry): boolean {
+    if (this.mode !== 'old' || !this.lookupDone || !entry.persistedDetail
+      || this.isGstinRemovalPending(entry)) {
+      return false;
+    }
+    const remaining = this.gstins.filter(g =>
+      g.persistedDetail && !this.isGstinRemovalPending(g)
+    ).length;
+    return remaining > 1;
+  }
+
+  requestGstinRemoval(entry: GstinEntry): void {
+    if (!this.canRequestGstinRemoval(entry)) return;
+    const effectiveDate = entry.effectiveFrom
+      ? ` (effective from ${entry.effectiveFrom})`
+      : '';
+    const confirmed = typeof window !== 'undefined' && window.confirm(
+      `Submit a DBA-approved request to remove GSTIN ${entry.gstin}${effectiveDate}? `
+      + 'The record will remain in the database until the DBA executes the request.'
+    );
+    if (!confirmed) return;
+
+    this.pendingGstinRemovals = [
+      ...this.pendingGstinRemovals,
+      { gstin: entry.gstin, effectiveFrom: entry.effectiveFrom || undefined }
+    ];
+    this.cdr.markForCheck();
+  }
+
+  cancelGstinRemoval(entry: GstinEntry): void {
+    this.pendingGstinRemovals = this.pendingGstinRemovals.filter(removal =>
+      removal.gstin !== entry.gstin
+      || (removal.effectiveFrom || '') !== (entry.effectiveFrom || '')
+    );
+    this.cdr.markForCheck();
   }
 
   isValueAvailable(val: any): boolean {
@@ -705,6 +750,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.panManuallyEdited = false;
     this.ocrAutoFillApplied = false;
     this.removedGstinIds = [];
+    this.pendingGstinRemovals = [];
     this.ownershipLogoMissing = false;
     this.deleteLogoMissing = false;
     this.deleteCode = '';
@@ -772,6 +818,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.panManuallyEdited = false;
     this.ocrAutoFillApplied = false;
     this.removedGstinIds = [];
+    this.pendingGstinRemovals = [];
     this.zoneOpen = false;
     this.zoneSearchTerm = '';
     this.divisionOpen = false;
@@ -1141,6 +1188,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.form.email = '';
     this.form.mobile = '';
     this.gstins = [{ ...blankGstin }];
+    this.pendingGstinRemovals = [];
     this.selectedGstinAddressIndex = 0;
     this.isOldPanDisabled = false;
     this.isOldGstDisabled = false;
@@ -1206,6 +1254,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                         ...blankGstin,
                         gstinId: entry.gstinId ?? `old-${idx}`,
                         gstin,
+                        effectiveFrom: entry.effectiveFrom || '',
+                        persistedDetail: true,
                         state: entry.state || getStateNameFromGstinCode(gstin.slice(0, 2)) || '',
                         registeredAddress: entry.registeredAddress ?? entry.address ?? (idx === 0 ? this.form.address : ''),
                         city: entry.city || '',
@@ -1233,6 +1283,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               }
 
               this.removedGstinIds = [];
+              this.pendingGstinRemovals = [];
               this.lookupDone = true;
               this.lookupError = '';
               this.cdr.markForCheck();
@@ -1992,7 +2043,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             ? this.form.operatingDivision
             : undefined
         },
-        this.gstins
+        this.gstins,
+        this.pendingGstinRemovals
       ).pipe(
         finalize(() => {
           this.loading = false;
@@ -2008,6 +2060,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
             );
             this.removedGstinIds = [];
+            this.pendingGstinRemovals = [];
 
             // Refresh from DB
             const codeToRefresh = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
@@ -2040,17 +2093,30 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                     }
 
                     if (gstAvailable) {
-                      const cleanGstins = (refreshed.gstinNumbers || '').replace(/[\[\]"'\s]/g, '');
-                      const loadedGstins: GstinEntry[] = cleanGstins
-                        .split(',')
-                        .map((g: string) => g.trim())
-                        .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
-                        .map((g: string, idx: number) => ({
-                          ...blankGstin,
-                          gstinId: `old-${idx}`,
-                          gstin: g.toUpperCase(),
-                          state: getStateNameFromGstinCode(g.slice(0, 2)) || ''
-                        }));
+                      const detailRows = Array.isArray(refreshed.gstins) ? refreshed.gstins : [];
+                      const loadedGstins: GstinEntry[] = detailRows.length
+                        ? detailRows.map((entry: any, idx: number) => ({
+                            ...blankGstin,
+                            gstinId: entry.gstinId ?? `old-${idx}`,
+                            gstin: String(entry.gstin || entry.gstinNumber || '').trim().toUpperCase(),
+                            effectiveFrom: entry.effectiveFrom || '',
+                            persistedDetail: true,
+                            state: entry.state || getStateNameFromGstinCode(String(entry.gstin || entry.gstinNumber || '').slice(0, 2)) || '',
+                            registeredAddress: entry.registeredAddress ?? entry.address ?? '',
+                            city: entry.city || '',
+                            pincode: entry.pincode || ''
+                          }))
+                        : (refreshed.gstinNumbers || '')
+                          .replace(/[\[\]"'\s]/g, '')
+                          .split(',')
+                          .map((g: string) => g.trim())
+                          .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
+                          .map((g: string, idx: number) => ({
+                            ...blankGstin,
+                            gstinId: `old-${idx}`,
+                            gstin: g.toUpperCase(),
+                            state: getStateNameFromGstinCode(g.slice(0, 2)) || ''
+                          }));
                       this.gstins = loadedGstins.length > 0 ? loadedGstins : [{ ...blankGstin }];
                     } else {
                       this.gstins = [{ ...blankGstin }];

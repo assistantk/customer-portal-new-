@@ -357,6 +357,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({ city: '   ' }),
+        expect.any(Array),
         expect.any(Array)
       );
       expect(customerServiceMock.updateOldCustomerJDBC.mock.calls[0][0].operatingDivision).toBeUndefined();
@@ -373,6 +374,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           pincode: '400001',
           operatingDivision: 'Mumbai (CSTM)'
         }),
+        expect.any(Array),
         expect.any(Array)
       );
     });
@@ -524,8 +526,88 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
           expect.objectContaining({ gstin: '27ABCDE1234F1Z5' }),
           expect.objectContaining({ gstin: '07ABCDE1234F1Z5' }),
           expect.objectContaining({ gstin: '06ABCDE1234F1Z5' })
-        ])
+        ]),
+        []
       );
+    });
+
+    it('confirms a specific persisted GSTIN removal and submits it without altering other GSTINs', () => {
+      component.isOldGstDisabled = true;
+      component.gstins = [
+        ['27ABCDE1234F1Z5', '2025-01-01 10:00:00'],
+        ['29ABCDE1234F1Z7', '2025-01-02 10:00:00'],
+        ['06ABCDE1234F1Z3', '2025-01-03 10:00:00'],
+        ['07ABCDE1234F1Z4', '2025-01-04 10:00:00']
+      ].map(([gstin, effectiveFrom], index) => ({
+        state: `State ${index}`,
+        gstin,
+        gstinId: `detail-${index}`,
+        effectiveFrom,
+        persistedDetail: true,
+        registeredAddress: `Address ${index}`,
+        file: null
+      }));
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true }));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      component.requestGstinRemoval(component.gstins[1]);
+
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('29ABCDE1234F1Z7'));
+      expect(component.pendingGstinRemovals).toEqual([{
+        gstin: '29ABCDE1234F1Z7',
+        effectiveFrom: '2025-01-02 10:00:00'
+      }]);
+      expect(component.gstins).toHaveLength(4);
+      expect(component.canRequestGstinRemoval(component.gstins[0])).toBe(true);
+
+      component.submit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({ customerCode: 'OLD1' }),
+        expect.arrayContaining([
+          expect.objectContaining({ gstin: '27ABCDE1234F1Z5' }),
+          expect.objectContaining({ gstin: '29ABCDE1234F1Z7' }),
+          expect.objectContaining({ gstin: '06ABCDE1234F1Z3' }),
+          expect.objectContaining({ gstin: '07ABCDE1234F1Z4' })
+        ]),
+        [{ gstin: '29ABCDE1234F1Z7', effectiveFrom: '2025-01-02 10:00:00' }]
+      );
+      confirmSpy.mockRestore();
+    });
+
+    it('loads per-GSTIN effective dates for the existing Update removal controls', () => {
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'OLD1',
+        companyName: 'Old User Logistics',
+        address: '456 Railway Road',
+        panNumber: 'ABCDE1234F',
+        gstinNumbers: '27ABCDE1234F1Z5,29ABCDE1234F1Z7',
+        gstins: [
+          { gstin: '27ABCDE1234F1Z5', address: 'Delhi Road', effectiveFrom: '2025-01-01 10:00:00' },
+          { gstin: '29ABCDE1234F1Z7', address: 'Karnataka Road', effectiveFrom: '2025-01-02 10:00:00' }
+        ]
+      }));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      vi.useFakeTimers();
+      component.handleOldCodeChange('OLD1');
+      vi.advanceTimersByTime(800);
+      vi.useRealTimers();
+
+      expect(component.gstins).toHaveLength(2);
+      expect(component.gstins[1]).toMatchObject({
+        gstin: '29ABCDE1234F1Z7',
+        registeredAddress: 'Karnataka Road',
+        effectiveFrom: '2025-01-02 10:00:00',
+        persistedDetail: true
+      });
+
+      component.requestGstinRemoval(component.gstins[1]);
+      expect(component.pendingGstinRemovals).toEqual([{
+        gstin: '29ABCDE1234F1Z7',
+        effectiveFrom: '2025-01-02 10:00:00'
+      }]);
+      confirmSpy.mockRestore();
     });
 
     it('keeps fetched Old User details and all GSTIN rows when OCR scans another GSTIN', async () => {
