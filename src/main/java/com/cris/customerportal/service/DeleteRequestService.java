@@ -14,6 +14,9 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class DeleteRequestService {
@@ -60,12 +63,22 @@ public class DeleteRequestService {
     }
 
     public void sendRequest(String codeType, String code, String companyName) {
-        log.info("DeleteRequestService.sendRequest: codeType={}", codeType);
+        sendRequest(codeType, code, companyName, "CODE", null);
+    }
+
+    public void sendRequest(
+            String codeType,
+            String code,
+            String companyName,
+            String disableScope,
+            List<String> selectedGstins) {
+        log.info("DeleteRequestService.sendRequest: codeType={} scope={} selectedGstinsCount={}",
+                codeType, disableScope, selectedGstins == null ? 0 : selectedGstins.size());
         String normalizedCompanyName = normalizeCompanyName(companyName);
         VerifiedRecord record = verify(codeType, code);
         if (record == null) {
             log.warn("DeleteRequestService.sendRequest: code not found for codeType={}", codeType);
-            throw new IllegalArgumentException("This code was not found in the records, so it cannot be deleted.");
+            throw new IllegalArgumentException("This code was not found in the records, so it cannot be disabled.");
         }
         String verifiedCompanyName = record.companyName == null ? "" : record.companyName.trim();
         if (verifiedCompanyName.isEmpty()
@@ -75,28 +88,70 @@ public class DeleteRequestService {
                     "Company name does not match the selected code. Please verify the company name.");
         }
 
-        List<DetailRecord> details = findDetails(record.mapping, record.code);
-        String detailsDeleteSql = buildDeleteSql(
-                record.mapping.detailTable, record.mapping.codeColumn, record.code);
-        String parentDeleteSql = buildDeleteSql(
-                record.mapping.table, record.mapping.codeColumn, record.code);
+        List<DetailRecord> allDetails = findDetails(record.mapping, record.code);
+        boolean isGstinScope = "GSTIN".equalsIgnoreCase(disableScope)
+                && selectedGstins != null && !selectedGstins.isEmpty();
+
+        List<DetailRecord> targetDetails;
+        String detailsUpdateSql;
+        String parentUpdateSql;
+
+        if (isGstinScope) {
+            Set<String> selectedSet = selectedGstins.stream()
+                    .filter(Objects::nonNull)
+                    .map(g -> g.trim().toUpperCase(Locale.ROOT))
+                    .collect(Collectors.toSet());
+            targetDetails = allDetails.stream()
+                    .filter(d -> d.getGstin() != null && selectedSet.contains(d.getGstin().trim().toUpperCase(Locale.ROOT)))
+                    .collect(Collectors.toList());
+            List<String> statements = new ArrayList<>();
+            if (!targetDetails.isEmpty()) {
+                for (DetailRecord d : targetDetails) {
+                    statements.add(buildGstinDisableSql(
+                            record.mapping.detailTable, record.mapping.codeColumn, record.code, d.getGstin()));
+                }
+            } else {
+                for (String gstin : selectedGstins) {
+                    if (gstin != null && !gstin.trim().isEmpty()) {
+                        statements.add(buildGstinDisableSql(
+                                record.mapping.detailTable, record.mapping.codeColumn, record.code, gstin.trim().toUpperCase(Locale.ROOT)));
+                    }
+                }
+            }
+            detailsUpdateSql = String.join("\n", statements);
+            parentUpdateSql = "-- Note: Company code " + record.code + " remains active. Only selected GSTIN(s) marked inactive.";
+        } else {
+            targetDetails = allDetails;
+            detailsUpdateSql = buildCodeDisableSql(
+                    record.mapping.detailTable, record.mapping.codeColumn, record.code);
+            parentUpdateSql = "-- Note: Parent table " + record.mapping.table
+                    + " does not contain an effective-to date (MADDATEEFCTTO) column. Parent record preserved active without physical deletion per audit policy.";
+        }
+
         dbaEmailService.sendDbaDeleteRequestEmail(
                 record.mapping.table,
                 record.mapping.detailTable,
                 record.mapping.codeColumn,
                 record.code,
                 verifiedCompanyName,
-                details,
-                detailsDeleteSql,
-                parentDeleteSql);
+                targetDetails,
+                detailsUpdateSql,
+                parentUpdateSql);
         log.info("DeleteRequestService.sendRequest: DBA email sent for codeType={} table={} detailRecords={}",
-                codeType, record.mapping.table, details.size());
+                codeType, record.mapping.table, targetDetails.size());
     }
 
-    private List<DetailRecord> findDetails(CodeMapping mapping, String code) {
+    public List<DetailRecord> getDetails(VerifiedRecord record) {
+        if (record == null) return new ArrayList<>();
+        return findDetails(record.mapping, record.code);
+    }
+
+    public List<DetailRecord> findDetails(CodeMapping mapping, String code) {
         String sql = "SELECT MAVCUSTGSTNUMB, " + mapping.detailAddressColumn
-                + ", MANPINCODE, MAVCUSTPANNUMB FROM " + mapping.detailTable
-                + " WHERE " + mapping.codeColumn + " = ?";
+                + ", MANPINCODE, MAVCUSTPANNUMB, "
+                + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD') AS EFFECTIVE_FROM, "
+                + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD') AS EFFECTIVE_TO FROM " + mapping.detailTable
+                + " WHERE " + mapping.codeColumn + " = ? ORDER BY MADDATEEFCTFROM, MAVCUSTGSTNUMB";
         List<DetailRecord> details = new ArrayList<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -107,7 +162,9 @@ public class DeleteRequestService {
                             results.getString(1),
                             results.getString(2),
                             results.getString(3),
-                            results.getString(4)));
+                            results.getString(4),
+                            results.getString(5),
+                            results.getString(6)));
                 }
             }
             return details;
@@ -116,11 +173,26 @@ public class DeleteRequestService {
                     mapping.detailTable, e.getSQLState(), e.getErrorCode(),
                     DataMaskingUtil.formatThrowable(e));
             throw new DatabaseUnavailableException(
-                    "Unable to retrieve related detail records. The delete request was not sent.", e);
+                    "Unable to retrieve related detail records. The disable request was not sent.", e);
         }
     }
 
-    private String buildDeleteSql(String table, String codeColumn, String code) {
+    public String buildGstinDisableSql(String detailTable, String codeColumn, String code, String gstin) {
+        return "UPDATE " + detailTable
+                + " SET MADDATEEFCTTO = TRUNC(SYSDATE)"
+                + " WHERE " + codeColumn + " = '" + escapeSqlLiteral(code) + "'"
+                + " AND MAVCUSTGSTNUMB = '" + escapeSqlLiteral(gstin) + "'"
+                + " AND MADDATEEFCTTO IS NULL;";
+    }
+
+    public String buildCodeDisableSql(String detailTable, String codeColumn, String code) {
+        return "UPDATE " + detailTable
+                + " SET MADDATEEFCTTO = TRUNC(SYSDATE)"
+                + " WHERE " + codeColumn + " = '" + escapeSqlLiteral(code) + "'"
+                + " AND MADDATEEFCTTO IS NULL;";
+    }
+
+    public String buildDeleteSql(String table, String codeColumn, String code) {
         return "DELETE FROM " + table
                 + " WHERE " + codeColumn + " = '" + escapeSqlLiteral(code) + "';";
     }
@@ -185,6 +257,10 @@ public class DeleteRequestService {
         public String getCompanyName() {
             return companyName;
         }
+
+        public CodeMapping getMapping() {
+            return mapping;
+        }
     }
 
     public static final class DetailRecord {
@@ -192,18 +268,31 @@ public class DeleteRequestService {
         private final String address;
         private final String pincode;
         private final String pan;
+        private final String effectiveFrom;
+        private final String effectiveTo;
 
-        private DetailRecord(String gstin, String address, String pincode, String pan) {
+        public DetailRecord(String gstin, String address, String pincode, String pan) {
+            this(gstin, address, pincode, pan, null, null);
+        }
+
+        public DetailRecord(String gstin, String address, String pincode, String pan, String effectiveFrom, String effectiveTo) {
             this.gstin = gstin;
             this.address = address;
             this.pincode = pincode;
             this.pan = pan;
+            this.effectiveFrom = effectiveFrom;
+            this.effectiveTo = effectiveTo;
         }
 
         public String getGstin() { return gstin; }
         public String getAddress() { return address; }
         public String getPincode() { return pincode; }
         public String getPan() { return pan; }
+        public String getEffectiveFrom() { return effectiveFrom; }
+        public String getEffectiveTo() { return effectiveTo; }
+        public boolean isActive() {
+            return effectiveTo == null || effectiveTo.trim().isEmpty() || "null".equalsIgnoreCase(effectiveTo.trim());
+        }
     }
 
     private static final class CodeMapping {

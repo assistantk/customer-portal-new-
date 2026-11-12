@@ -37,13 +37,13 @@ class CustomerServiceGstinRemovalTest {
         service(fixture, "AB12", GSTINS, new String[] { "29ABCDE1234F1Z7" });
 
         String body = fixture.sentEmail();
-        assertTrue(body.contains("DELETE FROM MEMGLBLCUSTDTLS"));
+        assertTrue(body.contains("UPDATE MEMGLBLCUSTDTLS SET MADDATEEFCTTO = TRUNC(SYSDATE)"));
         assertTrue(body.contains("MAVGLBLCUSTCODE = 'AB12'"));
         assertTrue(body.contains("MAVCUSTGSTNUMB = '29ABCDE1234F1Z7'"));
         assertTrue(body.contains("MADDATEEFCTFROM = TO_DATE('2025-01-02 10:00:00', 'YYYY-MM-DD HH24:MI:SS')"));
-        assertFalse(body.contains("DELETE FROM MEMGLBLCUST "));
+        assertTrue(body.contains("MADDATEEFCTTO IS NULL;"));
+        assertFalse(body.contains("DELETE FROM"));
         assertFalse(body.contains("UPDATE MEMGLBLCUST "));
-        assertFalse(body.contains("UPDATE MEMGLBLCUSTDTLS "));
         assertFalse(body.contains("MAVCUSTGSTNUMB = '27ABCDE1234F1Z5'"));
         assertFalse(body.contains("MAVCUSTGSTNUMB = '06ABCDE1234F1Z3'"));
         assertFalse(body.contains("MAVCUSTGSTNUMB = '07ABCDE1234F1Z4'"));
@@ -58,15 +58,15 @@ class CustomerServiceGstinRemovalTest {
                 new String[] { "29ABCDE1234F1Z7", "06ABCDE1234F1Z3" });
 
         String body = fixture.sentEmail();
-        assertTrue(body.contains("DELETE FROM MEMGLBLHNDGAGNTDTLS"));
+        assertTrue(body.contains("UPDATE MEMGLBLHNDGAGNTDTLS SET MADDATEEFCTTO = TRUNC(SYSDATE)"));
         assertTrue(body.contains("MAVHNDGAGNTCODE = 'AG12'"));
         assertTrue(body.contains("MAVCUSTGSTNUMB = '29ABCDE1234F1Z7'"));
         assertTrue(body.contains("MAVCUSTGSTNUMB = '06ABCDE1234F1Z3'"));
         assertTrue(body.contains("MADDATEEFCTFROM = TO_DATE('2025-01-02 10:00:00', 'YYYY-MM-DD HH24:MI:SS')"));
         assertTrue(body.contains("MADDATEEFCTFROM = TO_DATE('2025-01-03 10:00:00', 'YYYY-MM-DD HH24:MI:SS')"));
-        assertFalse(body.contains("DELETE FROM MEMGLBLHNDGAGNT "));
+        assertTrue(body.contains("MADDATEEFCTTO IS NULL;"));
+        assertFalse(body.contains("DELETE FROM"));
         assertFalse(body.contains("UPDATE MEMGLBLHNDGAGNT "));
-        assertFalse(body.contains("UPDATE MEMGLBLHNDGAGNTDTLS "));
         assertFalse(body.contains("MAVCUSTGSTNUMB = '27ABCDE1234F1Z5'"));
         assertFalse(body.contains("MAVCUSTGSTNUMB = '07ABCDE1234F1Z4'"));
         fixture.assertNoDatabaseMutation();

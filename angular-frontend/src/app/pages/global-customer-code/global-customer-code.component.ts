@@ -9,6 +9,7 @@ import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 import { ZoneDivisionService } from '../../services/zone-division.service';
+import { ReviewModalData } from '../../components/review-modal/review-modal.component';
 
 export interface GlobalCodeForm {
   customerCode: string;
@@ -55,6 +56,9 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
   errors: Record<string, string> = {};
   notice = '';
   loading = false;
+  showReviewModal = false;
+  reviewSubmitting = false;
+  reviewData: ReviewModalData | null = null;
   codeConfirmed = false;
   codeChecking = false;
   touchedFields: Record<string, boolean> = {};
@@ -491,6 +495,9 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     this.touchedFields = {};
     this.notice = '';
     this.loading = false;
+    this.showReviewModal = false;
+    this.reviewSubmitting = false;
+    this.reviewData = null;
     this.codeConfirmed = false;
     this.codeChecking = false;
     if (this.codeTimer) clearTimeout(this.codeTimer);
@@ -513,7 +520,7 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
       e.stopPropagation();
     }
 
-    if (this.loading) return;
+    if (this.loading || this.reviewSubmitting) return;
     this.notice = '';
 
     if (!this.isFormValid || !this.validate()) {
@@ -529,6 +536,36 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.reviewData = {
+      operationType: 'NEW_ENTRY',
+      title: 'Review New Entry',
+      sectionName: 'Global Customer Code – New Entry',
+      codeType: 'GLOBAL',
+      customerCode: this.form.customerCode.trim().toUpperCase(),
+      companyName: this.form.companyName.trim(),
+      panNumber: this.form.panNumber.trim().toUpperCase(),
+      recordDetails: [
+        { label: 'Record Type', value: 'Global Customer Code' },
+        { label: 'Company Name', value: this.form.companyName.trim() },
+        { label: 'Generated Customer Code', value: this.form.customerCode.trim().toUpperCase() },
+        { label: 'PAN Number', value: this.form.panNumber.trim().toUpperCase() },
+        { label: 'Address', value: this.form.address.trim() },
+        { label: 'City', value: this.form.city.trim() },
+        { label: 'PIN Code', value: this.form.pincode.trim() },
+        { label: 'State', value: this.form.state || '—' },
+        { label: 'Railway Zone', value: this.form.zone.trim() },
+        { label: 'Operating Division', value: this.form.operatingDivision.trim() },
+        { label: 'Email', value: this.form.email ? this.form.email.trim() : '—' },
+        { label: 'Mobile', value: this.form.mobile ? this.form.mobile.trim() : '—' }
+      ]
+    };
+    this.showReviewModal = true;
+    this.cdr.markForCheck();
+  }
+
+  onReviewConfirm(): void {
+    if (this.reviewSubmitting) return;
+    this.reviewSubmitting = true;
     this.loading = true;
     this.cdr.markForCheck();
 
@@ -550,6 +587,8 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
     this.customerService.registerCustomer(payload, []).pipe(
       finalize(() => {
         this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -583,6 +622,12 @@ export class GlobalCustomerCodeComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }
     });
+  }
+
+  onReviewCancel(): void {
+    if (this.reviewSubmitting) return;
+    this.showReviewModal = false;
+    this.cdr.markForCheck();
   }
 
   private extractErrorMessage(err: any): string {

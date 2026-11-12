@@ -56,39 +56,81 @@
     </form>
 
     <section *ngIf="verifiedRecord as record" class="confirmation" aria-live="polite">
-      <!-- Full-detail verification table -->
-      <div class="verification-results-heading" style="margin-bottom: 8px;">
-        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">Search Results</h3>
+      <!-- Disable Scope Options -->
+      <div class="disable-scope-card" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;">
+        <label style="font-weight: 700; font-size: 14px; color: #1e293b; display: block; margin-bottom: 10px;">Select Disable Scope:</label>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: center;">
+          <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #1e293b;">
+            <input type="radio" name="disableScope" value="GSTIN" [checked]="disableScope === 'GSTIN'" (change)="disableScope = 'GSTIN'">
+            <span>Disable Selected GSTIN(s) <span style="font-size: 11px; color: #2563eb; background: #eff6ff; padding: 2px 6px; border-radius: 4px; border: 1px solid #bfdbfe;">Recommended (Default)</span></span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #dc2626;">
+            <input type="radio" name="disableScope" value="CODE" [checked]="disableScope === 'CODE'" (change)="disableScope = 'CODE'">
+            <span>Disable Entire Company Code</span>
+          </label>
+        </div>
+        <div style="margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px;"
+             [style.background]="disableScope === 'GSTIN' ? '#eff6ff' : '#fef2f2'"
+             [style.color]="disableScope === 'GSTIN' ? '#1e40af' : '#991b1b'"
+             [style.border]="disableScope === 'GSTIN' ? '1px solid #bfdbfe' : '1px solid #fecaca'">
+          <span *ngIf="disableScope === 'GSTIN'">
+            🛡️ <strong>Notice:</strong> Only the selected GSTIN(s) will be disabled. Other GSTINs and the company code will remain active.
+          </span>
+          <span *ngIf="disableScope === 'CODE'">
+            ⚠️ <strong>Warning:</strong> All active records associated with this company code will be marked inactive. Historical records will be preserved.
+          </span>
+        </div>
       </div>
+
+      <!-- Verification results & GSTIN selection table -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">
+          {{ disableScope === 'GSTIN' ? 'Select GSTIN(s) to Disable' : 'Active Records to be Disabled' }}
+        </h3>
+        <div *ngIf="disableScope === 'GSTIN' && availableGstins.length > 0" style="display: flex; gap: 8px;">
+          <button type="button" class="btn-link" style="background: none; border: none; color: #2563eb; font-size: 12px; font-weight: 600; cursor: pointer;" (click)="selectAllGstins()">Select All Active</button>
+          <span style="color: #cbd5e1;">|</span>
+          <button type="button" class="btn-link" style="background: none; border: none; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer;" (click)="deselectAllGstins()">Deselect All</button>
+        </div>
+      </div>
+
       <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px;">
         <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; white-space: nowrap;">
           <thead>
             <tr style="background: #2563eb; border-bottom: 1px solid #e2e8f0;">
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff; width: 40px;" *ngIf="disableScope === 'GSTIN'">Select</th>
               <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">{{ codeType === 'HANDLING_AGENT' ? 'Handling Agent Code' : 'Global Customer Code' }}</th>
               <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">GSTIN</th>
               <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Company Name</th>
-              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Address</th>
-              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">PAN</th>
-              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">SR.DCM/</th>
-              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Date</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Registered Address</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Effective From</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: #ffffff;">Status</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let g of getGstinList(recordDetails)" style="border-bottom: 1px solid #e2e8f0;">
+            <tr *ngFor="let g of availableGstins" style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 12px 16px;" *ngIf="disableScope === 'GSTIN'">
+                <input type="checkbox" [checked]="!!selectedGstinMap[g.gstin]" (change)="toggleGstinSelection(g.gstin)" [disabled]="!isGstinActive(g)" [title]="!isGstinActive(g) ? 'Already Inactive' : 'Select to disable'">
+              </td>
               <td style="padding: 12px 16px; font-family: monospace;">{{ (recordDetails?.customerCode || recordDetails?.code || record.code) || '-' }}</td>
-              <td style="padding: 12px 16px; font-family: monospace;" [style.color]="g === '-' ? '#64748b' : 'inherit'">{{ g }}</td>
+              <td style="padding: 12px 16px; font-family: monospace; font-weight: 600;" [style.color]="g.gstin === '-' ? '#64748b' : '#1e293b'">{{ g.gstin }}</td>
               <td style="padding: 12px 16px;">{{ (recordDetails?.companyName || record.companyName) || '-' }}</td>
-              <td style="padding: 12px 16px;">{{ (recordDetails?.address) || '-' }}</td>
-              <td style="padding: 12px 16px;">{{ (recordDetails?.panNumber) || '-' }}</td>
-              <td style="padding: 12px 16px;">{{ (recordDetails?.division) || '-' }}</td>
-              <td style="padding: 12px 16px;">{{ (recordDetails?.creationDate) || '-' }}</td>
+              <td style="padding: 12px 16px;">{{ g.address || (recordDetails?.address) || '-' }}</td>
+              <td style="padding: 12px 16px; font-family: monospace;">{{ g.effectiveFrom || '-' }}</td>
+              <td style="padding: 12px 16px;">
+                <span *ngIf="isGstinActive(g)" style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; background: #dcfce7; color: #166534;">Active</span>
+                <span *ngIf="!isGstinActive(g)" style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; background: #f1f5f9; color: #64748b;">Already Inactive ({{ g.effectiveTo }})</span>
+              </td>
+            </tr>
+            <tr *ngIf="availableGstins.length === 0">
+              <td colspan="7" style="padding: 16px; text-align: center; color: #64748b;">No GSTIN details found for this record.</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <p class="confirmation-instruction" style="margin: 0; font-weight: 600; font-size: 13px; color: #334155;">
-        Please enter the exact company name shown above to confirm deletion.
+        Please enter the exact company name shown above to confirm disabling.
       </p>
       <div class="field">
         <label for="confirmCompanyName">Company Name</label>
@@ -98,14 +140,23 @@
                placeholder="Enter exact company name to confirm" required />
       </div>
       <button class="primary-button" type="button" (click)="sendRequest()"
-              [disabled]="submitting || verifying || !isCompanyNameMatched()">
-        {{ submitting ? 'Sending Request...' : 'Send Delete Request' }}
+              [disabled]="submitting || verifying || !isCompanyNameMatched() || (disableScope === 'GSTIN' && getSelectedGstins().length === 0)">
+        {{ submitting ? 'Sending Request...' : 'Send Disable Request' }}
       </button>
     </section>
 
     <p class="workflow-note">
-      This page only verifies the record and emails the SQL request. The application does not delete records;
-      the DBA reviews and executes the request manually.
+      This page only verifies the record and emails the SQL request. The application does not physically delete records;
+      records are soft-disabled using effective dates (MADDATEEFCTTO = TRUNC(SYSDATE)) and the DBA reviews and executes the request manually.
     </p>
   </section>
+
+  <!-- Common Review & Confirmation Popup -->
+  <app-review-modal
+      [isOpen]="showReviewModal"
+      [loading]="reviewSubmitting"
+      [data]="reviewData"
+      (confirm)="onReviewConfirm()"
+      (cancel)="onReviewCancel()">
+  </app-review-modal>
 </main>

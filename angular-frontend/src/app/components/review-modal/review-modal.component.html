@@ -1,0 +1,394 @@
+<div *ngIf="isOpen && data" class="review-modal-backdrop" (click)="onCancel()" role="dialog" aria-modal="true">
+  <div class="review-modal-dialog" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="review-modal-header" [class.danger-header]="isDelete">
+      <div class="header-titles">
+        <div class="title-row">
+          <span class="badge op-badge" [ngClass]="{
+            'badge-new': isNew,
+            'badge-update': isUpdate && !isDelete,
+            'badge-delete': isDelete,
+            'badge-ownership': isOwnership
+          }">{{ data.sectionName || data.operationType }}</span>
+          <h3 class="modal-title">{{ data.title }}</h3>
+        </div>
+        <p class="modal-subtitle">
+          Please review the details below carefully. These are the changes you are about to submit. Are you sure you want to proceed?
+        </p>
+      </div>
+      <button type="button" class="close-btn" (click)="onCancel()" [disabled]="loading" aria-label="Close dialog">&times;</button>
+    </div>
+
+    <!-- Body -->
+    <div class="review-modal-body">
+      <!-- 1. DISABLE / DELETE REQUEST VIEW -->
+      <div *ngIf="isDelete" class="delete-view">
+        <div class="warning-banner">
+          <div class="warning-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </div>
+          <div class="warning-text">
+            <strong>{{ data.deleteWarning || (data.disableScope === 'CODE' ? 'Warning: You are requesting to disable this entire company code.' : 'Notice: You are requesting to disable the selected GSTIN(s).') }}</strong>
+            <span *ngIf="data.disableScope === 'GSTIN'">
+              Only the selected GSTIN(s) will be disabled. Other GSTINs and the company code will remain active.
+            </span>
+            <span *ngIf="data.disableScope === 'CODE'">
+              All selected records associated with this company code will be marked inactive. Historical records will be preserved.
+            </span>
+            <span style="display: block; margin-top: 4px; font-size: 12px; opacity: 0.9;">
+              ℹ Soft Disable: No database records will be physically deleted. Active records are disabled using Effective To date (MADDATEEFCTTO = TRUNC(SYSDATE)).
+            </span>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <h4 class="section-title">Record Details for Disabling</h4>
+          <div class="details-grid">
+            <div class="detail-item" *ngFor="let item of data.deleteDetails">
+              <span class="detail-label">{{ item.label }}</span>
+              <span class="detail-val">{{ item.value || '—' }}</span>
+            </div>
+            <div class="detail-item" *ngIf="data.disableScope">
+              <span class="detail-label">Disable Scope</span>
+              <span class="detail-val font-bold" [style.color]="data.disableScope === 'CODE' ? '#dc2626' : '#2563eb'">
+                {{ data.disableScope === 'CODE' ? 'Entire Company Code' : 'Selected GSTIN(s) Only' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="data.deleteGstins && data.deleteGstins.length > 0" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">GSTIN Records to be Disabled</h4>
+            <span class="badge badge-delete">{{ data.deleteGstins.length }} GSTIN{{ data.deleteGstins.length > 1 ? 's' : '' }}</span>
+          </div>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>GSTIN</th>
+                <th>State</th>
+                <th>Registered Address</th>
+                <th>Effective From</th>
+                <th>Current Effective To</th>
+                <th>New Effective To (On Submit)</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let g of data.deleteGstins; let i = index">
+                <td>{{ i + 1 }}</td>
+                <td class="font-mono font-bold">{{ g.gstin }}</td>
+                <td>{{ g.state || '—' }}</td>
+                <td>{{ g.address || '—' }}</td>
+                <td class="font-mono">{{ g.effectiveFrom || '—' }}</td>
+                <td class="font-mono">{{ g.effectiveTo || 'NULL (Active)' }}</td>
+                <td class="font-mono font-bold" style="color: #b91c1c;">
+                  {{ g.newEffectiveTo || 'Current Date (SYSDATE)' }}
+                </td>
+                <td>
+                  <span class="badge badge-delete">Will be disabled</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. OWNERSHIP REQUEST VIEW -->
+      <div *ngIf="isOwnership && !isDelete" class="ownership-view">
+        <!-- Section 1 Card -->
+        <div *ngIf="data.ownershipSection1" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">{{ data.ownershipSection1.title }}</h4>
+            <span class="badge" [ngClass]="data.ownershipSection1.operation === 'NEW' ? 'badge-new' : 'badge-update'">
+              {{ data.ownershipSection1.operation === 'NEW' ? 'New Entry (Insert)' : 'Update Existing' }}
+            </span>
+          </div>
+          <div class="table-notice">
+            Target Table: <code>{{ data.ownershipSection1.table }}</code>
+          </div>
+
+          <div class="details-grid" *ngIf="data.ownershipSection1.operation === 'NEW'">
+            <div class="detail-item">
+              <span class="detail-label">Ownership Code</span>
+              <span class="detail-val font-mono font-bold">{{ data.ownershipSection1.code }}</span>
+            </div>
+            <div class="detail-item span-2">
+              <span class="detail-label">Company Name / Address</span>
+              <span class="detail-val">{{ data.ownershipSection1.address || '—' }}</span>
+            </div>
+          </div>
+
+          <div *ngIf="data.ownershipSection1.operation === 'UPDATE'" class="comparison-block">
+            <table class="review-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Existing Value</th>
+                  <th>New / Updated Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Company Name / Address</td>
+                  <td class="old-val">{{ data.ownershipSection1.existingAddress || '—' }}</td>
+                  <td class="new-val">{{ data.ownershipSection1.newAddress || data.ownershipSection1.address }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 2 Card -->
+        <div *ngIf="data.ownershipSection2" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">{{ data.ownershipSection2.title }}</h4>
+            <span class="badge" [ngClass]="data.ownershipSection2.operation === 'NEW' ? 'badge-new' : 'badge-update'">
+              {{ data.ownershipSection2.operation === 'NEW' ? 'New Entry (Insert)' : 'Update Existing' }}
+            </span>
+          </div>
+          <div class="table-notice">
+            Target Table: <code>{{ data.ownershipSection2.table }}</code>
+          </div>
+
+          <div class="details-grid" *ngIf="data.ownershipSection2.operation === 'NEW'">
+            <div class="detail-item">
+              <span class="detail-label">Ownership Party Code</span>
+              <span class="detail-val font-mono font-bold">{{ data.ownershipSection2.code }}</span>
+            </div>
+            <div class="detail-item span-2">
+              <span class="detail-label">Ownership Party Address</span>
+              <span class="detail-val">{{ data.ownershipSection2.address || '—' }}</span>
+            </div>
+          </div>
+
+          <div *ngIf="data.ownershipSection2.operation === 'UPDATE'" class="comparison-block">
+            <table class="review-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Existing Value</th>
+                  <th>New / Updated Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Ownership Party Address</td>
+                  <td class="old-val">{{ data.ownershipSection2.existingAddress || '—' }}</td>
+                  <td class="new-val">{{ data.ownershipSection2.newAddress || data.ownershipSection2.address }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. UPDATE CODE VIEW -->
+      <div *ngIf="isUpdate && !isOwnership" class="update-view">
+        <!-- Target Company Summary -->
+        <div class="company-summary-banner">
+          <div class="summary-field">
+            <span class="sum-lbl">Company Code:</span>
+            <span class="sum-val font-mono">{{ data.customerCode || '—' }}</span>
+          </div>
+          <div class="summary-field">
+            <span class="sum-lbl">Company Name:</span>
+            <span class="sum-val">{{ data.companyName || '—' }}</span>
+          </div>
+          <div class="summary-field" *ngIf="data.panNumber">
+            <span class="sum-lbl">PAN Number:</span>
+            <span class="sum-val font-mono">{{ data.panNumber }}</span>
+          </div>
+        </div>
+
+        <!-- Parent Unchanged Notice -->
+        <div *ngIf="data.parentUnchangedNotice" class="info-banner">
+          <div class="info-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+          </div>
+          <div class="info-text">{{ data.parentUnchangedNotice }}</div>
+        </div>
+
+        <!-- Changed Parent Fields Table -->
+        <div *ngIf="data.fieldChanges && data.fieldChanges.length > 0" class="card-section">
+          <h4 class="section-title">Modified Company Fields</h4>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Field</th>
+                <th style="width: 37%;">Existing Value</th>
+                <th style="width: 38%;">New Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let change of data.fieldChanges">
+                <td class="font-bold">{{ change.field }}</td>
+                <td class="old-val">{{ change.existingValue || '—' }}</td>
+                <td class="new-val">{{ change.newValue || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Newly Added GSTINs -->
+        <div *ngIf="data.addedGstins && data.addedGstins.length > 0" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">New GSTIN(s) Being Added</h4>
+            <span class="badge badge-new">{{ data.addedGstins.length }} New</span>
+          </div>
+          <p class="section-desc">The following new GSTIN registration(s) and address(es) will be added to the detail table:</p>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>GSTIN</th>
+                <th>State</th>
+                <th>Registered Address</th>
+                <th>City</th>
+                <th>PIN Code</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let g of data.addedGstins">
+                <td class="font-mono font-bold text-blue">{{ g.gstin }}</td>
+                <td>{{ g.state || '—' }}</td>
+                <td>{{ g.address || '—' }}</td>
+                <td>{{ g.city || '—' }}</td>
+                <td class="font-mono">{{ g.pincode || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Updated GSTIN Addresses -->
+        <div *ngIf="data.updatedGstinAddresses && data.updatedGstinAddresses.length > 0" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">GSTIN Address Correction(s)</h4>
+            <span class="badge badge-update">{{ data.updatedGstinAddresses.length }} Updated</span>
+          </div>
+          <p class="section-desc">The address for the following existing GSTIN(s) will be updated in the detail table:</p>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>GSTIN</th>
+                <th>Field</th>
+                <th>Existing Address</th>
+                <th>Corrected / New Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let u of data.updatedGstinAddresses">
+                <td class="font-mono font-bold">{{ u.gstin }}</td>
+                <td>{{ u.field || 'Registered Address' }}</td>
+                <td class="old-val">{{ u.existingValue || '—' }}</td>
+                <td class="new-val">{{ u.newValue || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Removed GSTINs -->
+        <div *ngIf="data.removedGstins && data.removedGstins.length > 0" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">GSTIN(s) Marked for Removal</h4>
+            <span class="badge badge-delete">{{ data.removedGstins.length }} Removed</span>
+          </div>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>GSTIN</th>
+                <th>State</th>
+                <th>Address</th>
+                <th>Effective To Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of data.removedGstins">
+                <td class="font-mono font-bold text-red">{{ r.gstin }}</td>
+                <td>{{ r.state || '—' }}</td>
+                <td>{{ r.address || '—' }}</td>
+                <td>{{ r.effectiveTo || 'Today' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 4. NEW ENTRY VIEW -->
+      <div *ngIf="isNew && !isOwnership" class="new-entry-view">
+        <!-- Company & Primary Information -->
+        <div class="card-section">
+          <h4 class="section-title">Company & Registration Information</h4>
+          <div class="details-grid">
+            <div class="detail-item" *ngFor="let item of data.recordDetails">
+              <span class="detail-label">{{ item.label }}</span>
+              <span class="detail-val" [class.font-mono]="item.label.includes('Code') || item.label.includes('PAN') || item.label.includes('PIN')">
+                {{ item.value || '—' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- GSTIN List -->
+        <div *ngIf="data.gstinList && data.gstinList.length > 0" class="card-section">
+          <div class="section-header-flex">
+            <h4 class="section-title">GSTIN Registration & Address Details</h4>
+            <span class="badge badge-new">{{ data.gstinList.length }} GSTIN{{ data.gstinList.length > 1 ? 's' : '' }}</span>
+          </div>
+          <p class="section-desc">Every GSTIN will be stored with its own dedicated registered address:</p>
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>GSTIN Number</th>
+                <th>State</th>
+                <th>Registered Address</th>
+                <th>City</th>
+                <th>PIN Code</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let g of data.gstinList; let i = index">
+                <td>{{ i + 1 }}</td>
+                <td class="font-mono font-bold text-blue">{{ g.gstin }}</td>
+                <td>{{ g.state || '—' }}</td>
+                <td>{{ g.address || '—' }}</td>
+                <td>{{ g.city || '—' }}</td>
+                <td class="font-mono">{{ g.pincode || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="review-modal-footer">
+      <button type="button" class="btn btn-cancel" (click)="onCancel()" [disabled]="loading">
+        Cancel / Go Back
+      </button>
+
+      <button type="button" class="btn btn-confirm" [class.btn-delete]="isDelete" (click)="onConfirm()" [disabled]="loading">
+        <svg *ngIf="loading" width="16" height="16" class="spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <span *ngIf="!loading">
+          <svg *ngIf="!isDelete" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: text-bottom;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <svg *ngIf="isDelete" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-right: 6px; vertical-align: text-bottom;">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Confirm & Submit
+        </span>
+        <span *ngIf="loading">Submitting Request...</span>
+      </button>
+    </div>
+  </div>
+</div>
+

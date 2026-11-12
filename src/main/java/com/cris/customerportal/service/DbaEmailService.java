@@ -149,20 +149,21 @@ public class DbaEmailService {
         validateDeleteRequest(parentTable, detailTable, codeColumn, code, details,
                 detailDeleteSql, parentDeleteSql);
 
+        String operation = (detailDeleteSql != null && detailDeleteSql.toUpperCase(Locale.ROOT).contains("UPDATE")) ? "UPDATE" : "DELETE";
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
-        message.setSubject(buildEmailSubject("DELETE", parentTable, code));
+        message.setSubject(buildEmailSubject(operation, parentTable + ", " + detailTable, code));
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
                 + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
-                + "Operation: DELETE\n"
-                + "Table: ").append(parentTable).append(", ").append(detailTable).append('\n')
+                + "Operation: ").append(operation).append('\n')
+                .append("Table: ").append(parentTable).append(", ").append(detailTable).append('\n')
                 .append("Code: ").append(code).append('\n')
                 .append("Company Name: ").append(safeEmailValue(companyName)).append("\n\n")
                 .append("Related detail records identified: ").append(details.size()).append('\n');
         if (details.isEmpty()) {
-            body.append("No detail records were found for this code; the code-scoped detail DELETE is included.\n\n");
+            body.append("No detail records were found for this code; the code-scoped detail ").append(operation).append(" is included.\n\n");
         } else {
             for (int i = 0; i < details.size(); i++) {
                 DeleteRequestService.DetailRecord detail = details.get(i);
@@ -170,22 +171,34 @@ public class DbaEmailService {
                         .append(": GSTIN=").append(safeEmailValue(detail.getGstin()))
                         .append(", Address=").append(safeEmailValue(detail.getAddress()))
                         .append(", Pincode=").append(safeEmailValue(detail.getPincode()))
-                        .append(", PAN=").append(safeEmailValue(detail.getPan()))
-                        .append('\n');
+                        .append(", PAN=").append(safeEmailValue(detail.getPan()));
+                if (detail.getEffectiveFrom() != null) {
+                    body.append(", EffectiveFrom=").append(safeEmailValue(detail.getEffectiveFrom()));
+                }
+                if (detail.getEffectiveTo() != null) {
+                    body.append(", EffectiveTo=").append(safeEmailValue(detail.getEffectiveTo()));
+                }
+                body.append('\n');
             }
             body.append('\n');
         }
         body.append("SQL QUERY:\n")
-                .append("----------------------------------------1 DELETE FROM DETAIL TABLE---------------------------\n\n")
-                .append(detailDeleteSql).append("\n\n")
-                .append("----------------------------------------2 DELETE FROM PARENT TABLE---------------------------\n\n")
-                .append(parentDeleteSql).append("\n\n")
-                .append(userFooter());
+                .append("----------------------------------------1 ")
+                .append(operation.equals("UPDATE") ? "UPDATE DETAIL TABLE" : "DELETE FROM DETAIL TABLE")
+                .append("---------------------------\n\n")
+                .append(detailDeleteSql).append("\n\n");
+        if (parentDeleteSql != null && !parentDeleteSql.trim().isEmpty()) {
+            body.append("----------------------------------------2 ")
+                    .append(parentDeleteSql.trim().startsWith("--") ? "PARENT RECORD STATUS" : (operation.equals("UPDATE") ? "PARENT TABLE" : "DELETE FROM PARENT TABLE"))
+                    .append("---------------------------\n\n")
+                    .append(parentDeleteSql).append("\n\n");
+        }
+        body.append(userFooter());
         message.setText(body.toString());
 
         log.info("DbaEmailService.sendDbaDeleteRequestEmail: detailRecords={} tables={}\n{}",
                 details.size(), parentTable + ", " + detailTable,
-                DataMaskingUtil.maskSqlLiteralsForLog(detailDeleteSql + "\n" + parentDeleteSql));
+                DataMaskingUtil.maskSqlLiteralsForLog(detailDeleteSql + "\n" + (parentDeleteSql != null ? parentDeleteSql : "")));
         log.info("DbaEmailService.sendDbaDeleteRequestEmail: final email body immediately before sending:\n{}",
                 DataMaskingUtil.maskEmailBodyForLog(message.getText()));
         try {
@@ -212,21 +225,31 @@ public class DbaEmailService {
         boolean handling = "MEMGLBLHNDGAGNT".equals(parentTable)
                 && "MEMGLBLHNDGAGNTDTLS".equals(detailTable)
                 && "MAVHNDGAGNTCODE".equals(codeColumn);
+        boolean detailValid = isUpdateOrDeleteForCode(detailDeleteSql, detailTable, codeColumn, code);
+        boolean parentValid = parentDeleteSql == null
+                || parentDeleteSql.trim().isEmpty()
+                || parentDeleteSql.trim().startsWith("--")
+                || isUpdateOrDeleteForCode(parentDeleteSql, parentTable, codeColumn, code);
         if ((!global && !handling) || code == null || code.trim().isEmpty()
                 || details == null
-                || !isDeleteForCode(detailDeleteSql, detailTable, codeColumn, code)
-                || !isDeleteForCode(parentDeleteSql, parentTable, codeColumn, code)) {
-            throw new IllegalArgumentException("The delete request must contain valid detail and parent DELETE statements for the selected code.");
+                || !detailValid
+                || !parentValid) {
+            throw new IllegalArgumentException("The disable request must contain valid detail UPDATE statements for the selected code.");
         }
     }
 
-    private boolean isDeleteForCode(String sql, String table, String codeColumn, String code) {
-        if (sql == null) {
+    private boolean isUpdateOrDeleteForCode(String sql, String table, String codeColumn, String code) {
+        if (sql == null || sql.trim().isEmpty()) {
             return false;
         }
-        String expected = "DELETE FROM " + table + " WHERE " + codeColumn + " = '"
-                + code.replace("'", "''") + "';";
-        return expected.equalsIgnoreCase(sql.trim());
+        String upper = sql.trim().toUpperCase(Locale.ROOT);
+        String escapedCode = code.replace("'", "''").toUpperCase(Locale.ROOT);
+        if (upper.contains("DELETE FROM")) {
+            return upper.contains("DELETE FROM " + table) && upper.contains(codeColumn + " = '" + escapedCode + "'");
+        }
+        return upper.contains("UPDATE " + table)
+                && upper.contains(codeColumn + " = '" + escapedCode + "'")
+                && upper.contains("MADDATEEFCTTO = TRUNC(SYSDATE)");
     }
 
     private String safeEmailValue(String value) {

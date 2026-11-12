@@ -45,6 +45,7 @@ public class DeleteRequestController {
             if (record != null) {
                 response.put("code", record.getCode());
                 response.put("companyName", record.getCompanyName());
+                response.put("details", deleteRequestService.getDetails(record));
             }
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -67,14 +68,20 @@ public class DeleteRequestController {
         if (payload == null) {
             return error(HttpStatus.BAD_REQUEST, "A delete request payload is required.");
         }
-        log.info("DELETE-REQUEST submit: codeType={}", payload.getCodeType());
+        log.info("DELETE-REQUEST submit: codeType={} scope={} selectedCount={}",
+                payload.getCodeType(), payload.getDisableScope(),
+                payload.getSelectedGstins() == null ? 0 : payload.getSelectedGstins().size());
         try {
             deleteRequestService.sendRequest(
-                    payload.getCodeType(), payload.getCode(), payload.getCompanyName());
+                    payload.getCodeType(),
+                    payload.getCode(),
+                    payload.getCompanyName(),
+                    payload.getDisableScope(),
+                    payload.getSelectedGstins());
             log.info("DELETE-REQUEST submit: success, DBA email queued for codeType={}", payload.getCodeType());
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
-            response.put("message", "Delete request sent successfully. The SQL has been sent to the DBA for execution.");
+            response.put("message", "Disable request sent successfully. The SQL has been sent to the DBA for execution.");
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("DELETE-REQUEST submit rejected: codeType={} reason={}",
