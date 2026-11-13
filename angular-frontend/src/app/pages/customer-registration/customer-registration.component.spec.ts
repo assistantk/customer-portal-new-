@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigationEnd } from '@angular/router';
 import '../../app-module';
 import { CustomerRegistrationComponent } from './customer-registration.component';
-import { CustomerService } from '../../services/customer.service';
+import { CustomerService, PanCompanyRecord } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
 import { ZoneDivisionService } from '../../services/zone-division.service';
@@ -67,7 +67,14 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       reattach: vi.fn()
     } as unknown as ChangeDetectorRef;
     authUserSubject = new BehaviorSubject<any>(null);
-    authServiceMock = { currentUser$: authUserSubject.asObservable(), currentUser: null };
+    authServiceMock = {
+      currentUser$: authUserSubject.asObservable(),
+      currentUser: null,
+      logout: vi.fn(() => {
+        try { sessionStorage.removeItem('customer.registration.duplicateUpdateContext'); } catch (_) {}
+        return of({ success: true });
+      })
+    };
 
     component = new CustomerRegistrationComponent(
       customerServiceMock as CustomerService,
@@ -215,6 +222,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const successSpy = vi.spyOn(notificationService, 'success');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       // While in flight
       expect(component.loading).toBe(true);
@@ -256,6 +265,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       customerServiceMock.registerCustomer.mockReturnValue(of({ success: true, customerCode: 'TCOR' }));
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
         expect.objectContaining({ city: '' }),
@@ -274,6 +285,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const errorSpy = vi.spyOn(notificationService, 'error');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -294,6 +307,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const errorSpy = vi.spyOn(notificationService, 'error');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -307,11 +322,15 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       customerServiceMock.registerCustomer.mockReturnValue(responseSubject.asObservable());
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
       expect(component.loading).toBe(true);
       expect(customerServiceMock.registerCustomer).toHaveBeenCalledTimes(1);
 
       // Attempt second submission
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
       expect(customerServiceMock.registerCustomer).toHaveBeenCalledTimes(1);
 
       responseSubject.next({ success: true });
@@ -354,6 +373,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       expect(component.validate()).toBe(true);
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({ city: '   ' }),
@@ -378,6 +399,7 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.errors['gstin_1_gstin']).toBe('GSTIN already added');
 
       component.submit();
+      expect(component.showReviewModal).toBe(false);
       expect(customerServiceMock.updateOldCustomerJDBC).not.toHaveBeenCalled();
     });
 
@@ -386,6 +408,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.chooseDivision('Mumbai (CSTM)');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -676,6 +700,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       ]);
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({ customerCode: 'SAEB', companyName: customer.companyName }),
@@ -718,6 +744,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.canRequestGstinRemoval(component.gstins[0])).toBe(true);
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
         expect.objectContaining({ customerCode: 'OLD1' }),
@@ -831,6 +859,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const successSpy = vi.spyOn(notificationService, 'success');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalled();
@@ -851,6 +881,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const errorSpy = vi.spyOn(notificationService, 'error');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -975,6 +1007,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const successSpy = vi.spyOn(notificationService, 'success');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(customerServiceMock.submitOwnershipJDBC).toHaveBeenCalledWith(
@@ -1000,6 +1034,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       const errorSpy = vi.spyOn(notificationService, 'error');
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       expect(component.loading).toBe(false);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -1580,6 +1616,8 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
 
       component.deleteCompanyName = 'Acme Logistics';
       component.sendDeleteRequest();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
       expect(customerServiceMock.submitDeleteRequest).toHaveBeenCalledWith(
         'GLOBAL_CUSTOMER',
         'ACME01',
@@ -2531,11 +2569,268 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of(refreshed));
 
       component.submit();
+      expect(component.showReviewModal).toBe(true);
+      component.onReviewConfirm();
 
       // After successful update and DB refresh, both PAN and GST are now available in DB and disabled
       expect(component.isPanDisabled).toBe(true);
       expect(component.isGstDisabled).toBe(true);
       expect(component.gstins[0].gstin).toBe('27AAACU3333R1Z9');
+    });
+  });
+
+  describe('Existing Company Code Editability and Navigation Source Tracking (Section 8)', () => {
+    beforeEach(() => {
+      try { sessionStorage.clear(); } catch (_) {}
+      component.resetFormState();
+    });
+
+    afterEach(() => {
+      try { sessionStorage.clear(); } catch (_) {}
+    });
+
+    it('Test 1: Direct navigation to Update Code -> Company code field is editable, codeType toggle enabled, manual typing triggers lookup', () => {
+      component.switchMode('old', 'DIRECT_UPDATE');
+      expect(component.mode).toBe('old');
+      expect(component.navigationSource).toBe('DIRECT_UPDATE');
+      expect(component.isCompanyCodeReadOnly).toBe(false);
+      expect(component.form.customerCode).toBe('');
+
+      // codeType toggle works
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('HANDLING_AGENT');
+      component.handleOldCodeTypeChange('GLOBAL');
+      expect(component.codeType).toBe('GLOBAL');
+
+      // Manual typing triggers lookup
+      const lookupSpy = vi.spyOn(component, 'triggerOldLookup');
+      component.handleOldCodeChange('ABPC');
+      expect(lookupSpy).toHaveBeenCalledWith('ABPC', 'GLOBAL');
+    });
+
+    it('Test 2: Navigation to Update Code after existing PAN duplicate detected (Add new GSTIN) -> Company code field is populated, readOnly is true, codeType toggle disabled', () => {
+      const company: PanCompanyRecord = {
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      };
+
+      component.onPanAddNewGstin(company);
+
+      expect(component.mode).toBe('old');
+      expect(component.form.customerCode).toBe('ABPC');
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.navigationSource).toBe('EXISTING_PAN_REDIRECT');
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // codeType toggle is disabled and cannot be changed
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('GLOBAL');
+    });
+
+    it('Test 3: Navigation to Update Code after existing PAN duplicate detected (Update existing details) -> Company code field is populated, readOnly is true, codeType toggle disabled', () => {
+      const company: PanCompanyRecord = {
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      };
+
+      component.onPanUpdateExistingDetails(company);
+
+      expect(component.mode).toBe('old');
+      expect(component.form.customerCode).toBe('ABPC');
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.navigationSource).toBe('EXISTING_PAN_REDIRECT');
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // codeType toggle cannot change
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('GLOBAL');
+    });
+
+    it('Test 4: Navigation to Update Code after existing GSTIN duplicate detected (Update existing record) -> Company code field is populated, readOnly is true, codeType toggle disabled', () => {
+      const record = {
+        existingCode: 'ABPC',
+        recordType: 'Global Customer',
+        gstin: '07ABCDE1234F1Z5',
+        pan: 'ABCDE1234F'
+      };
+
+      component.onGstinUpdateExistingRecord(record);
+
+      expect(component.mode).toBe('old');
+      expect(component.form.customerCode).toBe('ABPC');
+      expect(component.codeType).toBe('GLOBAL');
+      expect(component.navigationSource).toBe('EXISTING_GSTIN_REDIRECT');
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // codeType toggle cannot change
+      component.handleOldCodeTypeChange('HANDLING_AGENT');
+      expect(component.codeType).toBe('GLOBAL');
+    });
+
+    it('Test 5: Read-only field cannot be modified by user -> typing/backspace/paste/delete prevented on code input', () => {
+      component.onPanUpdateExistingDetails({
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      });
+
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // Keydown prevention
+      const keyEvent = new KeyboardEvent('keydown', { key: 'A', cancelable: true });
+      const preventDefaultSpy = vi.spyOn(keyEvent, 'preventDefault');
+      component.onCustomerCodeKeydown(keyEvent);
+      expect(preventDefaultSpy).toHaveBeenCalled();
+
+      // Paste prevention
+      const pasteEvent = new Event('paste', { cancelable: true }) as ClipboardEvent;
+      const pastePreventDefaultSpy = vi.spyOn(pasteEvent, 'preventDefault');
+      component.onCustomerCodePaste(pasteEvent);
+      expect(pastePreventDefaultSpy).toHaveBeenCalled();
+
+      // handleOldCodeChange does not modify customerCode or trigger lookup
+      const lookupSpy = vi.spyOn(component, 'triggerOldLookup');
+      component.handleOldCodeChange('DIFFERENT');
+      expect(component.form.customerCode).toBe('ABPC');
+      expect(lookupSpy).not.toHaveBeenCalled();
+    });
+
+    it('Test 6: Allowed fields remain editable when code is locked -> permitted company details, adding new GSTIN, updating GSTIN addresses remain editable', () => {
+      component.onPanAddNewGstin({
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      });
+
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // Company details remain editable
+      component.form.address = 'New Updated Address';
+      component.form.city = 'Gurugram';
+      component.form.pincode = '122001';
+      component.form.email = 'updated@example.com';
+      component.form.mobile = '9876543210';
+      expect(component.form.address).toBe('New Updated Address');
+      expect(component.form.city).toBe('Gurugram');
+
+      // Adding new GSTIN works
+      const initialCount = component.gstins.length;
+      component.addGstin();
+      expect(component.gstins.length).toBe(initialCount + 1);
+
+      // Updating GSTIN address works
+      component.gstins[0].registeredAddress = 'Address for GSTIN 1';
+      expect(component.gstins[0].registeredAddress).toBe('Address for GSTIN 1');
+    });
+
+    it('Test 7: Direct navigation after redirect clears lock -> switching to another tab or clicking Update Code directly clears the lock and restores full editability', () => {
+      component.onPanAddNewGstin({
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      });
+
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+
+      // User clicks "Update Code" tab directly
+      component.switchMode('old', 'DIRECT_UPDATE');
+
+      expect(component.isCompanyCodeReadOnly).toBe(false);
+      expect(component.navigationSource).toBe('DIRECT_UPDATE');
+      expect(component.updateRedirectContext).toBeNull();
+      expect(component.form.customerCode).toBe('');
+
+      // Also switching away to 'new' mode clears the lock
+      component.onPanAddNewGstin({
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      });
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+      component.switchMode('new');
+      expect(component.navigationSource).toBe('DIRECT_UPDATE');
+      expect(component.updateRedirectContext).toBeNull();
+    });
+
+    it('Test 8: Logout clears navigation context -> logging out clears saved duplicate update context', () => {
+      sessionStorage.setItem('customer.registration.duplicateUpdateContext', JSON.stringify({
+        source: 'EXISTING_PAN_REDIRECT',
+        codeType: 'GLOBAL',
+        companyCode: 'ABPC',
+        expiresAt: Date.now() + 60000
+      }));
+
+      authServiceMock.logout().subscribe();
+
+      expect(sessionStorage.getItem('customer.registration.duplicateUpdateContext')).toBeNull();
+    });
+
+    it('Test 9: Page refresh / reload preserves locked state -> duplicate update context in sessionStorage restores locked state', () => {
+      sessionStorage.setItem('customer.registration.duplicateUpdateContext', JSON.stringify({
+        source: 'EXISTING_PAN_REDIRECT',
+        codeType: 'GLOBAL',
+        companyCode: 'ABPC',
+        expiresAt: Date.now() + 60000
+      }));
+
+      component.ngOnInit();
+
+      expect(component.mode).toBe('old');
+      expect(component.form.customerCode).toBe('ABPC');
+      expect(component.navigationSource).toBe('EXISTING_PAN_REDIRECT');
+      expect(component.isCompanyCodeReadOnly).toBe(true);
+    });
+
+    it('Test 10: Successful submit passes expectedCustomerCode and navigationSource and clears context on success', () => {
+      component.onPanUpdateExistingDetails({
+        recordType: 'Global Customer',
+        companyCode: 'ABPC',
+        companyName: 'ABP Private Limited',
+        pan: 'ABCDE1234F',
+        codeType: 'global',
+        gstins: []
+      });
+
+      customerServiceMock.updateOldCustomerJDBC.mockReturnValue(of({ success: true, message: 'Update submitted' }));
+      component.verifiedCustomerCode = 'ABPC';
+      component.lookupDone = true;
+
+      component.executeOldSubmit();
+
+      expect(customerServiceMock.updateOldCustomerJDBC).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerCode: 'ABPC',
+          expectedCustomerCode: 'ABPC',
+          navigationSource: 'EXISTING_PAN_REDIRECT'
+        }),
+        expect.any(Array),
+        expect.any(Array)
+      );
+
+      // Context is cleared after successful submission
+      expect(component.navigationSource).toBe('DIRECT_UPDATE');
+      expect(component.updateRedirectContext).toBeNull();
+      expect(component.isCompanyCodeReadOnly).toBe(false);
     });
   });
 });

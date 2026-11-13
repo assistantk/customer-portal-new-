@@ -193,6 +193,8 @@ describe('OwnershipCodeComponent', () => {
     };
 
     component.submit();
+    expect(component.showReviewModal).toBe(true);
+    component.onReviewConfirm();
     expect(customerServiceMock.submitOwnershipJDBC).toHaveBeenCalledWith(
       'OWN1',
       'Address 1',
@@ -217,7 +219,8 @@ describe('OwnershipCodeComponent', () => {
       operatingDivision: 'Mumbai (CSTM)',
       email: '',
       mobile: '',
-      ownershipPartyCode: 'OWN1'
+      ownershipPartyCode: 'OWN1',
+      ownershipPartyAddress: 'Address 1'
     };
 
     expect(component.validate()).toBe(true);

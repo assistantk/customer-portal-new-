@@ -202,7 +202,7 @@ public class CustomerServiceImpl implements CustomerService {
    if (customerCode == null || customerCode.trim().isEmpty() || conn == null) {
     return Collections.emptyList();
    }
-   String sql = "SELECT MAVCUSTGSTNUMB FROM MEMGLBLCUSTDTLS WHERE MAVGLBLCUSTCODE = ? ORDER BY MADIMPLDATE, MAVCUSTGSTNUMB";
+   String sql = "SELECT MAVCUSTGSTNUMB FROM MEMGLBLCUSTDTLS WHERE MAVGLBLCUSTCODE = ? AND MADDATEEFCTTO IS NULL ORDER BY MADIMPLDATE, MAVCUSTGSTNUMB";
    List<String> list = new ArrayList<>();
    try (PreparedStatement ps = conn.prepareStatement(sql)) {
     if (ps != null) {
@@ -1152,9 +1152,10 @@ public class CustomerServiceImpl implements CustomerService {
 
 
   String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
+  String firstGstin = (gstinNumbers != null && !gstinNumbers.isEmpty()) ? gstinNumbers.get(0) : null;
   sql = "global".equals(type)
-      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)";
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", " + hndgGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)";
 
   String finalCode = (providedCode != null && !providedCode.isEmpty())
       ? providedCode.trim().toUpperCase(Locale.ROOT)
@@ -1183,6 +1184,7 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(null);
     insertParameters.add(null);
     insertParameters.add(divisionDesignation);
+    insertParameters.add(firstGstin);
     insertParameters.add(formData.get("panNumber"));
    String executableSql = formatBoundSql(sql, insertParameters) + ";";
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
@@ -1315,6 +1317,12 @@ public class CustomerServiceImpl implements CustomerService {
  if (!customerCode.trim().matches("(?i)[a-z0-9]+")) {
   throw new IllegalArgumentException("Enter a valid Customer Code.");
  }
+ String expectedCode = firstValue(formData, "expectedCustomerCode");
+ if (expectedCode != null && !expectedCode.trim().isEmpty()) {
+  if (!customerCode.trim().equalsIgnoreCase(expectedCode.trim())) {
+   throw new IllegalArgumentException("Customer code mismatch: submitted code does not match original code " + expectedCode.trim());
+  }
+ }
 
   initDbColumns();
   String table = isGlobal ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
@@ -1348,6 +1356,7 @@ public class CustomerServiceImpl implements CustomerService {
    oldCustomer.setGstinNumbers(agent.getGstinNumbers());
    oldCustomer.setPincode(agent.getPcoCode());
    oldCustomer.setDivision(agent.getDivision());
+   oldCustomer.setGstins(agent.getGstins());
    keyColumn = hndgCodeCol;
    nameColumn = hndgNameCol;
    addressColumn = hndgAddrCol;
@@ -1424,11 +1433,16 @@ public class CustomerServiceImpl implements CustomerService {
 
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
-   requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
+   requested.put(pincodeColumn, null);
   }
   if (formData.containsKey("operatingDivision")) {
    current.put(divisionColumn, oldCustomer.getDivision());
    requested.put(divisionColumn, DivisionDesignationResolver.resolve(formData.get("operatingDivision")));
+  }
+
+  if (formData.containsKey("gstinDetails")) {
+   requested.remove(addressColumn);
+   requested.remove(cityColumn);
   }
 
   List<String> assignments = new ArrayList<>();
@@ -1439,8 +1453,11 @@ public class CustomerServiceImpl implements CustomerService {
     assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
   }
+  boolean onlyPincodeChangeInRemovalRequest = formData.containsKey("gstinRemovals")
+      && assignments.size() == 1
+      && assignments.get(0).regionMatches(true, 0, pincodeColumn + " = ", 0, pincodeColumn.length() + 3);
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-   if (!assignments.isEmpty()) {
+   if (!assignments.isEmpty() && !onlyPincodeChangeInRemovalRequest) {
     String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
         + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
     emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));
@@ -1567,13 +1584,12 @@ public class CustomerServiceImpl implements CustomerService {
       String dtlsInsSql = "INSERT INTO " + dtlsTable + " ("
           + dtlsCodeCol + ", " + dtlsNameCol + ", " + dtlsAddrCol + ", " + dtlsCityCol
           + ", MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) "
-          + "VALUES (?, ?, ?, ?, ?, SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
+          + "VALUES (?, ?, ?, ?, " + (gPin != null && gPin.matches("^[0-9]+$") ? gPin : "NULL") + ", SYSDATE, NULL, ?, ?, SYSDATE, NULL)";
       List<String> dtlsParams = new ArrayList<>();
       dtlsParams.add(customerCode.trim());
       dtlsParams.add(requested.get(nameColumn) != null ? requested.get(nameColumn) : current.get(nameColumn));
       dtlsParams.add(gAddr);
       dtlsParams.add(gCity);
-      dtlsParams.add(gPin);
       dtlsParams.add(g);
       dtlsParams.add(activePan);
       String dtlsExecSql = formatBoundSql(dtlsInsSql, dtlsParams) + ";";
@@ -1612,7 +1628,7 @@ public class CustomerServiceImpl implements CustomerService {
      String dtlsDelSql = buildGstinRemovalSql(
          dtlsTable, dtlsCodeCol, customerCode.trim(), removal);
      emailRequests.add(new DbaEmailService.SqlRequest(
-         "DELETE", dtlsTable, customerCode.trim(), oldCustomer.getCompanyName(), dtlsDelSql));
+         "UPDATE", dtlsTable, customerCode.trim(), oldCustomer.getCompanyName(), dtlsDelSql));
     }
    }
    if (emailRequests.isEmpty()) {
@@ -1738,7 +1754,8 @@ public class CustomerServiceImpl implements CustomerService {
 
  private String buildGstinRemovalSql(
      String table, String codeColumn, String code, ExistingGstinDetail detail) {
-  StringBuilder sql = new StringBuilder("DELETE FROM ").append(table)
+  StringBuilder sql = new StringBuilder("UPDATE ").append(table)
+      .append(" SET MADDATEEFCTTO = TRUNC(SYSDATE)")
       .append(" WHERE ").append(codeColumn).append(" = ").append(formatSqlValue(code))
       .append(" AND MAVCUSTGSTNUMB = ").append(formatSqlValue(detail.gstin));
   if (detail.effectiveFrom != null) {
@@ -1746,7 +1763,8 @@ public class CustomerServiceImpl implements CustomerService {
        .append(formatSqlValue(detail.effectiveFrom))
        .append(", 'YYYY-MM-DD HH24:MI:SS')");
   }
-  return sql.append(';').toString();
+  sql.append(" AND MADDATEEFCTTO IS NULL;");
+  return sql.toString();
  }
 
  private static final class ExistingGstinDetail {

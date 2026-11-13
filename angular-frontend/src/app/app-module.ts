@@ -15,6 +15,7 @@ import { HandlingAgentCodeComponent } from './pages/handling-agent-code/handling
 import { OwnershipCodeComponent } from './pages/ownership-code/ownership-code.component';
 import { LayoutComponent } from './layout/layout.component';
 import { NotificationComponent } from './components/notification/notification.component';
+import { ReviewModalComponent } from './components/review-modal/review-modal.component';
 import { AuthInterceptor } from './services/auth.interceptor';
 import { DeleteRequestComponent } from './pages/delete-request/delete-request.component';
 import { AccessDeniedComponent } from './pages/access-denied/access-denied.component';
@@ -38,6 +39,7 @@ export function initializeImagePreloader(preloader: ImagePreloadService): () => 
     OwnershipCodeComponent,
     LayoutComponent,
     NotificationComponent,
+    ReviewModalComponent,
     AccessDeniedComponent
   ],
   imports: [

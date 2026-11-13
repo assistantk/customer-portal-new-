@@ -105,6 +105,8 @@ export interface CustomerPayload {
   ownershipAddress?: string;
   ownershipPartyCode?: string;
   ownershipPartyAddress?: string;
+  expectedCustomerCode?: string;
+  navigationSource?: string;
 }
 
 export interface GstinRemoval {
@@ -146,12 +148,25 @@ export interface SemGstinVerificationResult {
   addressMatched?: boolean;
 }
 
+export interface DeleteRequestDetailRecord {
+  code?: string;
+  gstin: string;
+  address?: string;
+  city?: string;
+  pincode?: string;
+  state?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  active?: boolean;
+}
+
 export interface DeleteRequestVerification {
   success: boolean;
   found: boolean;
   code?: string;
   companyName?: string;
   record?: any;
+  details?: DeleteRequestDetailRecord[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -236,10 +251,16 @@ export class CustomerService {
     );
   }
 
-  submitDeleteRequest(codeType: DeleteRequestCodeType, code: string, companyName: string): Observable<any> {
+  submitDeleteRequest(
+    codeType: DeleteRequestCodeType,
+    code: string,
+    companyName: string,
+    disableScope: 'CODE' | 'GSTIN' = 'GSTIN',
+    selectedGstins: string[] = []
+  ): Observable<any> {
     return this.http.post<any>(
       `${this.API}/customers/delete-requests/submit`,
-      { codeType, code, companyName },
+      { codeType, code, companyName, disableScope, selectedGstins },
       { withCredentials: true }
     );
   }
@@ -396,6 +417,8 @@ export class CustomerService {
 
     const updateBody: any = {
       customerCode: payload.customerCode,
+      expectedCustomerCode: payload.expectedCustomerCode,
+      navigationSource: payload.navigationSource,
       companyName: payload.companyName,
       address: payload.address,
       city: payload.city || '',

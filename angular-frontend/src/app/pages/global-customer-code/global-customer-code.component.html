@@ -333,4 +333,13 @@
             </div>
         </form>
     </div>
+
+    <!-- Common Review & Confirmation Popup -->
+    <app-review-modal
+        [isOpen]="showReviewModal"
+        [loading]="reviewSubmitting"
+        [data]="reviewData"
+        (confirm)="onReviewConfirm()"
+        (cancel)="onReviewCancel()">
+    </app-review-modal>
 </main>

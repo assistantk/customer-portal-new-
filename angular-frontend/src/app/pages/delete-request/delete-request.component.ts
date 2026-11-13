@@ -3,6 +3,7 @@ import { Router, NavigationEnd } from '@angular/router';
 import { catchError, finalize, filter, map, of, Subscription, switchMap } from 'rxjs';
 import { CustomerService, DeleteRequestCodeType } from '../../services/customer.service';
 import { IMAGE_ASSETS } from '../../config/image-assets';
+import { ReviewModalData } from '../../components/review-modal/review-modal.component';
 
 @Component({
   selector: 'app-delete-request',
@@ -17,11 +18,26 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
   companyName = '';
   verifiedRecord: { codeType: DeleteRequestCodeType; code: string; companyName: string } | null = null;
   recordDetails: any = null;
+  disableScope: 'GSTIN' | 'CODE' = 'GSTIN';
+  availableGstins: Array<{
+    gstin: string;
+    address?: string;
+    city?: string;
+    pincode?: string;
+    state?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    active?: boolean;
+  }> = [];
+  selectedGstinMap: Record<string, boolean> = {};
   verificationMessage = '';
   errorMessage = '';
   successMessage = '';
   verifying = false;
   submitting = false;
+  showReviewModal = false;
+  reviewSubmitting = false;
+  reviewData: ReviewModalData | null = null;
   logoLoadFailed = false;
   private lookupRequestId = 0;
   private activeSub = new Subscription();
@@ -59,11 +75,18 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
     this.code = '';
     this.companyName = '';
     this.verifiedRecord = null;
+    this.recordDetails = null;
+    this.disableScope = 'GSTIN';
+    this.availableGstins = [];
+    this.selectedGstinMap = {};
     this.verificationMessage = '';
     this.errorMessage = '';
     this.successMessage = '';
     this.verifying = false;
     this.submitting = false;
+    this.showReviewModal = false;
+    this.reviewSubmitting = false;
+    this.reviewData = null;
     this.logoLoadFailed = false;
   }
 
@@ -211,7 +234,47 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
             companyName: verifiedName
           };
           this.code = verifiedCode;
-          this.verificationMessage = 'Code found. Please enter the exact company name shown above to confirm deletion.';
+
+          // Populate GSTIN records with their addresses and effective dates
+          let rawGstins: any[] = [];
+          if (Array.isArray(verifyResult?.details) && verifyResult.details.length > 0) {
+            rawGstins = verifyResult.details;
+          } else if (Array.isArray(details?.gstins) && details.gstins.length > 0) {
+            rawGstins = details.gstins;
+          } else {
+            const list = this.getGstinList(details);
+            rawGstins = list.filter(g => g !== '-').map(g => ({
+              gstin: g,
+              address: details?.address || '',
+              city: details?.city || '',
+              pincode: details?.pincode || '',
+              state: '',
+              effectiveFrom: '',
+              effectiveTo: null,
+              active: true
+            }));
+          }
+
+          this.availableGstins = rawGstins.map(g => ({
+            gstin: (g.gstin || g.gstinNumber || '').toUpperCase(),
+            address: g.address || g.registeredAddress || details?.address || '',
+            city: g.city || details?.city || '',
+            pincode: g.pincode || details?.pincode || '',
+            state: g.state || (g.gstin?.length >= 2 ? g.gstin.substring(0, 2) : ''),
+            effectiveFrom: g.effectiveFrom || '',
+            effectiveTo: g.effectiveTo || null,
+            active: g.active !== undefined ? g.active : !g.effectiveTo
+          }));
+
+          // Default Option A: Pre-select all active GSTINs
+          this.selectedGstinMap = {};
+          this.availableGstins.forEach(g => {
+            if (this.isGstinActive(g)) {
+              this.selectedGstinMap[g.gstin] = true;
+            }
+          });
+
+          this.verificationMessage = 'Code found. Please enter the exact company name shown above to confirm disabling.';
         },
         error: () => {
           if (requestId !== this.lookupRequestId) return;
@@ -222,11 +285,11 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
   }
 
   sendRequest(): void {
-    if (this.submitting || this.verifying) {
+    if (this.submitting || this.verifying || this.reviewSubmitting) {
       return;
     }
     if (!this.isCurrentVerification()) {
-      this.errorMessage = 'Verify the current code before sending a delete request.';
+      this.errorMessage = 'Verify the current code before sending a disable request.';
       return;
     }
     if (!this.companyName.trim()) {
@@ -237,30 +300,103 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
       this.errorMessage = 'Company name does not match the selected code. Please verify the company name.';
       return;
     }
+    if (this.disableScope === 'GSTIN' && this.availableGstins.length > 0 && this.getSelectedGstins().length === 0) {
+      this.errorMessage = 'Please select at least one GSTIN to disable.';
+      return;
+    }
 
     this.errorMessage = '';
     this.successMessage = '';
+
+    const codeTypeName = this.verifiedRecord!.codeType === 'GLOBAL_CUSTOMER' ? 'Global Customer Code' : 'Handling Agent Code';
+    const selectedGstins = this.getSelectedGstins();
+    const gstinsForReview = this.disableScope === 'GSTIN'
+      ? this.availableGstins.filter(g => selectedGstins.includes(g.gstin))
+      : this.availableGstins.filter(g => this.isGstinActive(g));
+
+    this.reviewData = {
+      operationType: 'DELETE_REQUEST',
+      title: 'Review Disable Request',
+      sectionName: `${codeTypeName} – Disable Request`,
+      codeType: this.verifiedRecord!.codeType,
+      customerCode: this.verifiedRecord!.code,
+      companyName: this.companyName.trim(),
+      disableScope: this.disableScope,
+      deleteWarning: this.disableScope === 'GSTIN'
+        ? 'Only the selected GSTIN(s) will be disabled. Other GSTINs and the company code will remain active.'
+        : 'All selected records associated with this company code will be marked inactive. Historical records will be preserved.',
+      deleteDetails: [
+        { label: 'Record Type', value: codeTypeName },
+        { label: 'Company Code', value: this.verifiedRecord!.code },
+        { label: 'Company Name', value: this.companyName.trim() },
+        { label: 'PAN Number', value: this.recordDetails?.panNumber || '—' },
+        { label: 'Registered Address', value: this.recordDetails?.address || '—' },
+        { label: 'City', value: this.recordDetails?.city || '—' },
+        { label: 'PIN Code', value: this.recordDetails?.pincode || this.recordDetails?.pcoCode || '—' }
+      ],
+      deleteGstins: gstinsForReview.map(g => ({
+        gstin: g.gstin,
+        state: g.state,
+        address: g.address,
+        city: g.city,
+        pincode: g.pincode,
+        effectiveFrom: g.effectiveFrom || '—',
+        effectiveTo: g.effectiveTo || null,
+        newEffectiveTo: 'Current Date (SYSDATE)'
+      }))
+    };
+    this.showReviewModal = true;
+  }
+
+  onReviewConfirm(): void {
+    if (this.reviewSubmitting) return;
+    this.reviewSubmitting = true;
     this.submitting = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+
+    const selectedGstins = this.disableScope === 'GSTIN' ? this.getSelectedGstins() : [];
+    const request$ = (this.disableScope === 'CODE' || selectedGstins.length > 0)
+      ? this.customerService.submitDeleteRequest(
+          this.verifiedRecord!.codeType,
+          this.verifiedRecord!.code,
+          this.companyName.trim(),
+          this.disableScope,
+          selectedGstins
+        )
+      : this.customerService.submitDeleteRequest(
+          this.verifiedRecord!.codeType,
+          this.verifiedRecord!.code,
+          this.companyName.trim()
+        );
+
     this.activeSub.add(
-      this.customerService.submitDeleteRequest(
-        this.verifiedRecord!.codeType,
-        this.verifiedRecord!.code,
-        this.companyName.trim()
-      ).pipe(
-        finalize(() => this.submitting = false)
+      request$.pipe(
+        finalize(() => {
+          this.submitting = false;
+          this.reviewSubmitting = false;
+          this.showReviewModal = false;
+        })
       ).subscribe({
         next: (result) => {
-          this.successMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
+          this.successMessage = result?.message || 'Disable request sent successfully. The SQL has been sent to the DBA for execution.';
           this.verifiedRecord = null;
           this.recordDetails = null;
+          this.availableGstins = [];
+          this.selectedGstinMap = {};
           this.companyName = '';
           this.verificationMessage = '';
         },
         error: (error) => {
-          this.errorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
+          this.errorMessage = error?.error?.message || 'Unable to send the disable request. Please try again later.';
         }
       })
     );
+  }
+
+  onReviewCancel(): void {
+    if (this.reviewSubmitting) return;
+    this.showReviewModal = false;
   }
 
   private isCurrentVerification(): boolean {
@@ -269,10 +405,39 @@ export class DeleteRequestComponent implements OnInit, OnDestroy {
       && this.code.trim() === this.verifiedRecord.code;
   }
 
+  isGstinActive(g: any): boolean {
+    return !g?.effectiveTo && g?.active !== false;
+  }
+
+  toggleGstinSelection(gstin: string): void {
+    this.selectedGstinMap[gstin] = !this.selectedGstinMap[gstin];
+  }
+
+  selectAllGstins(): void {
+    this.availableGstins.forEach(g => {
+      if (this.isGstinActive(g)) {
+        this.selectedGstinMap[g.gstin] = true;
+      }
+    });
+  }
+
+  deselectAllGstins(): void {
+    this.availableGstins.forEach(g => {
+      this.selectedGstinMap[g.gstin] = false;
+    });
+  }
+
+  getSelectedGstins(): string[] {
+    return Object.keys(this.selectedGstinMap).filter(k => !!this.selectedGstinMap[k]);
+  }
+
   private clearVerification(): void {
     this.lookupRequestId++;
     this.verifiedRecord = null;
     this.recordDetails = null;
+    this.disableScope = 'GSTIN';
+    this.availableGstins = [];
+    this.selectedGstinMap = {};
     this.companyName = '';
     this.verificationMessage = '';
     this.errorMessage = '';

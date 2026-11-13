@@ -9,6 +9,7 @@ import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 import { ZoneDivisionService } from '../../services/zone-division.service';
+import { ReviewModalData, ReviewGstinItem } from '../../components/review-modal/review-modal.component';
 
 export interface HandlingAgentForm {
   agentCompanyName: string;
@@ -56,6 +57,9 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
   errors: Record<string, string> = {};
   notice = '';
   loading = false;
+  showReviewModal = false;
+  reviewSubmitting = false;
+  reviewData: ReviewModalData | null = null;
   generatedCode = '';
   codeChecking = false;
   touchedFields: Record<string, boolean> = {};
@@ -513,6 +517,9 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     this.touchedFields = {};
     this.notice = '';
     this.loading = false;
+    this.showReviewModal = false;
+    this.reviewSubmitting = false;
+    this.reviewData = null;
     this.generatedCode = '';
     this.codeChecking = false;
     if (this.codeTimer) clearTimeout(this.codeTimer);
@@ -535,7 +542,7 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
       e.stopPropagation();
     }
 
-    if (this.loading) return;
+    if (this.loading || this.reviewSubmitting) return;
     this.notice = '';
 
     if (!this.isFormValid || !this.validate()) {
@@ -551,6 +558,49 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const customerCode = (this.generatedCode || generateCustomerCode(this.form.agentCompanyName)).toUpperCase();
+
+    const gstinList: ReviewGstinItem[] = this.form.gstin?.trim()
+      ? [{
+          gstin: this.form.gstin.trim().toUpperCase(),
+          state: this.form.state,
+          address: this.form.address.trim(),
+          city: this.form.city.trim(),
+          pincode: this.form.pincode.trim()
+        }]
+      : [];
+
+    this.reviewData = {
+      operationType: 'NEW_ENTRY',
+      title: 'Review New Entry',
+      sectionName: 'Handling Agent Code – New Entry',
+      codeType: 'HANDLING_AGENT',
+      customerCode: customerCode.toUpperCase(),
+      companyName: this.form.agentCompanyName.trim(),
+      panNumber: this.form.panNumber.trim().toUpperCase(),
+      recordDetails: [
+        { label: 'Record Type', value: 'Handling Agent Code' },
+        { label: 'Agent Company Name', value: this.form.agentCompanyName.trim() },
+        { label: 'Generated Handling Agent Code', value: customerCode.toUpperCase() },
+        { label: 'PAN Number', value: this.form.panNumber.trim().toUpperCase() },
+        { label: 'Primary Address', value: this.form.address.trim() },
+        { label: 'City', value: this.form.city.trim() },
+        { label: 'PIN Code', value: this.form.pincode.trim() },
+        { label: 'State', value: this.form.state || '—' },
+        { label: 'Railway Zone', value: this.form.zone.trim() },
+        { label: 'Operating Division', value: this.form.operatingDivision.trim() },
+        { label: 'Email', value: this.form.email ? this.form.email.trim() : '—' },
+        { label: 'Mobile', value: this.form.mobile ? this.form.mobile.trim() : '—' }
+      ],
+      gstinList: gstinList.length > 0 ? gstinList : undefined
+    };
+    this.showReviewModal = true;
+    this.cdr.markForCheck();
+  }
+
+  onReviewConfirm(): void {
+    if (this.reviewSubmitting) return;
+    this.reviewSubmitting = true;
     this.loading = true;
     this.cdr.markForCheck();
 
@@ -581,6 +631,8 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
     this.customerService.registerCustomer(payload, gstinEntries).pipe(
       finalize(() => {
         this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -614,6 +666,12 @@ export class HandlingAgentCodeComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }
     });
+  }
+
+  onReviewCancel(): void {
+    if (this.reviewSubmitting) return;
+    this.showReviewModal = false;
+    this.cdr.markForCheck();
   }
 
   private extractErrorMessage(err: any): string {

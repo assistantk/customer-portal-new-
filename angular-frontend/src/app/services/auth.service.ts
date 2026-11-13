@@ -297,12 +297,18 @@ export class AuthService {
           this.setRmsTempUser(null);
           this.updateCurrentUser(null);
           this.zoneDivisionService?.reset();
+          try {
+            sessionStorage.removeItem('customer.registration.duplicateUpdateContext');
+          } catch (_) {}
         }
       }),
       catchError((error: HttpErrorResponse) => {
         this.setRmsTempUser(null);
         this.updateCurrentUser(null);
         this.zoneDivisionService?.reset();
+        try {
+          sessionStorage.removeItem('customer.registration.duplicateUpdateContext');
+        } catch (_) {}
         return throwError(() => error);
       })
     );

@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 import { ZoneDivisionService } from '../../services/zone-division.service';
+import { ReviewModalData, ReviewOperationType, ReviewGstinItem, ReviewGstinAddressUpdate, FieldComparison } from '../../components/review-modal/review-modal.component';
 
 const blank: CustomerPayload = {
   companyName: '',
@@ -78,11 +79,19 @@ const mobileRe = /^[6-9][0-9]{9}$/;
 const duplicateUpdateContextKey = 'customer.registration.duplicateUpdateContext';
 let duplicateUpdateContextFallback: string | null = null;
 
-interface DuplicateUpdateContext {
+export type UpdateNavigationSource = 'DIRECT_UPDATE' | 'EXISTING_PAN_REDIRECT' | 'EXISTING_GSTIN_REDIRECT';
+
+export interface DuplicateUpdateContext {
+  source: UpdateNavigationSource;
   codeType: 'GLOBAL' | 'HANDLING_AGENT';
   companyCode: string;
   gstin?: string;
   pan?: string;
+  intendedOperation?: 'ADD_NEW_GSTIN' | 'UPDATE_EXISTING_DETAILS';
+  companyName?: string;
+  address?: string;
+  city?: string;
+  pincode?: string;
   expiresAt: number;
 }
 
@@ -113,9 +122,23 @@ const addressesMatch = (left: string, right: string) => {
 })
 export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   readonly imageAssets = IMAGE_ASSETS;
+  showReviewModal = false;
+  reviewSubmitting = false;
+  reviewData: ReviewModalData | null = null;
+  initialOwnershipDesc = '';
+  initialPartyDesc = '';
   mode: 'ownership' | 'old' | 'new' | 'delete' = 'old';
   oldCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
   newCodeType: 'GLOBAL' | 'HANDLING_AGENT' = 'GLOBAL';
+  navigationSource: UpdateNavigationSource = 'DIRECT_UPDATE';
+  updateRedirectContext: DuplicateUpdateContext | null = null;
+
+  get isCompanyCodeReadOnly(): boolean {
+    return this.mode === 'old' && (
+      this.navigationSource === 'EXISTING_PAN_REDIRECT' ||
+      this.navigationSource === 'EXISTING_GSTIN_REDIRECT'
+    );
+  }
 
   get codeType(): 'GLOBAL' | 'HANDLING_AGENT' {
     return this.mode === 'old' ? this.oldCodeType : this.newCodeType;
@@ -310,7 +333,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.panDuplicateStatus = 'idle';
 
     const targetType: 'GLOBAL' | 'HANDLING_AGENT' = targetComp.codeType === 'handling_agent' ? 'HANDLING_AGENT' : 'GLOBAL';
-    this.switchMode('old');
+    const context = this.createDuplicateUpdateContext({
+      source: 'EXISTING_PAN_REDIRECT',
+      codeType: targetType,
+      companyCode: targetComp.companyCode,
+      pan: targetComp.pan || this.form.panNumber,
+      intendedOperation: 'ADD_NEW_GSTIN'
+    });
+    this.persistDuplicateUpdateContext(context);
+    this.updateRedirectContext = context;
+    this.navigationSource = 'EXISTING_PAN_REDIRECT';
+
+    this.switchMode('old', 'EXISTING_PAN_REDIRECT');
     this.codeType = targetType;
     this.form.customerCode = targetComp.companyCode;
     this.triggerOldLookup(targetComp.companyCode, targetType);
@@ -337,12 +371,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     const targetType: 'GLOBAL' | 'HANDLING_AGENT' = targetComp.codeType === 'handling_agent' ? 'HANDLING_AGENT' : 'GLOBAL';
     const context = this.createDuplicateUpdateContext({
+      source: 'EXISTING_PAN_REDIRECT',
       codeType: targetType,
       companyCode: targetComp.companyCode,
-      pan: targetComp.pan || this.form.panNumber
+      pan: targetComp.pan || this.form.panNumber,
+      intendedOperation: 'UPDATE_EXISTING_DETAILS'
     });
     this.persistDuplicateUpdateContext(context);
-    this.switchMode('old');
+    this.updateRedirectContext = context;
+    this.navigationSource = 'EXISTING_PAN_REDIRECT';
+
+    this.switchMode('old', 'EXISTING_PAN_REDIRECT');
     this.codeType = targetType;
     this.form.customerCode = targetComp.companyCode;
     this.triggerOldLookup(targetComp.companyCode, targetType);
@@ -357,18 +396,23 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const targetType: 'GLOBAL' | 'HANDLING_AGENT' = this.isHandlingAgentRecord(record) ? 'HANDLING_AGENT' : 'GLOBAL';
     const context = this.createDuplicateUpdateContext({
-      codeType: this.isHandlingAgentRecord(record) ? 'HANDLING_AGENT' : 'GLOBAL',
+      source: 'EXISTING_GSTIN_REDIRECT',
+      codeType: targetType,
       companyCode,
       gstin,
-      pan: record.pan
+      pan: record.pan,
+      intendedOperation: 'UPDATE_EXISTING_DETAILS'
     });
     this.persistDuplicateUpdateContext(context);
+    this.updateRedirectContext = context;
+    this.navigationSource = 'EXISTING_GSTIN_REDIRECT';
 
     this.showDuplicateModal = false;
     this.selectedDuplicateRecords = [];
-    this.switchMode('old');
-    this.codeType = context.codeType;
+    this.switchMode('old', 'EXISTING_GSTIN_REDIRECT');
+    this.codeType = targetType;
     this.form.customerCode = context.companyCode;
     this.triggerOldLookup(context.companyCode, context.codeType);
   }
@@ -383,6 +427,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
     if (this.gstins[this.selectedGstinAddressIndex]) {
       this.gstins[this.selectedGstinAddressIndex].registeredAddress = this.form.address;
+      this.gstins[this.selectedGstinAddressIndex].city = this.form.city;
+      this.gstins[this.selectedGstinAddressIndex].pincode = this.form.pincode;
     }
     this.selectedGstinAddressIndex = idx;
     const selected = this.gstins[idx];
@@ -390,6 +436,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.form.city = selected?.city || '';
     this.form.pincode = selected?.pincode || '';
     this.cdr.markForCheck();
+  }
+
+  handleCityInput(): void {
+    if (this.gstins && this.gstins[this.selectedGstinAddressIndex]) {
+      this.gstins[this.selectedGstinAddressIndex].city = this.form.city;
+    }
   }
 
   openDuplicateModal(g: GstinEntry): void {
@@ -416,7 +468,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       companyCode: context.companyCode.trim().toUpperCase(),
       gstin: context.gstin ? normalizeDocumentNumber(context.gstin) : undefined,
       pan: context.pan ? normalizeDocumentNumber(context.pan) : undefined,
-      expiresAt: Date.now() + 5 * 60 * 1000
+      expiresAt: Date.now() + 30 * 60 * 1000
     };
   }
 
@@ -644,6 +696,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   deleteCompanyName = '';
   verifiedDeleteRecord: { codeType: DeleteRequestCodeType; code: string; companyName: string } | null = null;
   deleteRecordDetails: any = null;
+  deleteDisableScope: 'GSTIN' | 'CODE' = 'GSTIN';
+  deleteAvailableGstins: Array<{
+    gstin: string;
+    address?: string;
+    city?: string;
+    pincode?: string;
+    state?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    active?: boolean;
+  }> = [];
+  deleteSelectedGstinMap: Record<string, boolean> = {};
   deleteVerificationMessage = '';
   deleteErrorMessage = '';
   deleteSuccessMessage = '';
@@ -779,6 +843,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const pendingUpdate = this.readDuplicateUpdateContext();
     if (pendingUpdate) {
       this.mode = 'old';
+      this.navigationSource = pendingUpdate.source || 'EXISTING_PAN_REDIRECT';
+      this.updateRedirectContext = pendingUpdate;
       this.oldCodeType = pendingUpdate.codeType;
       this.form.customerCode = pendingUpdate.companyCode;
       this.triggerOldLookup(pendingUpdate.companyCode, pendingUpdate.codeType);
@@ -887,7 +953,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
   }
 
-  private resetFormState(): void {
+  resetFormState(): void {
     this.notice = '';
     this.loading = false;
     this.panDuplicateStatus = 'idle';
@@ -920,12 +986,20 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteCompanyName = '';
     this.verifiedDeleteRecord = null;
     this.deleteRecordDetails = null;
+    this.deleteDisableScope = 'GSTIN';
+    this.deleteAvailableGstins = [];
+    this.deleteSelectedGstinMap = {};
     this.deleteVerificationMessage = '';
     this.deleteErrorMessage = '';
     this.deleteSuccessMessage = '';
     this.deleteVerifying = false;
     this.deleteSubmitting = false;
     this.deleteCodeType = '';
+    this.showReviewModal = false;
+    this.reviewSubmitting = false;
+    this.reviewData = null;
+    this.initialOwnershipDesc = '';
+    this.initialPartyDesc = '';
   }
 
   getGstinPanStatus(gstin: string, pan?: string): string | null {
@@ -1019,8 +1093,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  switchMode(newMode: 'ownership' | 'old' | 'new' | 'delete'): void {
-    if (newMode === this.mode) {
+  switchMode(newMode: 'ownership' | 'old' | 'new' | 'delete', source: UpdateNavigationSource = 'DIRECT_UPDATE'): void {
+    if (newMode === this.mode && (newMode !== 'old' || source === this.navigationSource)) {
       return;
     }
 
@@ -1036,6 +1110,24 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.resetFieldsPreservingZoneDivision();
     this.ownershipLogoMissing = false;
     this.deleteLogoMissing = false;
+
+    if (newMode === 'old') {
+      if (source === 'DIRECT_UPDATE') {
+        this.clearDuplicateUpdateContext();
+        this.navigationSource = 'DIRECT_UPDATE';
+        this.updateRedirectContext = null;
+        this.form.customerCode = '';
+        this.verifiedCustomerCode = null;
+        this.lookupDone = false;
+      } else {
+        this.navigationSource = source;
+      }
+    } else {
+      this.clearDuplicateUpdateContext();
+      this.navigationSource = 'DIRECT_UPDATE';
+      this.updateRedirectContext = null;
+    }
+
     this.cdr.markForCheck();
   }
 
@@ -1135,7 +1227,47 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             companyName: verifiedName
           };
           this.deleteCode = verifiedCode;
-          this.deleteVerificationMessage = 'Code found. Please enter the exact company name shown above to confirm deletion.';
+
+          // Populate GSTIN records with their addresses and effective dates
+          let rawGstins: any[] = [];
+          if (Array.isArray(verifyResult?.details) && verifyResult.details.length > 0) {
+            rawGstins = verifyResult.details;
+          } else if (Array.isArray(details?.gstins) && details.gstins.length > 0) {
+            rawGstins = details.gstins;
+          } else {
+            const list = this.getDeleteGstinList(details);
+            rawGstins = list.filter(g => g !== '-').map(g => ({
+              gstin: g,
+              address: details?.address || '',
+              city: details?.city || '',
+              pincode: details?.pincode || '',
+              state: '',
+              effectiveFrom: '',
+              effectiveTo: null,
+              active: true
+            }));
+          }
+
+          this.deleteAvailableGstins = rawGstins.map(g => ({
+            gstin: (g.gstin || g.gstinNumber || '').toUpperCase(),
+            address: g.address || g.registeredAddress || details?.address || '',
+            city: g.city || details?.city || '',
+            pincode: g.pincode || details?.pincode || '',
+            state: g.state || (g.gstin?.length >= 2 ? g.gstin.substring(0, 2) : ''),
+            effectiveFrom: g.effectiveFrom || '',
+            effectiveTo: g.effectiveTo || null,
+            active: g.active !== undefined ? g.active : !g.effectiveTo
+          }));
+
+          // Default Option A: Pre-select all active GSTINs
+          this.deleteSelectedGstinMap = {};
+          this.deleteAvailableGstins.forEach(g => {
+            if (this.isDeleteGstinActive(g)) {
+              this.deleteSelectedGstinMap[g.gstin] = true;
+            }
+          });
+
+          this.deleteVerificationMessage = 'Code found. Please enter the exact company name shown above to confirm disabling.';
         },
         error: (error) => {
           if (requestId !== this.deleteLookupRequestId) return;
@@ -1149,7 +1281,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   sendDeleteRequest(): void {
     if (this.deleteSubmitting || this.deleteVerifying) return;
     if (!this.isCurrentDeleteVerification()) {
-      this.deleteErrorMessage = 'Verify the current code before sending a delete request.';
+      this.deleteErrorMessage = 'Verify the current code before sending a disable request.';
       return;
     }
     if (!this.deleteCompanyName.trim()) {
@@ -1160,33 +1292,128 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       this.deleteErrorMessage = 'Company name does not match the selected code. Please verify the company name.';
       return;
     }
+    if (this.deleteDisableScope === 'GSTIN' && this.deleteAvailableGstins.length > 0 && this.getSelectedDeleteGstins().length === 0) {
+      this.deleteErrorMessage = 'Please select at least one GSTIN to disable.';
+      return;
+    }
 
     this.deleteErrorMessage = '';
     this.deleteSuccessMessage = '';
+
+    const codeTypeName = this.verifiedDeleteRecord!.codeType === 'GLOBAL_CUSTOMER' ? 'Global Customer Code' : 'Handling Agent Code';
+    const selectedGstins = this.getSelectedDeleteGstins();
+    const gstinsForReview = this.deleteDisableScope === 'GSTIN'
+      ? this.deleteAvailableGstins.filter(g => selectedGstins.includes(g.gstin))
+      : this.deleteAvailableGstins.filter(g => this.isDeleteGstinActive(g));
+
+    this.reviewData = {
+      operationType: 'DELETE_REQUEST',
+      title: 'Review Disable Request',
+      sectionName: `${codeTypeName} – Disable Request`,
+      codeType: this.verifiedDeleteRecord!.codeType,
+      customerCode: this.verifiedDeleteRecord!.code,
+      companyName: this.deleteCompanyName.trim(),
+      disableScope: this.deleteDisableScope,
+      deleteWarning: this.deleteDisableScope === 'GSTIN'
+        ? 'Only the selected GSTIN(s) will be disabled. Other GSTINs and the company code will remain active.'
+        : 'All selected records associated with this company code will be marked inactive. Historical records will be preserved.',
+      deleteDetails: [
+        { label: 'Record Type', value: codeTypeName },
+        { label: 'Company Code', value: this.verifiedDeleteRecord!.code },
+        { label: 'Company Name', value: this.deleteCompanyName.trim() },
+        { label: 'PAN Number', value: this.deleteRecordDetails?.panNumber || '—' },
+        { label: 'Registered Address', value: this.deleteRecordDetails?.address || '—' },
+        { label: 'City', value: this.deleteRecordDetails?.city || '—' },
+        { label: 'PIN Code', value: this.deleteRecordDetails?.pincode || this.deleteRecordDetails?.pcoCode || '—' },
+        { label: 'Zone / Division', value: [this.deleteRecordDetails?.zone, this.deleteRecordDetails?.operatingDivision].filter(Boolean).join(' / ') || '—' }
+      ],
+      deleteGstins: gstinsForReview.map(g => ({
+        gstin: g.gstin,
+        state: g.state,
+        address: g.address,
+        city: g.city,
+        pincode: g.pincode,
+        effectiveFrom: g.effectiveFrom || '—',
+        effectiveTo: g.effectiveTo || null,
+        newEffectiveTo: 'Current Date (SYSDATE)'
+      }))
+    };
+    this.showReviewModal = true;
+    this.cdr.markForCheck();
+  }
+
+  executeDeleteRequest(): void {
+    if (this.deleteSubmitting) return;
     this.deleteSubmitting = true;
+    this.reviewSubmitting = true;
+    this.cdr.markForCheck();
+
+    const selectedGstins = this.deleteDisableScope === 'GSTIN' ? this.getSelectedDeleteGstins() : [];
+    const request$ = (this.deleteDisableScope === 'CODE' || selectedGstins.length > 0)
+      ? this.customerService.submitDeleteRequest(
+          this.verifiedDeleteRecord!.codeType,
+          this.verifiedDeleteRecord!.code,
+          this.deleteCompanyName.trim(),
+          this.deleteDisableScope,
+          selectedGstins
+        )
+      : this.customerService.submitDeleteRequest(
+          this.verifiedDeleteRecord!.codeType,
+          this.verifiedDeleteRecord!.code,
+          this.deleteCompanyName.trim()
+        );
+
     this.activeRequestsSub.add(
-      this.customerService.submitDeleteRequest(
-        this.verifiedDeleteRecord!.codeType,
-        this.verifiedDeleteRecord!.code,
-        this.deleteCompanyName.trim()
-      ).pipe(
+      request$.pipe(
         finalize(() => {
           this.deleteSubmitting = false;
+          this.reviewSubmitting = false;
+          this.showReviewModal = false;
           this.cdr.markForCheck();
         })
       ).subscribe({
         next: (result) => {
-          this.deleteSuccessMessage = result?.message || 'Delete request sent successfully. The SQL has been sent to the DBA for execution.';
+          this.deleteSuccessMessage = result?.message || 'Disable request sent successfully. The SQL has been sent to the DBA for execution.';
           this.verifiedDeleteRecord = null;
           this.deleteRecordDetails = null;
+          this.deleteAvailableGstins = [];
+          this.deleteSelectedGstinMap = {};
           this.deleteCompanyName = '';
           this.deleteVerificationMessage = '';
+          this.notificationService.success('Disable Request Submitted', this.deleteSuccessMessage);
         },
         error: (error) => {
-          this.deleteErrorMessage = error?.error?.message || 'Unable to send the delete request. Please try again later.';
+          this.deleteErrorMessage = error?.error?.message || 'Unable to send the disable request. Please try again later.';
+          this.notificationService.error('Disable Request Failed', this.deleteErrorMessage);
         }
       })
     );
+  }
+
+  isDeleteGstinActive(g: any): boolean {
+    return !g?.effectiveTo && g?.active !== false;
+  }
+
+  toggleDeleteGstinSelection(gstin: string): void {
+    this.deleteSelectedGstinMap[gstin] = !this.deleteSelectedGstinMap[gstin];
+  }
+
+  selectAllDeleteGstins(): void {
+    this.deleteAvailableGstins.forEach(g => {
+      if (this.isDeleteGstinActive(g)) {
+        this.deleteSelectedGstinMap[g.gstin] = true;
+      }
+    });
+  }
+
+  deselectAllDeleteGstins(): void {
+    this.deleteAvailableGstins.forEach(g => {
+      this.deleteSelectedGstinMap[g.gstin] = false;
+    });
+  }
+
+  getSelectedDeleteGstins(): string[] {
+    return Object.keys(this.deleteSelectedGstinMap).filter(k => !!this.deleteSelectedGstinMap[k]);
   }
 
   private isCurrentDeleteVerification(): boolean {
@@ -1199,6 +1426,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     this.deleteLookupRequestId++;
     this.verifiedDeleteRecord = null;
     this.deleteRecordDetails = null;
+    this.deleteDisableScope = 'GSTIN';
+    this.deleteAvailableGstins = [];
+    this.deleteSelectedGstinMap = {};
     this.deleteCompanyName = '';
     this.deleteVerificationMessage = '';
     this.deleteErrorMessage = '';
@@ -1239,6 +1469,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               if (resp && resp.found && resp.data) {
                 this.lastLookupRecord = resp.data;
                 this.form.ownershipAddress = resp.data.ownershipDesc || '';
+                this.initialOwnershipDesc = resp.data.ownershipDesc || '';
                 this.form.ownershipPartyAddress = this.form.ownershipAddress;
                 this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
                 this.form.panNumber = (resp.data.panNumber || '').toUpperCase();
@@ -1300,6 +1531,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
                   || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
                   this.form.ownershipPartyAddress = resp.data.partyDesc || '';
+                  this.initialPartyDesc = resp.data.partyDesc || '';
                   this.ownSection2Found = true;
                   this.ownSection2Source = resp.data.recordSource;
                 } else {
@@ -1436,29 +1668,31 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                       ...blankGstin,
                       gstinId: `old-${idx}`,
                       gstin: g.toUpperCase(),
+                      persistedDetail: true,
                       state: getStateNameFromGstinCode(g.slice(0, 2)) || '',
                       registeredAddress: idx === 0 ? this.form.address : ''
                     }));
                 this.gstins = loadedGstins.length > 0
                   ? loadedGstins
-                  : [{ ...blankGstin, registeredAddress: this.form.address }];
+                  : [{ ...blankGstin, persistedDetail: true, registeredAddress: this.form.address }];
                 if (responseGstins.length > 0) {
-                  this.form.address = this.gstins[0].registeredAddress || '';
-                  this.form.city = this.gstins[0].city || '';
-                  this.form.pincode = this.gstins[0].pincode || '';
+                  this.form.address = this.gstins[0].registeredAddress || customer.address || '';
+                  this.form.city = this.gstins[0].city || customer.city || '';
+                  this.form.pincode = this.gstins[0].pincode || customer.pincode || customer.pcoCode || '';
                 } else {
                   this.form.address = this.gstins[0].registeredAddress || this.form.address;
                 }
               } else {
-                this.gstins = [{ ...blankGstin, registeredAddress: this.form.address }];
+                this.gstins = [{ ...blankGstin, persistedDetail: false, registeredAddress: this.form.address }];
               }
 
               const duplicateContext = this.readDuplicateUpdateContext();
               if (duplicateContext
                 && duplicateContext.codeType === type
                 && duplicateContext.companyCode === this.verifiedCustomerCode) {
+                this.navigationSource = duplicateContext.source;
+                this.updateRedirectContext = duplicateContext;
                 this.applyDuplicateUpdateContext(duplicateContext);
-                this.clearDuplicateUpdateContext();
               }
 
               this.removedGstinIds = [];
@@ -1473,6 +1707,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               if (duplicateContext?.codeType === type
                 && duplicateContext.companyCode === code.trim().toUpperCase()) {
                 this.clearDuplicateUpdateContext();
+                this.navigationSource = 'DIRECT_UPDATE';
+                this.updateRedirectContext = null;
               }
               this.verifiedCustomerCode = null;
               console.error('Lookup error:', err);
@@ -1499,7 +1735,25 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleOldCodeChange(code: string): void {
+    if (this.isCompanyCodeReadOnly) {
+      if (this.updateRedirectContext?.companyCode) {
+        this.form.customerCode = this.updateRedirectContext.companyCode;
+      }
+      return;
+    }
     this.triggerOldLookup(code, this.codeType);
+  }
+
+  onCustomerCodeKeydown(event: KeyboardEvent): void {
+    if (this.isCompanyCodeReadOnly) {
+      event.preventDefault();
+    }
+  }
+
+  onCustomerCodePaste(event: ClipboardEvent): void {
+    if (this.isCompanyCodeReadOnly) {
+      event.preventDefault();
+    }
   }
 
   private applyOldRecordDivision(customer: any): void {
@@ -1515,6 +1769,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleOldCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    if (this.isCompanyCodeReadOnly) {
+      return;
+    }
     if (newType === this.oldCodeType) {
       return;
     }
@@ -1687,7 +1944,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         e[`gstin_${i}_gstin`] = 'Duplicate Check Unavailable – Unable to verify this GSTIN.';
       }
 
-      if (this.isMultipleGstin()) {
+      if (this.mode === 'old' || this.isMultipleGstin()) {
         const addr = (g.registeredAddress || ((this.mode === 'old' || i === 0) ? this.form.address : '') || '').trim();
         if (!addr) {
           e[`gstin_${i}_address`] = `Registered address is required for ${g.gstin || 'GSTIN ' + (i + 1)}.`;
@@ -1810,13 +2067,13 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
       const stateSet = new Set<string>();
       const gstinSet = new Set<string>();
-      for (const g of this.gstins) {
+      for (const [i, g] of this.gstins.entries()) {
         if (this.gstins.length === 1 && !g.gstin?.trim() && !g.file && !g.state) {
           continue;
         }
         if (g.duplicateStatus === 'duplicate' || g.duplicateStatus === 'checking' || g.duplicateStatus === 'unavailable') return false;
-        const gstinAddr = (g.registeredAddress || this.form.address || '').trim();
-        if (this.isMultipleGstin() && !gstinAddr) return false;
+        const gstinAddr = (g.registeredAddress || (i === this.selectedGstinAddressIndex ? this.form.address : '') || this.form.address || '').trim();
+        if (!gstinAddr || gstinAddr.length > 100) return false;
         const gstin = normalizeDocumentNumber(g.gstin);
         if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
         if (gstin.slice(2, 12) !== pan) return false;
@@ -1827,7 +2084,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           if (stateSet.has(g.state)) return false;
           stateSet.add(g.state);
         }
-        if (g.file && this.checkFile(g.file)) return false;
+        if (g.file && (g.scanning || this.checkFile(g.file))) return false;
       }
 
       return true;
@@ -1971,6 +2228,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   handlePincodeChange(pin: string): void {
     this.form.pincode = (pin || '').trim();
+    if (this.gstins && this.gstins[this.selectedGstinAddressIndex]) {
+      this.gstins[this.selectedGstinAddressIndex].pincode = this.form.pincode;
+    }
     this.touchedFields['pincode'] = true;
     this.validateField('pincode');
     this.cdr.markForCheck();
@@ -2090,16 +2350,22 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (e.stopPropagation) e.stopPropagation();
     }
     if (this.mode === 'delete') {
-      this.verifyDeleteCode();
+      if (this.isCurrentDeleteVerification() && this.deleteCompanyName.trim() && this.isDeleteCompanyNameMatched()) {
+        this.sendDeleteRequest();
+      } else {
+        this.verifyDeleteCode();
+      }
       return;
     }
-    if (this.loading) {
+    if (this.loading || this.reviewSubmitting) {
       return;
     }
     if (this.gstins && this.gstins[this.selectedGstinAddressIndex]) {
       this.gstins[this.selectedGstinAddressIndex].registeredAddress = this.form.address;
+      this.gstins[this.selectedGstinAddressIndex].city = this.form.city;
+      this.gstins[this.selectedGstinAddressIndex].pincode = this.form.pincode;
     }
-    if (this.gstins && this.gstins.length > 0 && this.gstins[0].registeredAddress) {
+    if (this.mode !== 'old' && this.gstins && this.gstins.length > 0 && this.gstins[0].registeredAddress) {
       this.form.address = this.gstins[0].registeredAddress;
     }
     this.notice = '';
@@ -2118,125 +2384,333 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.loading = true;
-    this.cdr.markForCheck();
-    console.log('Submitting customer registration in mode:', this.mode);
-
     if (this.mode === 'ownership') {
-      const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
-      const ownershipAddress = (this.form.ownershipAddress || '').trim();
-      const ownershipPartyCode = ownershipCode;
-      const ownershipPartyAddress = ownershipAddress;
+      const isSection1New = this.ownSection1Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER';
+      const isSection2New = this.ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER';
+      const code1 = (this.form.ownershipCode || '').trim().toUpperCase();
+      const addr1 = (this.form.ownershipAddress || '').trim();
+      const code2 = (this.form.ownershipPartyCode || '').trim().toUpperCase();
+      const addr2 = (this.form.ownershipPartyAddress || '').trim();
 
-      this.customerService.submitOwnershipJDBC(
-        ownershipCode,
-        ownershipAddress,
-        ownershipPartyCode,
-        ownershipPartyAddress
-      ).pipe(
-        finalize(() => {
-          this.loading = false;
-          this.cdr.markForCheck();
-        })
-      ).subscribe({
-        next: (result) => {
-          if (this.isSuccessfulResponse(result)) {
-            this.notice = result?.message || 'Request email sent to DBA. Database changes are pending DBA execution.';
-            this.notificationService.success(
-              'Request Submitted Successfully',
-              'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
-            );
-          } else {
-            const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
-            this.notice = errorMsg;
-            this.notificationService.error('Submission Failed', errorMsg);
-          }
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          this.cdr.markForCheck();
+      this.reviewData = {
+        operationType: (isSection1New && isSection2New) ? 'OWNERSHIP_NEW' : 'OWNERSHIP_UPDATE',
+        title: (isSection1New && isSection2New) ? 'Review Ownership New Entry' : 'Review Ownership Update',
+        sectionName: 'Ownership Code',
+        codeType: 'OWNERSHIP',
+        customerCode: code1,
+        companyName: addr1,
+        ownershipSection1: {
+          title: 'Section 1: Global Customer Ownership (MEMGLBLCUST_OWN)',
+          operation: isSection1New ? 'NEW' : 'UPDATE',
+          code: code1,
+          address: addr1,
+          existingAddress: !isSection1New ? (this.initialOwnershipDesc || this.lastLookupRecord?.ownershipDesc) : undefined,
+          newAddress: addr1,
+          table: 'MEMGLBLCUST_OWN'
         },
-        error: (err) => {
-          console.error('Ownership submission error:', err);
-          const errorMsg = this.extractErrorMessage(err);
-          this.notice = errorMsg;
-          this.notificationService.error('Submission Failed', errorMsg);
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          this.cdr.markForCheck();
+        ownershipSection2: {
+          title: 'Section 2: Ownership Party (MEMGLBLCUST_OWN_PARTY)',
+          operation: isSection2New ? 'NEW' : 'UPDATE',
+          partyCode: code2,
+          partyAddress: addr2,
+          code: code2,
+          address: addr2,
+          existingAddress: !isSection2New ? (this.initialPartyDesc || this.lastLookupRecord?.partyDesc) : undefined,
+          newAddress: addr2,
+          table: 'MEMGLBLCUST_OWN_PARTY'
         }
-      });
-    } else if (this.mode === 'new') {
-      const payload: CustomerPayload = {
-        ...this.form,
-        customerCode: this.form.customerCode.toUpperCase(),
-        panNumber: this.form.panNumber.toUpperCase(),
-        codeType: this.codeType
       };
-      const gstinEntries = this.gstins.map((gstin) => ({
-        ...gstin,
-        gstin: gstin.gstin.toUpperCase()
+      this.showReviewModal = true;
+      this.cdr.markForCheck();
+    } else if (this.mode === 'new') {
+      const isGlobal = this.codeType === 'GLOBAL';
+      const gstinList: ReviewGstinItem[] = this.gstins.map((g, idx) => ({
+        gstin: g.gstin.toUpperCase(),
+        state: g.state || '',
+        address: g.registeredAddress || (idx === 0 ? this.form.address : ''),
+        city: g.city || (idx === 0 ? this.form.city : ''),
+        pincode: g.pincode || (idx === 0 ? this.form.pincode : '')
       }));
-      this.customerService.registerCustomer(payload, gstinEntries).pipe(
-        finalize(() => {
-          this.loading = false;
-          this.cdr.markForCheck();
-        })
-      ).subscribe({
-        next: (result) => {
-          if (this.isSuccessfulResponse(result)) {
-            const assignedCode = result?.customerCode;
-            this.reset();
-            this.notice = assignedCode
-              ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`
-              : (result?.message || 'Request email sent to DBA. The database change is pending DBA execution.');
-            this.notificationService.success(
-              'Request Submitted Successfully',
-              'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
-            );
-          } else {
-            const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
-            this.notice = errorMsg;
-            this.notificationService.error('Submission Failed', errorMsg);
+
+      this.reviewData = {
+        operationType: 'NEW_ENTRY',
+        title: 'Review New Entry',
+        sectionName: isGlobal ? 'Global Customer Code – New Entry' : 'Handling Agent Code – New Entry',
+        codeType: this.codeType,
+        customerCode: this.form.customerCode.toUpperCase(),
+        companyName: this.form.companyName.trim(),
+        panNumber: this.form.panNumber.toUpperCase(),
+        recordDetails: [
+          { label: 'Record Type', value: isGlobal ? 'Global Customer Code' : 'Handling Agent Code' },
+          { label: 'Company Name', value: this.form.companyName.trim() },
+          { label: 'Generated Code', value: this.form.customerCode.toUpperCase() },
+          { label: 'PAN Number', value: this.form.panNumber.toUpperCase() },
+          { label: 'Primary Address', value: this.form.address.trim() },
+          { label: 'City', value: this.form.city.trim() },
+          { label: 'PIN Code', value: (this.form.pincode || '').trim() },
+          { label: 'State', value: gstinList[0]?.state || '—' },
+          { label: 'Railway Zone', value: (this.form.zone || '').trim() },
+          { label: 'Operating Division', value: (this.form.operatingDivision || '').trim() },
+          { label: 'Email', value: this.form.email ? this.form.email.trim() : '—' },
+          { label: 'Mobile', value: this.form.mobile ? this.form.mobile.trim() : '—' }
+        ],
+        gstinList
+      };
+      this.showReviewModal = true;
+      this.cdr.markForCheck();
+    } else {
+      const isGlobal = this.codeType === 'GLOBAL';
+      const fieldChanges: FieldComparison[] = [];
+      const checkField = (label: string, oldVal: any, newVal: any) => {
+        const o = (oldVal ?? '').toString().trim();
+        const n = (newVal ?? '').toString().trim();
+        if (o !== n && (o || n)) {
+          fieldChanges.push({ field: label, existingValue: o || '—', newValue: n || '—' });
+        }
+      };
+      checkField('Company Name', this.lastLookupRecord?.companyName, this.form.companyName);
+      checkField('PAN Number', this.lastLookupRecord?.panNumber, this.form.panNumber);
+      checkField('Primary Address', this.lastLookupRecord?.address, this.form.address);
+      checkField('City', this.lastLookupRecord?.city, this.form.city);
+      checkField('PIN Code', this.lastLookupRecord?.pincode || this.lastLookupRecord?.pcoCode, this.form.pincode);
+      if (this.divisionSelectionManuallyChanged) {
+        checkField('Railway Zone', this.lastLookupRecord?.zone, this.form.zone);
+        checkField('Operating Division', this.lastLookupRecord?.operatingDivision, this.form.operatingDivision);
+      }
+      checkField('Email', this.lastLookupRecord?.email || this.lastLookupRecord?.emailId, this.form.email);
+      checkField('Mobile', this.lastLookupRecord?.mobile || this.lastLookupRecord?.phoneNumber, this.form.mobile);
+
+      const addedGstins: ReviewGstinItem[] = [];
+      const updatedGstinAddresses: ReviewGstinAddressUpdate[] = [];
+
+      const existingGstinMap = new Map<string, any>();
+      if (Array.isArray(this.lastLookupRecord?.gstins)) {
+        for (const row of this.lastLookupRecord.gstins) {
+          const gNum = String(row.gstin || row.gstinNumber || '').trim().toUpperCase();
+          if (gNum) existingGstinMap.set(gNum, row);
+        }
+      }
+
+      for (const g of this.gstins) {
+        const gNum = String(g.gstin || '').trim().toUpperCase();
+        if (!gNum) continue;
+        const existing = existingGstinMap.get(gNum);
+        if (!existing && !g.persistedDetail && !String(g.gstinId || '').startsWith('old-')) {
+          addedGstins.push({
+            gstin: gNum,
+            state: g.state || '',
+            address: g.registeredAddress || '—',
+            city: g.city || '—',
+            pincode: g.pincode || '—'
+          });
+        } else if (existing) {
+          const oldAddr = (existing.registeredAddress ?? existing.address ?? '').trim();
+          const newAddr = (g.registeredAddress ?? '').trim();
+          if (newAddr && oldAddr !== newAddr) {
+            updatedGstinAddresses.push({
+              gstin: gNum,
+              field: 'Registered Address',
+              existingValue: oldAddr || '—',
+              newValue: newAddr
+            });
           }
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          this.cdr.markForCheck();
-        },
-        error: (err) => {
-          console.error('New registration submission error:', err);
-          const errorMsg = this.extractErrorMessage(err);
+        }
+      }
+
+      const removedGstins: ReviewGstinItem[] = (this.pendingGstinRemovals || []).map(r => {
+        const existing = existingGstinMap.get(r.gstin);
+        return {
+          gstin: r.gstin,
+          state: existing?.state || '',
+          address: existing?.registeredAddress ?? existing?.address ?? '',
+          effectiveTo: r.effectiveFrom || 'Today'
+        };
+      });
+
+      const parentUnchanged = fieldChanges.length === 0 && (addedGstins.length > 0 || updatedGstinAddresses.length > 0 || removedGstins.length > 0);
+
+      this.reviewData = {
+        operationType: 'UPDATE_CODE',
+        title: 'Review Update Request',
+        sectionName: isGlobal ? 'Global Customer Code – Update Code' : 'Handling Agent Code – Update Code',
+        codeType: this.codeType,
+        customerCode: this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase(),
+        companyName: this.form.companyName.trim(),
+        panNumber: this.form.panNumber.trim().toUpperCase(),
+        fieldChanges,
+        addedGstins,
+        updatedGstinAddresses,
+        removedGstins,
+        parentUnchangedNotice: parentUnchanged
+          ? 'Only GSTIN detail record(s) will be added/updated. The existing company code and parent company record will remain unchanged.'
+          : undefined
+      };
+      this.showReviewModal = true;
+      this.cdr.markForCheck();
+    }
+  }
+
+  onReviewConfirm(): void {
+    if (this.reviewSubmitting) return;
+    if (this.mode === 'delete') {
+      this.executeDeleteRequest();
+    } else if (this.mode === 'ownership') {
+      this.executeOwnershipSubmit();
+    } else if (this.mode === 'new') {
+      this.executeNewSubmit();
+    } else {
+      this.executeOldSubmit();
+    }
+  }
+
+  onReviewCancel(): void {
+    if (this.reviewSubmitting) return;
+    this.showReviewModal = false;
+    this.cdr.markForCheck();
+  }
+
+  executeOwnershipSubmit(): void {
+    this.loading = true;
+    this.reviewSubmitting = true;
+    this.cdr.markForCheck();
+
+    const ownershipCode = (this.form.ownershipCode || '').trim().toUpperCase();
+    const ownershipAddress = (this.form.ownershipAddress || '').trim();
+    const ownershipPartyCode = ownershipCode;
+    const ownershipPartyAddress = ownershipAddress;
+
+    this.customerService.submitOwnershipJDBC(
+      ownershipCode,
+      ownershipAddress,
+      ownershipPartyCode,
+      ownershipPartyAddress
+    ).pipe(
+      finalize(() => {
+        this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
+      next: (result) => {
+        if (this.isSuccessfulResponse(result)) {
+          this.notice = result?.message || 'Request email sent to DBA. Database changes are pending DBA execution.';
+          this.notificationService.success(
+            'Request Submitted Successfully',
+            'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
+          );
+        } else {
+          const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
           this.notice = errorMsg;
           this.notificationService.error('Submission Failed', errorMsg);
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          this.cdr.markForCheck();
         }
-      });
-    } else {
-      const customerCode = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
-      this.customerService.updateOldCustomerJDBC(
-        {
-          ...this.form,
-          customerCode,
-          codeType: this.codeType,
-          operatingDivision: this.divisionSelectionManuallyChanged && this.form.operatingDivision
-            ? this.form.operatingDivision
-            : undefined
-        },
-        this.gstins,
-        this.pendingGstinRemovals
-      ).pipe(
-        finalize(() => {
-          this.loading = false;
-          this.cdr.markForCheck();
-        })
-      ).subscribe({
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Ownership submission error:', err);
+        const errorMsg = this.extractErrorMessage(err);
+        this.notice = errorMsg;
+        this.notificationService.error('Submission Failed', errorMsg);
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  executeNewSubmit(): void {
+    this.loading = true;
+    this.reviewSubmitting = true;
+    this.cdr.markForCheck();
+
+    const payload: CustomerPayload = {
+      ...this.form,
+      customerCode: this.form.customerCode.toUpperCase(),
+      panNumber: this.form.panNumber.toUpperCase(),
+      codeType: this.codeType
+    };
+    const gstinEntries = this.gstins.map((gstin) => ({
+      ...gstin,
+      gstin: gstin.gstin.toUpperCase()
+    }));
+    this.customerService.registerCustomer(payload, gstinEntries).pipe(
+      finalize(() => {
+        this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
+      next: (result) => {
+        if (this.isSuccessfulResponse(result)) {
+          const assignedCode = result?.customerCode;
+          this.reset();
+          this.notice = assignedCode
+            ? `Request email sent to DBA. Database changes are pending DBA execution. Customer Code: ${assignedCode}`
+            : (result?.message || 'Request email sent to DBA. The database change is pending DBA execution.');
+          this.notificationService.success(
+            'Request Submitted Successfully',
+            'Your request has been submitted successfully, and the SQL query has been sent to the DBA for execution.'
+          );
+        } else {
+          const errorMsg = result?.message || 'The request could not be confirmed as successfully submitted.';
+          this.notice = errorMsg;
+          this.notificationService.error('Submission Failed', errorMsg);
+        }
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('New registration submission error:', err);
+        const errorMsg = this.extractErrorMessage(err);
+        this.notice = errorMsg;
+        this.notificationService.error('Submission Failed', errorMsg);
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  executeOldSubmit(): void {
+    this.loading = true;
+    this.reviewSubmitting = true;
+    this.cdr.markForCheck();
+
+    const customerCode = this.verifiedCustomerCode || this.form.customerCode.trim().toUpperCase();
+    this.customerService.updateOldCustomerJDBC(
+      {
+        ...this.form,
+        customerCode,
+        expectedCustomerCode: this.updateRedirectContext?.companyCode || customerCode,
+        navigationSource: this.navigationSource,
+        codeType: this.codeType,
+        operatingDivision: this.divisionSelectionManuallyChanged && this.form.operatingDivision
+          ? this.form.operatingDivision
+          : undefined
+      },
+      this.gstins,
+      this.pendingGstinRemovals
+    ).pipe(
+      finalize(() => {
+        this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
         next: (result) => {
           if (this.isSuccessfulResponse(result)) {
+            this.clearDuplicateUpdateContext();
+            this.navigationSource = 'DIRECT_UPDATE';
+            this.updateRedirectContext = null;
             this.clearSelectedUploads();
             this.notice = result?.message || 'Request email sent to DBA. The database change is pending DBA execution.';
             this.notificationService.success(
@@ -2349,11 +2823,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         }
       });
-    }
   }
 
   addGstin(): void {
-    this.gstins.push({ ...blankGstin });
+    this.gstins.push({ ...blankGstin, persistedDetail: false });
   }
 
   removeGstin(index: number): void {
@@ -2647,6 +3120,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     if (this.errors['address'] === 'Address cannot exceed 100 characters.' && this.normalizedAddressLength <= 100) {
       delete this.errors['address'];
     }
+    delete this.errors[`gstin_${this.selectedGstinAddressIndex}_address`];
   }
 
   async handleGstinFileChange(index: number, e: Event): Promise<void> {
@@ -2840,7 +3314,32 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         this.gstins[index].pincode = pincode || '';
       }
 
-      if (this.mode !== 'old') {
+      if (this.mode === 'old') {
+        const companyPan = normalizeDocumentNumber(this.form.panNumber);
+        if (companyPan && gstinDerivedPan && gstinDerivedPan !== companyPan) {
+          const message = `GSTIN ${normalizedGstin} does not match company PAN ${companyPan}.`;
+          this.handleGstinChange(index, { scanning: false, scanStatus: 'error', scanError: message, scanProgress: '' });
+          this.errors[`gstin_${index}_gstin`] = message;
+          return;
+        }
+
+        if (cleanedAddress) {
+          this.gstins[index].registeredAddress = cleanedAddress;
+          if (city) this.gstins[index].city = city;
+          if (pincode) this.gstins[index].pincode = pincode;
+          if (this.selectedGstinAddressIndex === index) {
+            this.form.address = cleanedAddress;
+            if (city) this.form.city = city;
+            if (pincode) this.form.pincode = pincode;
+          }
+          this.addressStatus = 'auto-filled';
+          delete this.errors['address'];
+          delete this.errors[`gstin_${index}_address`];
+        } else {
+          this.addressStatus = 'extraction-failed';
+          this.errors[`gstin_${index}_address`] = `Unable to extract address from GSTIN document. Please enter registered address manually.`;
+        }
+      } else {
         // 1. Company Name (only if index === 0 or companyName is not set)
         if (index === 0 || !this.form.companyName) {
           const extractedCompany = (tradeName && tradeName.trim())

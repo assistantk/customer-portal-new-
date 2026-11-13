@@ -177,7 +177,9 @@ describe('DeleteRequestComponent', () => {
     customerService.submitDeleteRequest.mockReturnValue(request.asObservable());
 
     component.sendRequest();
-    component.sendRequest();
+    expect(component.showReviewModal).toBe(true);
+    component.onReviewConfirm();
+    component.onReviewConfirm();
 
     expect(customerService.submitDeleteRequest).toHaveBeenCalledTimes(1);
     request.next({ message: 'sent' });
@@ -201,6 +203,8 @@ describe('DeleteRequestComponent', () => {
     );
 
     component.sendRequest();
+    expect(component.showReviewModal).toBe(true);
+    component.onReviewConfirm();
 
     expect(component.submitting).toBe(false);
     expect(component.errorMessage).toBe('Email delivery failed');

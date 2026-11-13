@@ -813,6 +813,16 @@ label b {
     color: #fff;
 }
 
+.code-type-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.code-lock-icon {
+    color: #64748b;
+}
+
 /* ===== Inline Field Status ===== */
 .field-status {
     margin-left: auto;

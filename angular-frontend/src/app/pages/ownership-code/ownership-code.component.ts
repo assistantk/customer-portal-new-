@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
 import { getDivisionFormSelection } from '../../utils/division-codes';
 import { IMAGE_ASSETS } from '../../config/image-assets';
 import { ZoneDivisionService } from '../../services/zone-division.service';
+import { ReviewModalData } from '../../components/review-modal/review-modal.component';
 
 export interface OwnershipForm {
   // Section 1
@@ -61,6 +62,11 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
   errors: Record<string, string> = {};
   notice = '';
   loading = false;
+  showReviewModal = false;
+  reviewSubmitting = false;
+  reviewData: ReviewModalData | null = null;
+  initialOwnershipDesc = '';
+  initialPartyDesc = '';
   touchedFields: Record<string, boolean> = {};
 
   // Ownership Section 1 states (Ownership Code)
@@ -226,6 +232,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
             if (reqId !== this.ownSection1ReqId) return;
             if (resp && resp.found && resp.data) {
               this.form.ownershipAddress = resp.data.ownershipDesc || '';
+              this.initialOwnershipDesc = resp.data.ownershipDesc || '';
               this.form.ownershipPartyAddress = this.form.ownershipAddress;
               this.form.address = (resp.data.address || '').replace(/,\s+/g, ',').trim();
               this.form.panNumber = resp.data.panNumber || '';
@@ -287,6 +294,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
               if (resp.data.recordSource === 'EXISTING_OWNERSHIP_RECORD'
                   || resp.data.recordSource === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER') {
                 this.form.ownershipPartyAddress = resp.data.partyDesc || '';
+                this.initialPartyDesc = resp.data.partyDesc || '';
                 this.ownSection2Found = true;
                 this.ownSection2Source = resp.data.recordSource;
               } else {
@@ -597,6 +605,11 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     this.touchedFields = {};
     this.notice = '';
     this.loading = false;
+    this.showReviewModal = false;
+    this.reviewSubmitting = false;
+    this.reviewData = null;
+    this.initialOwnershipDesc = '';
+    this.initialPartyDesc = '';
     this.ownSection1Loading = false;
     this.ownSection1Found = null;
     this.ownSection1Duplicate = false;
@@ -628,7 +641,7 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
       e.stopPropagation();
     }
 
-    if (this.loading) return;
+    if (this.loading || this.reviewSubmitting) return;
     this.notice = '';
 
     if (!this.isFormValid || !this.validate()) {
@@ -644,6 +657,46 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const isSection1New = this.ownSection1Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER';
+    const isSection2New = this.ownSection2Source === 'NEW_RECORD_FROM_GLOBAL_CUSTOMER';
+    const code = (this.form.ownershipCode || '').trim().toUpperCase();
+    const addr = (this.form.ownershipAddress || '').trim();
+
+    this.reviewData = {
+      operationType: (isSection1New && isSection2New) ? 'OWNERSHIP_NEW' : 'OWNERSHIP_UPDATE',
+      title: (isSection1New && isSection2New) ? 'Review Ownership New Entry' : 'Review Ownership Update',
+      sectionName: 'Ownership Code',
+      codeType: 'OWNERSHIP',
+      customerCode: code,
+      companyName: addr,
+      ownershipSection1: {
+        title: 'Section 1: Global Customer Ownership (MEMGLBLCUST_OWN)',
+        operation: isSection1New ? 'NEW' : 'UPDATE',
+        code: code,
+        address: addr,
+        existingAddress: !isSection1New ? this.initialOwnershipDesc : undefined,
+        newAddress: addr,
+        table: 'MEMGLBLCUST_OWN'
+      },
+      ownershipSection2: {
+        title: 'Section 2: Ownership Party (MEMGLBLCUST_OWN_PARTY)',
+        operation: isSection2New ? 'NEW' : 'UPDATE',
+        partyCode: code,
+        partyAddress: addr,
+        code: code,
+        address: addr,
+        existingAddress: !isSection2New ? this.initialPartyDesc : undefined,
+        newAddress: addr,
+        table: 'MEMGLBLCUST_OWN_PARTY'
+      }
+    };
+    this.showReviewModal = true;
+    this.cdr.markForCheck();
+  }
+
+  onReviewConfirm(): void {
+    if (this.reviewSubmitting) return;
+    this.reviewSubmitting = true;
     this.loading = true;
     this.cdr.markForCheck();
 
@@ -658,6 +711,8 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
     ).pipe(
       finalize(() => {
         this.loading = false;
+        this.reviewSubmitting = false;
+        this.showReviewModal = false;
         this.cdr.markForCheck();
       })
     ).subscribe({
@@ -690,6 +745,12 @@ export class OwnershipCodeComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }
     });
+  }
+
+  onReviewCancel(): void {
+    if (this.reviewSubmitting) return;
+    this.showReviewModal = false;
+    this.cdr.markForCheck();
   }
 
   private extractErrorMessage(err: any): string {
