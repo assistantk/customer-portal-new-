@@ -240,6 +240,43 @@
                                 <small *ngIf="errors['gstin_' + i + '_state']" class="error">{{ errors['gstin_' + i +
                                     '_state'] }}</small>
                             </div>
+
+                            <!-- Individual Address text field for this GSTIN -->
+                            <div class="field gstin-address-field" style="margin-top: 6px;">
+                                <label [attr.for]="'address-' + i">
+                                    Address <b *ngIf="mode !== 'old' || g.persistedDetail || g.gstin">*</b>
+                                </label>
+                                <div class="control" [class.invalid]="errors['gstin_' + i + '_address']">
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                        <circle cx="12" cy="10" r="3" />
+                                    </svg>
+                                    <input [id]="'address-' + i" [name]="'address-' + i" type="text"
+                                        [ngModel]="g.registeredAddress"
+                                        [ngModelOptions]="{ standalone: true }"
+                                        (ngModelChange)="handleGstinAddressChange(i, $event)"
+                                        (blur)="handleGstinAddressBlur(i)"
+                                        [placeholder]="'Enter registered address for GSTIN ' + (i + 1)"
+                                        maxlength="100" />
+                                </div>
+                                <small *ngIf="errors['gstin_' + i + '_address']" class="error">
+                                    {{ errors['gstin_' + i + '_address'] }}
+                                </small>
+                                <small *ngIf="!errors['gstin_' + i + '_address'] && g.registeredAddress"
+                                    [style.color]="g.registeredAddress.length > 90 ? (g.registeredAddress.length > 100 ? 'var(--danger, #dc2626)' : 'var(--warning, #ca8a04)') : 'var(--muted, #6b7280)'"
+                                    style="font-size: 0.75rem; margin-top: 2px; display: block; text-align: right;">
+                                    {{ g.registeredAddress.length }}/100 characters
+                                </small>
+                                <small *ngIf="!errors['gstin_' + i + '_address'] && g.addressStatus === 'auto-filled'" class="address-status success"
+                                    style="color: var(--success, #16a34a); font-size: 0.78rem; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                                    <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                                        <polyline points="22 4 12 14.01 9 11.01" />
+                                    </svg> Auto-filled from GSTIN document
+                                </small>
+                            </div>
                         </div>
 
                         <!-- Add GSTIN Button inside card -->

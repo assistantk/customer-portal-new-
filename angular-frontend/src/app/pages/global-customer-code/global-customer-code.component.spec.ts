@@ -168,6 +168,8 @@ describe('GlobalCustomerCodeComponent', () => {
     };
 
     component.submit();
+    expect(component.showReviewModal).toBe(true);
+    component.onReviewConfirm();
     expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ city: '' }),
       expect.any(Array)

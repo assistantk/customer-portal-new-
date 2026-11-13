@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigationEnd } from '@angular/router';
 import '../../app-module';
 import { CustomerRegistrationComponent } from './customer-registration.component';
-import { CustomerService, PanCompanyRecord } from '../../services/customer.service';
+import { CustomerService, PanCompanyRecord, GstinEntry } from '../../services/customer.service';
 import { PanOcrService } from '../../services/pan-ocr.service';
 import { NotificationService } from '../../services/notification.service';
 import { ZoneDivisionService } from '../../services/zone-division.service';
@@ -2831,6 +2831,157 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       expect(component.navigationSource).toBe('DIRECT_UPDATE');
       expect(component.updateRedirectContext).toBeNull();
       expect(component.isCompanyCodeReadOnly).toBe(false);
+    });
+  });
+
+  describe('GSTIN-wise Address Handling (Section 10 Requirements)', () => {
+    const makeGstin = (overrides: Partial<GstinEntry> = {}): GstinEntry => ({
+      gstin: '',
+      state: '',
+      file: null,
+      existingFileName: '',
+      scanning: false,
+      scanStatus: 'idle',
+      scanError: '',
+      scanProgress: '',
+      addressStatus: '',
+      registeredAddress: '',
+      city: '',
+      pincode: '',
+      ...overrides
+    });
+
+    it('Scenario 1: New Entry with multiple GSTINs maintains independent address for each GSTIN', () => {
+      component.switchMode('new');
+      expect(component.gstins.length).toBe(1);
+
+      // Add 3 more GSTINs -> total 4 GSTINs
+      component.addGstin();
+      component.addGstin();
+      component.addGstin();
+      expect(component.gstins.length).toBe(4);
+
+      // Populate separate addresses for each GSTIN
+      component.handleGstinAddressChange(0, 'Address 1 - Andhra Pradesh');
+      component.handleGstinAddressChange(1, 'Address 2 - Delhi');
+      component.handleGstinAddressChange(2, 'Address 3 - Maharashtra');
+      component.handleGstinAddressChange(3, 'Address 4 - Karnataka');
+
+      expect(component.gstins[0].registeredAddress).toBe('Address 1 - Andhra Pradesh');
+      expect(component.gstins[1].registeredAddress).toBe('Address 2 - Delhi');
+      expect(component.gstins[2].registeredAddress).toBe('Address 3 - Maharashtra');
+      expect(component.gstins[3].registeredAddress).toBe('Address 4 - Karnataka');
+
+      // Primary address syncs with GSTIN 0
+      expect(component.form.address).toBe('Address 1 - Andhra Pradesh');
+    });
+
+    it('Scenario 2: Update Code loads existing GSTINs with their distinct registered addresses from DB', () => {
+      component.switchMode('old');
+      customerServiceMock.lookupHandlingAgentJDBC.mockReturnValue(of({
+        code: 'SRIV',
+        companyName: 'M/S SRI VENKATESWARA FERTILISERS',
+        panNumber: 'AAFFS1071E',
+        address: '15/483,G.H.ROAD,ADONI,ANDHRA PRADESH,518301',
+        city: 'ADONI',
+        gstinNumbers: '37AAFFS1071E1ZF,07AAFFS1071E1ZF',
+        gstins: [
+          {
+            gstin: '37AAFFS1071E1ZF',
+            registeredAddress: '15/483,G.H.ROAD,ADONI,ANDHRA PRADESH,518301',
+            city: 'ADONI',
+            pincode: '518301'
+          },
+          {
+            gstin: '07AAFFS1071E1ZF',
+            registeredAddress: 'Plot 45, Okhla Industrial Area, Phase III, New Delhi',
+            city: 'NEW DELHI',
+            pincode: '110020'
+          }
+        ]
+      }));
+
+      component.codeType = 'HANDLING_AGENT';
+      component.form.customerCode = 'SRIV';
+      vi.useFakeTimers();
+      component.triggerOldLookup('SRIV', 'HANDLING_AGENT');
+      vi.advanceTimersByTime(800);
+
+      expect(component.lookupDone).toBe(true);
+      expect(component.gstins.length).toBe(2);
+      expect(component.gstins[0].registeredAddress).toBe('15/483,G.H.ROAD,ADONI,ANDHRA PRADESH,518301');
+      expect(component.gstins[1].registeredAddress).toBe('Plot 45, Okhla Industrial Area, Phase III, New Delhi');
+
+      vi.useRealTimers();
+    });
+
+    it('Scenario 3: Adding a new GSTIN in Update Code creates an independent entry with blank address without altering existing', () => {
+      component.gstins = [
+        makeGstin({ gstin: '37AAFFS1071E1ZF', registeredAddress: 'Address 1', persistedDetail: true }),
+        makeGstin({ gstin: '07AAFFS1071E1ZF', registeredAddress: 'Address 2', persistedDetail: true })
+      ];
+
+      component.addGstin();
+      expect(component.gstins.length).toBe(3);
+      expect(component.gstins[0].registeredAddress).toBe('Address 1');
+      expect(component.gstins[1].registeredAddress).toBe('Address 2');
+      expect(component.gstins[2].registeredAddress).toBe('');
+
+      // Modify the new entry's address
+      component.handleGstinAddressChange(2, 'New Address for GSTIN 3');
+      expect(component.gstins[0].registeredAddress).toBe('Address 1');
+      expect(component.gstins[1].registeredAddress).toBe('Address 2');
+      expect(component.gstins[2].registeredAddress).toBe('New Address for GSTIN 3');
+    });
+
+    it('Scenario 4: Switching between GSTINs in dropdown preserves each address independently', () => {
+      component.gstins = [
+        makeGstin({ gstin: '37AAFFS1071E1ZF', registeredAddress: 'Address 1 - AP', city: 'Adoni' }),
+        makeGstin({ gstin: '07AAFFS1071E1ZF', registeredAddress: 'Address 2 - Delhi', city: 'Delhi' })
+      ];
+      component.selectedGstinAddressIndex = 0;
+      component.form.address = 'Address 1 - AP';
+
+      // Switch to index 1
+      component.onSelectGstinAddress(1);
+      expect(component.selectedGstinAddressIndex).toBe(1);
+      expect(component.form.address).toBe('Address 2 - Delhi');
+
+      // Edit address for index 1 via lower form
+      component.form.address = 'Updated Delhi Address';
+      component.handleAddressInput();
+      expect(component.gstins[1].registeredAddress).toBe('Updated Delhi Address');
+      expect(component.gstins[0].registeredAddress).toBe('Address 1 - AP');
+
+      // Switch back to index 0
+      component.onSelectGstinAddress(0);
+      expect(component.selectedGstinAddressIndex).toBe(0);
+      expect(component.form.address).toBe('Address 1 - AP');
+      expect(component.gstins[1].registeredAddress).toBe('Updated Delhi Address');
+    });
+
+    it('Scenario 5: Submission payload sends distinct addresses for each GSTIN in gstinDetails', () => {
+      customerServiceMock.registerCustomer.mockReturnValue(of({ success: true, customerCode: 'TEST' }));
+      component.mode = 'new';
+      component.codeType = 'GLOBAL';
+      component.form.customerCode = 'TEST';
+      component.form.companyName = 'Test Company Ltd';
+      component.form.panNumber = 'ABCDE1234F';
+      component.form.address = 'Main Address';
+      component.gstins = [
+        makeGstin({ gstin: '37ABCDE1234F1ZF', state: 'Andhra Pradesh', registeredAddress: 'AP Address' }),
+        makeGstin({ gstin: '07ABCDE1234F1ZF', state: 'Delhi', registeredAddress: 'Delhi Address' })
+      ];
+
+      component.executeNewSubmit();
+
+      expect(customerServiceMock.registerCustomer).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.arrayContaining([
+          expect.objectContaining({ gstin: '37ABCDE1234F1ZF', registeredAddress: 'AP Address' }),
+          expect.objectContaining({ gstin: '07ABCDE1234F1ZF', registeredAddress: 'Delhi Address' })
+        ])
+      );
     });
   });
 });

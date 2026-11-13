@@ -35,12 +35,16 @@ const blankGstin: GstinEntry = {
   state: '',
   stateCode: '',
   gstin: '',
+  registeredAddress: '',
+  city: '',
+  pincode: '',
   file: null,
   existingFileName: '',
   scanning: false,
   scanStatus: 'idle',
   scanError: '',
-  scanProgress: ''
+  scanProgress: '',
+  addressStatus: ''
 };
 
 export const INDIAN_STATES: string[] = [
@@ -425,7 +429,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     const idx = typeof newIndex === 'string' ? parseInt(newIndex, 10) : newIndex;
     if (isNaN(idx) || idx < 0 || idx >= this.gstins.length) return;
 
-    if (this.gstins[this.selectedGstinAddressIndex]) {
+    if (this.selectedGstinAddressIndex >= 0 && this.gstins[this.selectedGstinAddressIndex]) {
       this.gstins[this.selectedGstinAddressIndex].registeredAddress = this.form.address;
       this.gstins[this.selectedGstinAddressIndex].city = this.form.city;
       this.gstins[this.selectedGstinAddressIndex].pincode = this.form.pincode;
@@ -537,10 +541,8 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (index >= 0) {
         this.selectGstinDetail(index);
       } else {
-        this.selectedGstinAddressIndex = -1;
-        this.form.address = '';
-        this.form.city = '';
-        this.form.pincode = '';
+        this.selectedGstinAddressIndex = 0;
+        this.selectGstinDetail(0);
         this.notice = `GSTIN ${context.gstin} was not returned for code ${context.companyCode}. Please verify the record before updating.`;
       }
       return;
@@ -560,6 +562,11 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   private selectGstinDetail(index: number): void {
+    if (this.selectedGstinAddressIndex >= 0 && this.selectedGstinAddressIndex !== index && this.gstins[this.selectedGstinAddressIndex]) {
+      this.gstins[this.selectedGstinAddressIndex].registeredAddress = this.form.address;
+      this.gstins[this.selectedGstinAddressIndex].city = this.form.city;
+      this.gstins[this.selectedGstinAddressIndex].pincode = this.form.pincode;
+    }
     this.selectedGstinAddressIndex = index;
     const selected = this.gstins[index];
     this.form.address = selected?.registeredAddress || '';
@@ -1675,12 +1682,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                 this.gstins = loadedGstins.length > 0
                   ? loadedGstins
                   : [{ ...blankGstin, persistedDetail: true, registeredAddress: this.form.address }];
+                this.selectedGstinAddressIndex = 0;
                 if (responseGstins.length > 0) {
                   this.form.address = this.gstins[0].registeredAddress || customer.address || '';
                   this.form.city = this.gstins[0].city || customer.city || '';
                   this.form.pincode = this.gstins[0].pincode || customer.pincode || customer.pcoCode || '';
                 } else {
                   this.form.address = this.gstins[0].registeredAddress || this.form.address;
+                }
+                if (this.gstins[0] && !this.gstins[0].registeredAddress && this.form.address) {
+                  this.gstins[0].registeredAddress = this.form.address;
                 }
               } else {
                 this.gstins = [{ ...blankGstin, persistedDetail: false, registeredAddress: this.form.address }];
@@ -1944,15 +1955,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         e[`gstin_${i}_gstin`] = 'Duplicate Check Unavailable – Unable to verify this GSTIN.';
       }
 
-      if (this.mode === 'old' || this.isMultipleGstin()) {
+      if (this.mode === 'old' || this.isMultipleGstin() || this.mode === 'new') {
         const addr = (g.registeredAddress || ((this.mode === 'old' || i === 0) ? this.form.address : '') || '').trim();
-        if (!addr) {
-          e[`gstin_${i}_address`] = `Registered address is required for ${g.gstin || 'GSTIN ' + (i + 1)}.`;
-          if (!e['address']) {
-            e['address'] = `Registered address is required for ${g.gstin || 'GSTIN ' + (i + 1)}.`;
+        const isAddrRequired = this.mode !== 'old' || g.persistedDetail || Boolean(g.gstin);
+        if (isAddrRequired) {
+          if (!addr) {
+            e[`gstin_${i}_address`] = `Registered address is required for ${g.gstin || 'GSTIN ' + (i + 1)}.`;
+            if (!e['address'] && (i === 0 || i === this.selectedGstinAddressIndex)) {
+              e['address'] = `Registered address is required for ${g.gstin || 'GSTIN ' + (i + 1)}.`;
+            }
+          } else if (this.getNormalizedAddress(addr).length > 100) {
+            e[`gstin_${i}_address`] = `Address for ${g.gstin || 'GSTIN ' + (i + 1)} cannot exceed 100 characters.`;
           }
-        } else if (this.getNormalizedAddress(addr).length > 100) {
-          e[`gstin_${i}_address`] = `Address for ${g.gstin || 'GSTIN ' + (i + 1)} cannot exceed 100 characters.`;
         }
       }
     });
@@ -2023,7 +2037,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       for (const [i, g] of this.gstins.entries()) {
         if (g.duplicateStatus === 'duplicate' || g.duplicateStatus === 'checking' || g.duplicateStatus === 'unavailable') return false;
         const gstinAddr = (g.registeredAddress || (i === 0 ? this.form.address : '') || '').trim();
-        if (this.isMultipleGstin() && !gstinAddr) return false;
+        if (!gstinAddr || gstinAddr.length > 100) return false;
         if (!g.state?.trim()) return false;
         if (stateSet.has(g.state.trim())) return false;
         stateSet.add(g.state.trim());
@@ -2784,13 +2798,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
                         const selectedIndex = selectedGstinBeforeRefresh
                           ? loadedGstins.findIndex(entry => entry.gstin === selectedGstinBeforeRefresh)
                           : this.selectedGstinAddressIndex;
-                        if (selectedIndex >= 0 && selectedIndex < loadedGstins.length) {
-                          this.selectGstinDetail(selectedIndex);
-                        } else {
-                          this.selectedGstinAddressIndex = -1;
-                          this.form.address = '';
-                          this.form.city = '';
-                          this.form.pincode = '';
+                        const validIndex = (selectedIndex >= 0 && selectedIndex < loadedGstins.length) ? selectedIndex : 0;
+                        this.selectGstinDetail(validIndex);
+                        if (this.gstins[0] && !this.gstins[0].registeredAddress && this.form.address) {
+                          this.gstins[0].registeredAddress = this.form.address;
                         }
                       }
                     } else {
@@ -2826,7 +2837,14 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   addGstin(): void {
-    this.gstins.push({ ...blankGstin, persistedDetail: false });
+    this.gstins.push({
+      ...blankGstin,
+      registeredAddress: '',
+      city: '',
+      pincode: '',
+      addressStatus: '',
+      persistedDetail: false
+    });
   }
 
   removeGstin(index: number): void {
@@ -3034,6 +3052,50 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     } else if (this.errors[field]) {
       delete this.errors[field];
     }
+  }
+
+  handleGstinAddressChange(index: number, address: string): void {
+    if (!this.gstins[index]) return;
+    this.gstins[index].registeredAddress = address;
+    if (this.selectedGstinAddressIndex === index || (index === 0 && this.mode === 'new')) {
+      this.form.address = address;
+    }
+    const field = `gstin_${index}_address`;
+    if (address && address.trim()) {
+      delete this.errors[field];
+      if (this.selectedGstinAddressIndex === index || index === 0) {
+        delete this.errors['address'];
+      }
+    }
+    this.cdr.markForCheck();
+  }
+
+  handleGstinAddressBlur(index: number): void {
+    const g = this.gstins[index];
+    if (!g) return;
+    let addr = g.registeredAddress || '';
+    if (addr) {
+      addr = this.getNormalizedAddress(addr);
+      g.registeredAddress = addr;
+    }
+    if (this.selectedGstinAddressIndex === index || (index === 0 && this.mode === 'new')) {
+      this.form.address = addr;
+    }
+    const field = `gstin_${index}_address`;
+    const isRequired = this.mode !== 'old' || g.persistedDetail || Boolean(g.gstin);
+    if (!addr.trim()) {
+      if (isRequired) {
+        this.errors[field] = `Registered address is required for ${g.gstin || 'GSTIN ' + (index + 1)}.`;
+      }
+    } else if (addr.length > 100) {
+      this.errors[field] = `Address for ${g.gstin || 'GSTIN ' + (index + 1)} cannot exceed 100 characters.`;
+    } else {
+      delete this.errors[field];
+      if (this.selectedGstinAddressIndex === index || index === 0) {
+        delete this.errors['address'];
+      }
+    }
+    this.cdr.markForCheck();
   }
 
   handlePanChange(value: string, isManual = true): void {
@@ -3325,18 +3387,22 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
         if (cleanedAddress) {
           this.gstins[index].registeredAddress = cleanedAddress;
+          this.gstins[index].addressStatus = 'auto-filled';
           if (city) this.gstins[index].city = city;
           if (pincode) this.gstins[index].pincode = pincode;
           if (this.selectedGstinAddressIndex === index) {
             this.form.address = cleanedAddress;
             if (city) this.form.city = city;
             if (pincode) this.form.pincode = pincode;
+            this.addressStatus = 'auto-filled';
+            delete this.errors['address'];
           }
-          this.addressStatus = 'auto-filled';
-          delete this.errors['address'];
           delete this.errors[`gstin_${index}_address`];
         } else {
-          this.addressStatus = 'extraction-failed';
+          this.gstins[index].addressStatus = 'extraction-failed';
+          if (this.selectedGstinAddressIndex === index) {
+            this.addressStatus = 'extraction-failed';
+          }
           this.errors[`gstin_${index}_address`] = `Unable to extract address from GSTIN document. Please enter registered address manually.`;
         }
       } else {
@@ -3383,12 +3449,16 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
         // 3. Address
         if (cleanedAddress) {
+          this.gstins[index].registeredAddress = cleanedAddress;
+          this.gstins[index].addressStatus = 'auto-filled';
+          delete this.errors[`gstin_${index}_address`];
           if (index === 0 || index === this.selectedGstinAddressIndex) {
             this.form.address = cleanedAddress;
             this.addressStatus = 'auto-filled';
             delete this.errors['address'];
           }
         } else {
+          this.gstins[index].addressStatus = 'extraction-failed';
           if (index === 0 || index === this.selectedGstinAddressIndex) {
             this.addressStatus = 'extraction-failed';
           }

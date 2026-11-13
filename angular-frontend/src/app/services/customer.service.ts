@@ -376,12 +376,12 @@ export class CustomerService {
     const gstinNumbers = gstinEntries.map(g => g.gstin).filter(Boolean).join(',');
     formData.append('gstinNumbers', gstinNumbers);
 
-    const gstinDetails = JSON.stringify(gstinEntries.map(g => ({
+    const gstinDetails = JSON.stringify(gstinEntries.map((g, idx) => ({
       gstin: g.gstin,
       state: g.state,
-      address: g.registeredAddress || payload.address || '',
-      city: g.city || payload.city || '',
-      pincode: g.pincode || payload.pincode || ''
+      address: (g.registeredAddress && g.registeredAddress.trim()) ? g.registeredAddress.trim() : (idx === 0 ? (payload.address || '') : ''),
+      city: g.city || (idx === 0 ? (payload.city || '') : ''),
+      pincode: g.pincode || (idx === 0 ? (payload.pincode || '') : '')
     })));
     formData.append('gstinDetails', gstinDetails);
 
@@ -407,12 +407,12 @@ export class CustomerService {
       .filter(Boolean)
       .join(',');
 
-    const gstinDetails = JSON.stringify(gstinEntries.map(g => ({
+    const gstinDetails = JSON.stringify(gstinEntries.map((g, idx) => ({
       gstin: g.gstin,
       state: g.state,
-      address: g.registeredAddress || payload.address || '',
-      city: g.city || payload.city || '',
-      pincode: g.pincode || payload.pincode || ''
+      address: (g.registeredAddress && g.registeredAddress.trim()) ? g.registeredAddress.trim() : (idx === 0 ? (payload.address || '') : ''),
+      city: g.city || (idx === 0 ? (payload.city || '') : ''),
+      pincode: g.pincode || (idx === 0 ? (payload.pincode || '') : '')
     })));
 
     const updateBody: any = {
