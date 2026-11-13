@@ -1433,7 +1433,7 @@ public class CustomerServiceImpl implements CustomerService {
 
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
-   requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
+   requested.put(pincodeColumn, null);
   }
   if (formData.containsKey("operatingDivision")) {
    current.put(divisionColumn, oldCustomer.getDivision());
@@ -1453,8 +1453,11 @@ public class CustomerServiceImpl implements CustomerService {
     assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
   }
+  boolean onlyPincodeChangeInRemovalRequest = formData.containsKey("gstinRemovals")
+      && assignments.size() == 1
+      && assignments.get(0).regionMatches(true, 0, pincodeColumn + " = ", 0, pincodeColumn.length() + 3);
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-   if (!assignments.isEmpty()) {
+   if (!assignments.isEmpty() && !onlyPincodeChangeInRemovalRequest) {
     String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
         + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
     emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));

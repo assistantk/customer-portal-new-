@@ -48,6 +48,7 @@ public class DbaEmailService {
     private final JavaMailSender mailSender;
     private final String fromEmail;
     private final String dbaEmail;
+    private final String dbaEmailCc;
     private final JdbcPortalUserLookupRepository portalUserLookupRepository;
 
     @Autowired
@@ -55,15 +56,39 @@ public class DbaEmailService {
             JavaMailSender mailSender,
             @Value("${spring.mail.username:mondal.prasanta@cris.org.in}") String fromEmail,
             @Value("${app.dba-email:mondal.prasanta@cris.org.in}") String dbaEmail,
+            @Value("${app.dba-email-cc:mondal.prasanta@cris.org.in,malhotra.poonam@cris.org.in}") String dbaEmailCc,
             JdbcPortalUserLookupRepository portalUserLookupRepository) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
         this.dbaEmail = dbaEmail;
+        this.dbaEmailCc = dbaEmailCc;
         this.portalUserLookupRepository = portalUserLookupRepository;
     }
 
     public DbaEmailService(JavaMailSender mailSender, String fromEmail, String dbaEmail) {
-        this(mailSender, fromEmail, dbaEmail, null);
+        this(mailSender, fromEmail, dbaEmail, "mondal.prasanta@cris.org.in,malhotra.poonam@cris.org.in", null);
+    }
+
+    public DbaEmailService(JavaMailSender mailSender, String fromEmail, String dbaEmail,
+            JdbcPortalUserLookupRepository portalUserLookupRepository) {
+        this(mailSender, fromEmail, dbaEmail, "mondal.prasanta@cris.org.in,malhotra.poonam@cris.org.in", portalUserLookupRepository);
+    }
+
+    private void addDbaCcRecipients(SimpleMailMessage message) {
+        if (dbaEmailCc == null || dbaEmailCc.trim().isEmpty()) {
+            return;
+        }
+
+        List<String> recipients = new ArrayList<>();
+        for (String rawRecipient : dbaEmailCc.split(",")) {
+            String trimmed = rawRecipient.trim();
+            if (!trimmed.isEmpty()) {
+                recipients.add(trimmed);
+            }
+        }
+        if (!recipients.isEmpty()) {
+            message.setCc(recipients.toArray(new String[0]));
+        }
     }
 
     public void sendDbaAuditEmail(DatabaseOperationAudit audit) {
@@ -71,8 +96,8 @@ public class DbaEmailService {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
-            message.setTo(dbaEmail, "mondal.prasanta@cris.org.in");
-            message.setCc("mondal.prasanta@cris.org.in");
+            message.setTo(dbaEmail);
+            addDbaCcRecipients(message);
 
             String operation = audit.getOperationType() == null
                     ? "QUERY"
@@ -153,6 +178,7 @@ public class DbaEmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
+        addDbaCcRecipients(message);
         message.setSubject(buildEmailSubject(operation, parentTable + ", " + detailTable, code));
 
         StringBuilder body = new StringBuilder("Dear DBA Team,\n\n"
@@ -278,6 +304,7 @@ public class DbaEmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(dbaEmail);
+        addDbaCcRecipients(message);
 
         List<SqlRequest> ownershipPair = registrationInserts == null
                 ? orderedOwnershipInsertPair(requests)
