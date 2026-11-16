@@ -42,6 +42,14 @@ public class PanGstinRecord {
         this.address = address;
     }
 
+    public String getRegisteredAddress() {
+        return address;
+    }
+
+    public void setRegisteredAddress(String registeredAddress) {
+        this.address = registeredAddress;
+    }
+
     public String getCity() {
         return city;
     }
