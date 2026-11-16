@@ -157,9 +157,12 @@
                                     </svg> {{ g.scanError || 'GSTIN could not be detected. Please enter your GSTIN manually.' }}
                                 </small>
                                 <small
-                                    *ngIf="errors['gstin_' + i + '_gstin'] && g.scanStatus !== 'notfound' && g.scanStatus !== 'error'"
+                                    *ngIf="errors['gstin_' + i + '_gstin'] && !isDuplicateGstin(i) && g.scanStatus !== 'notfound' && g.scanStatus !== 'error'"
                                     class="error">
                                     {{ errors['gstin_' + i + '_gstin'] }}
+                                </small>
+                                <small *ngIf="isDuplicateGstin(i)" class="error" role="alert">
+                                    Duplicate GSTIN – this GSTIN is already entered in another field.
                                 </small>
                                 <small
                                     *ngIf="!errors['gstin_' + i + '_gstin'] && getGstinPanStatus(g.gstin, form.panNumber) === 'GSTIN matches PAN'"

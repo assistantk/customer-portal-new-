@@ -1633,8 +1633,22 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               this.applyOldRecordDivision(customer);
 
               const panAvailable = this.isValueAvailable(customer.panNumber);
-              const gstAvailable = this.isGstAvailable(customer.gstinNumbers)
-                || (Array.isArray(customer.gstins) && customer.gstins.length > 0);
+              const responseGstins = Array.isArray(customer.gstins) ? customer.gstins : [];
+              const detailGstins = responseGstins
+                .map((entry: any) => ({
+                  entry,
+                  gstin: String(entry?.gstin || entry?.gstinNumber || entry?.MAVCUSTGSTNUMB || '')
+                    .replace(/\s/g, '').toUpperCase()
+                }))
+                .filter((detail: any) => Boolean(detail.gstin));
+              const listedGstins = (customer.gstinNumbers || '')
+                .replace(/[\[\]"'\s]/g, '')
+                .split(',')
+                .map((gstin: string) => gstin.trim().toUpperCase())
+                .filter((gstin: string) => Boolean(gstin)
+                  && gstin.toLowerCase() !== 'null'
+                  && gstin.toLowerCase() !== 'undefined');
+              const gstAvailable = detailGstins.length > 0 || listedGstins.length > 0;
 
               this.isOldPanDisabled = panAvailable;
               this.isOldGstDisabled = gstAvailable;
@@ -1646,50 +1660,35 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
               }
 
               if (gstAvailable) {
-                const responseGstins = Array.isArray(customer.gstins) ? customer.gstins : [];
-                const loadedGstins: GstinEntry[] = responseGstins.length > 0
-                  ? responseGstins
-                    .filter((entry: any) => entry && (entry.gstin || entry.gstinNumber))
-                    .map((entry: any, idx: number) => {
-                      const gstin = String(entry.gstin || entry.gstinNumber).replace(/\s/g, '').toUpperCase();
-                      return {
-                        ...blankGstin,
-                        gstinId: entry.gstinId ?? `old-${idx}`,
-                        gstin,
-                        effectiveFrom: entry.effectiveFrom || '',
-                        effectiveTo: entry.effectiveTo || '',
-                        implementationDate: entry.implementationDate || '',
-                        persistedDetail: true,
-                        state: entry.state || getStateNameFromGstinCode(gstin.slice(0, 2)) || '',
-                        registeredAddress: entry.registeredAddress ?? entry.address ?? '',
-                        city: entry.city || '',
-                        pincode: entry.pincode || ''
-                      };
-                    })
-                  : (customer.gstinNumbers || '')
-                    .replace(/[\[\]"'\s]/g, '')
-                    .split(',')
-                    .map((g: string) => g.trim())
-                    .filter((g: string) => Boolean(g) && g.toLowerCase() !== 'null' && g.toLowerCase() !== 'undefined')
-                    .map((g: string, idx: number) => ({
-                      ...blankGstin,
-                      gstinId: `old-${idx}`,
-                      gstin: g.toUpperCase(),
-                      persistedDetail: true,
-                      state: getStateNameFromGstinCode(g.slice(0, 2)) || '',
-                      registeredAddress: idx === 0 ? this.form.address : ''
-                    }));
+                const gstinList = listedGstins.length > 0
+                  ? listedGstins
+                  : detailGstins.map((detail: any) => detail.gstin);
+                const loadedGstins: GstinEntry[] = gstinList.map((gstin: string, idx: number) => {
+                  const detailIndex = detailGstins.findIndex((detail: any) => detail.gstin === gstin);
+                  const entry = detailIndex >= 0
+                    ? detailGstins[detailIndex].entry
+                    : responseGstins[idx] || {};
+                  return {
+                    ...blankGstin,
+                    gstinId: entry.gstinId ?? `old-${idx}`,
+                    gstin,
+                    effectiveFrom: entry.effectiveFrom || '',
+                    effectiveTo: entry.effectiveTo || '',
+                    implementationDate: entry.implementationDate || '',
+                    persistedDetail: true,
+                    state: entry.state || getStateNameFromGstinCode(gstin.slice(0, 2)) || '',
+                    registeredAddress: entry.registeredAddress ?? entry.address ?? (idx === 0 ? this.form.address : ''),
+                    city: entry.city || '',
+                    pincode: entry.pincode || ''
+                  };
+                });
                 this.gstins = loadedGstins.length > 0
                   ? loadedGstins
                   : [{ ...blankGstin, persistedDetail: true, registeredAddress: this.form.address }];
                 this.selectedGstinAddressIndex = 0;
-                if (responseGstins.length > 0) {
-                  this.form.address = this.gstins[0].registeredAddress || customer.address || '';
-                  this.form.city = this.gstins[0].city || customer.city || '';
-                  this.form.pincode = this.gstins[0].pincode || customer.pincode || customer.pcoCode || '';
-                } else {
-                  this.form.address = this.gstins[0].registeredAddress || this.form.address;
-                }
+                this.form.address = this.gstins[0].registeredAddress || customer.address || '';
+                this.form.city = this.gstins[0].city || customer.city || '';
+                this.form.pincode = this.gstins[0].pincode || customer.pincode || customer.pcoCode || '';
                 if (this.gstins[0] && !this.gstins[0].registeredAddress && this.form.address) {
                   this.gstins[0].registeredAddress = this.form.address;
                 }
@@ -1937,8 +1936,12 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
       if (!g.gstin || !g.gstin.trim()) e[`gstin_${i}_gstin`] = 'GSTIN is required';
       else if (!gstinRe.test(normalizedGstin) || normalizedGstin.length !== 15) e[`gstin_${i}_gstin`] = 'Enter a valid 15-character GSTIN.';
       else if (gstinSet.has(normalizedGstin)) e[`gstin_${i}_gstin`] = 'GSTIN already added';
-      else if (normalizedGstin.slice(2, 12) !== normalizedPan) e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
-      else gstinSet.add(normalizedGstin);
+      else {
+        gstinSet.add(normalizedGstin);
+        if (normalizedGstin.slice(2, 12) !== normalizedPan) {
+          e[`gstin_${i}_gstin`] = 'GSTIN does not match the PAN number.';
+        }
+      }
 
       if (!g.file && !g.existingFileName && this.mode === 'new') {
         e[`gstin_${i}_file`] = 'GSTIN file is required';
@@ -2044,9 +2047,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
         const gstin = normalizeDocumentNumber(g.gstin);
         if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
-        if (gstin.slice(2, 12) !== pan) return false;
         if (gstinSet.has(gstin)) return false;
         gstinSet.add(gstin);
+        if (gstin.slice(2, 12) !== pan) return false;
 
         if (!g.file && !g.existingFileName) return false;
         if (g.file && this.checkFile(g.file)) return false;
@@ -2090,9 +2093,9 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         if (!gstinAddr || gstinAddr.length > 100) return false;
         const gstin = normalizeDocumentNumber(g.gstin);
         if (!gstin || !gstinRe.test(gstin) || gstin.length !== 15) return false;
-        if (gstin.slice(2, 12) !== pan) return false;
         if (gstinSet.has(gstin)) return false;
         gstinSet.add(gstin);
+        if (gstin.slice(2, 12) !== pan) return false;
 
         if (g.state) {
           if (stateSet.has(g.state)) return false;
@@ -2889,6 +2892,13 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
 
   trackByGstin(index: number, item: GstinEntry): any {
     return item.gstinId || index;
+  }
+
+  isDuplicateGstin(index: number): boolean {
+    const gstin = normalizeDocumentNumber(this.gstins[index]?.gstin);
+    return Boolean(gstin) && this.gstins.some((entry, entryIndex) =>
+      entryIndex !== index && normalizeDocumentNumber(entry.gstin) === gstin
+    );
   }
 
   handleGstinChange(index: number, updates: Partial<GstinEntry>): void {

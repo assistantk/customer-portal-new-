@@ -2915,6 +2915,66 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       vi.useRealTimers();
     });
 
+    it('loads the listed GSTIN when a lookup detail row has an address but no GSTIN field', () => {
+      component.switchMode('old');
+      customerServiceMock.lookupOldCustomerJDBC.mockReturnValue(of({
+        customerCode: 'GGBT',
+        companyName: 'M/S GREEN GLOBE TRADELINKS',
+        panNumber: 'CBDPG4131J',
+        address: '18B LOCK GATE ROAD, COSSIPORE, KOLKATA, WESTBENGAL',
+        gstinNumbers: '07CBDPG4131J1Z1',
+        gstins: [{
+          registeredAddress: '18B LOCK GATE ROAD, COSSIPORE, KOLKATA, WESTBENGAL'
+        }]
+      }));
+
+      vi.useFakeTimers();
+      component.triggerOldLookup('GGBT', 'GLOBAL');
+      vi.advanceTimersByTime(800);
+
+      expect(component.gstins).toHaveLength(1);
+      expect(component.gstins[0].gstin).toBe('07CBDPG4131J1Z1');
+      expect(component.gstins[0].state).toBe('Delhi');
+      expect(component.gstins[0].registeredAddress)
+        .toBe('18B LOCK GATE ROAD, COSSIPORE, KOLKATA, WESTBENGAL');
+      expect(component.gstins[0].persistedDetail).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it('warns and prevents Update Code submission when two GSTIN entries are identical', () => {
+      component.mode = 'old';
+      component.form.customerCode = 'GGBT';
+      component.form.companyName = 'M/S GREEN GLOBE TRADELINKS';
+      component.form.address = 'Registered address';
+      component.form.panNumber = 'AABCE3742R';
+      component.lookupDone = true;
+      component.lookupLoading = false;
+      component.lookupError = '';
+      component.verifiedCustomerCode = 'GGBT';
+      component.gstins = [
+        makeGstin({
+          gstin: '19AABCE3742R1Z4',
+          state: 'West Bengal',
+          registeredAddress: 'Registered address',
+          persistedDetail: true,
+          duplicateStatus: 'available'
+        }),
+        makeGstin({
+          gstin: '19AABCE3742R1Z4',
+          state: 'West Bengal',
+          registeredAddress: 'Registered address',
+          duplicateStatus: 'available'
+        })
+      ];
+
+      expect(component.isDuplicateGstin(0)).toBe(true);
+      expect(component.isDuplicateGstin(1)).toBe(true);
+      expect(component.isFormValid).toBe(false);
+      expect(component.validate()).toBe(false);
+      expect(component.errors['gstin_1_gstin']).toBe('GSTIN already added');
+    });
+
     it('Scenario 3: Adding a new GSTIN in Update Code creates an independent entry with blank address without altering existing', () => {
       component.gstins = [
         makeGstin({ gstin: '37AAFFS1071E1ZF', registeredAddress: 'Address 1', persistedDetail: true }),
