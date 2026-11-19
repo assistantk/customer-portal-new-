@@ -988,7 +988,7 @@ class CustomerServiceImplTest {
             "expected", "CITYNAME = 'MUMBAI'"));
         cases.put("pincode", Map.of(
             "pincode", "400001",
-            "expected", "MAVPCOCODE = '400001'"));
+            "expected", "MAVPCOCODE = NULL"));
         cases.put("division", Map.of(
             "operatingDivision", "Mumbai (CSTM)",
             "expected", "MAVIMPLREMK = 'SR.DCM/CSTM'"));
@@ -1030,7 +1030,6 @@ class CustomerServiceImplTest {
                     "companyName", "M/S OLD COMPANY",
                     "address", "OLD ROAD,MARKET AREA",
                     "city", "PATNA",
-                    "pincode", "800001",
                     "panNumber", "AAAAA1111A",
                     "gstinNumbers", "27AAAAA1111A1Z5",
                     "operatingDivision", "Danapur (DNR)"
@@ -1047,6 +1046,8 @@ class CustomerServiceImplTest {
                     assertTrue(body.contains("UPDATE " + dtlsTable + " SET MADDATEEFCTTO = TRUNC(SYSDATE)"), () -> codeType + " GSTIN soft disable:\n" + body);
                     assertFalse(body.contains("DELETE FROM " + dtlsTable), () -> codeType + " GSTIN delete should not occur:\n" + body);
                     assertFalse(body.contains("UPDATE " + table + " SET"), () -> codeType + " parent should not be updated on GSTIN change:\n" + body);
+                } else if ("pincode".equals(testCase.getKey())) {
+                    assertTrue(body.contains("MAVPCOCODE = NULL"), () -> codeType + " pincode should always be NULL:\n" + body);
                 } else {
                     String expectedAssignments = testCase.getValue().get("expected")
                         .replace("MAVGLBLCUSTNAME", nameColumn)
@@ -1105,13 +1106,56 @@ class CustomerServiceImplTest {
                     submitted.put("address", "OLD ROAD, MARKET AREA");
                 }
 
-                IllegalArgumentException error = assertThrows(
-                    IllegalArgumentException.class,
-                    () -> service(dataSource, mailSender).updateOldCustomerJDBC(submitted));
-                assertEquals("No changes detected for this record.", error.getMessage());
-                verify(mailSender, never()).send(any(SimpleMailMessage.class));
+                assertDoesNotThrow(() -> service(dataSource, mailSender).updateOldCustomerJDBC(submitted));
+                String body = emailedBody(mailSender);
+                assertTrue(body.contains("MAVPCOCODE = NULL"), () -> codeType + " pincode should be reset to NULL for every update:\n" + body);
+                verify(mailSender).send(any(SimpleMailMessage.class));
             }
         }
+    }
+
+    @Test
+    void updateOldCustomerJDBC_forcesParentTablePcoCodeToNullInGeneratedSql() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        PreparedStatement lookupDetailsPs = mock(PreparedStatement.class);
+        PreparedStatement updateDetailsPs = mock(PreparedStatement.class);
+        ResultSet lookupRs = mock(ResultSet.class);
+        ResultSet lookupDetailsRs = mock(ResultSet.class);
+        ResultSet updateDetailsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
+        when(lookupPs.executeQuery()).thenReturn(lookupRs);
+        when(lookupDetailsPs.executeQuery()).thenReturn(lookupDetailsRs);
+        when(updateDetailsPs.executeQuery()).thenReturn(updateDetailsRs);
+        when(lookupRs.next()).thenReturn(true, false);
+        when(lookupRs.getString("MAVGLBLCUSTCODE")).thenReturn("AB12");
+        when(lookupRs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S OLD COMPANY");
+        when(lookupRs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD ROAD");
+        when(lookupRs.getString("MAVCUSTPANNUMB")).thenReturn("AAECR3577N");
+        when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAECR3577NLZE");
+        when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
+        when(lookupRs.getString("MAVPCOCODE")).thenReturn("110001");
+        stubSingleExistingGstinDetail(lookupDetailsRs);
+        stubSingleExistingGstinDetail(updateDetailsRs);
+
+        service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+            "codeType", "global",
+            "customerCode", "AB12",
+            "companyName", "M/S NEW COMPANY",
+            "address", "NEW ROAD",
+            "city", "Nagpur",
+            "pincode", "400001",
+            "panNumber", "AAECR3577N",
+            "gstinNumbers", "27AAECR3577NLZE"
+        ));
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("MAVPCOCODE = NULL"), body);
+        assertFalse(body.contains("MAVPCOCODE = '400001'"), body);
+        assertFalse(body.contains("MAVPCOCODE = '110001'"), body);
     }
 
     @Test
@@ -2048,7 +2092,7 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void dbaSqlEmailDoesNotCopyPoonamOnCc() {
+    void dbaSqlEmailIncludesPoonamOnCc() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
 
@@ -2056,7 +2100,8 @@ class CustomerServiceImplTest {
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
-        assertNull(message.getValue().getCc());
+        assertNotNull(message.getValue().getCc());
+        assertTrue(Arrays.asList(message.getValue().getCc()).contains("malhotra.poonam@cris.org.in"));
     }
 
     @Test

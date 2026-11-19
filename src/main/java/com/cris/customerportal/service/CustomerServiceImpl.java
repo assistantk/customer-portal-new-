@@ -233,7 +233,7 @@ public class CustomerServiceImpl implements CustomerService {
    if (handlingCode == null || handlingCode.trim().isEmpty() || conn == null) {
     return Collections.emptyList();
    }
-   String sql = "SELECT MAVCUSTGSTNUMB FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ? ORDER BY MADIMPLDATE, MAVCUSTGSTNUMB";
+   String sql = "SELECT MAVCUSTGSTNUMB FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ? AND MADDATEEFCTTO IS NULL ORDER BY MADIMPLDATE, MAVCUSTGSTNUMB";
    List<String> list = new ArrayList<>();
    try (PreparedStatement ps = conn.prepareStatement(sql)) {
     if (ps != null) {
@@ -275,7 +275,7 @@ public class CustomerServiceImpl implements CustomerService {
        + "TO_CHAR(MADIMPLDATE, 'YYYY-MM-DD HH24:MI:SS') AS IMPLEMENTATION_DATE, "
        + "TO_CHAR(MADDATEEFCTFROM, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_FROM, "
        + "TO_CHAR(MADDATEEFCTTO, 'YYYY-MM-DD HH24:MI:SS') AS EFFECTIVE_TO "
-       + "FROM " + table + " WHERE " + codeColumn + " = ? "
+       + "FROM " + table + " WHERE " + codeColumn + " = ? AND MADDATEEFCTTO IS NULL "
        + "ORDER BY MADDATEEFCTFROM, MAVCUSTGSTNUMB";
    List<com.cris.customerportal.dto.PanGstinRecord> details = new ArrayList<>();
    try (PreparedStatement statement = conn.prepareStatement(sql)) {
@@ -1431,7 +1431,7 @@ public class CustomerServiceImpl implements CustomerService {
 
   if (formData.containsKey("pincode")) {
    current.put(pincodeColumn, oldCustomer.getPincode());
-   requested.put(pincodeColumn, normalizeNullableValue(formData.get("pincode")));
+   requested.put(pincodeColumn, null);
   }
   if (formData.containsKey("operatingDivision")) {
    current.put(divisionColumn, oldCustomer.getDivision());
@@ -1451,8 +1451,11 @@ public class CustomerServiceImpl implements CustomerService {
     assignments.add(entry.getKey() + " = " + formatSqlValue(entry.getValue()));
    }
   }
+  boolean onlyPincodeChangeInRemovalRequest = formData.containsKey("gstinRemovals")
+      && assignments.size() == 1
+      && assignments.get(0).regionMatches(true, 0, pincodeColumn + " = ", 0, pincodeColumn.length() + 3);
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
-   if (!assignments.isEmpty()) {
+   if (!assignments.isEmpty() && !onlyPincodeChangeInRemovalRequest) {
     String executableSql = "UPDATE " + table + " SET " + String.join(", ", assignments)
         + " WHERE " + keyColumn + " = " + formatSqlValue(customerCode.trim()) + ";";
     emailRequests.add(new DbaEmailService.SqlRequest("UPDATE", table, customerCode.trim(), executableSql));
