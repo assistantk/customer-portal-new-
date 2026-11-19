@@ -38,6 +38,12 @@ class RmsAuthControllerTest {
         captchaService = mock(CaptchaService.class);
 
         RmsApiClient mockClient = mock(RmsApiClient.class);
+        RmsApiResponse termAccepted = new RmsApiResponse();
+        termAccepted.setErrorNo("0");
+        termAccepted.setStatus("S");
+        termAccepted.setSrvcName("ATSESNMNTC");
+        when(mockClient.terminateAllSessions(any())).thenReturn(termAccepted);
+
         RmsApiResponse credentialsAccepted = new RmsApiResponse();
         credentialsAccepted.setErrorNo("0");
         credentialsAccepted.setUserId("SREEJU");
@@ -76,6 +82,36 @@ class RmsAuthControllerTest {
         assertTrue((Boolean) body.get("success"));
         verify(captchaService).consumeChallenge(session, "AbCd23");
         verify(session).setAttribute(eq(AuthController.RMS_SESSION_CONTEXT_KEY), any(RmsAuthSessionContext.class));
+    }
+
+    @Test
+    void extractClientId_extractsFirstIpFromForwardedHeaderOrRemoteAddr() {
+        HttpServletRequest mockReq1 = mock(HttpServletRequest.class);
+        when(mockReq1.getHeader("X-FORWARDED-FOR")).thenReturn("192.168.1.55, 10.0.0.1");
+        assertEquals("192.168.1.55", AuthController.extractClientId(mockReq1));
+
+        HttpServletRequest mockReq2 = mock(HttpServletRequest.class);
+        when(mockReq2.getHeader("X-FORWARDED-FOR")).thenReturn(null);
+        when(mockReq2.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(mockReq2.getRemoteAddr()).thenReturn("172.16.0.4");
+        assertEquals("172.16.0.4", AuthController.extractClientId(mockReq2));
+
+        HttpServletRequest mockReq3 = mock(HttpServletRequest.class);
+        when(mockReq3.getHeader("X-FORWARDED-FOR")).thenReturn("   10.20.30.40   ");
+        assertEquals("10.20.30.40", AuthController.extractClientId(mockReq3));
+    }
+
+    @Test
+    void validateUser_passesDynamicClientIdToOrchestrator() {
+        RmsValidateUserRequest req = new RmsValidateUserRequest("SREEJU", "test@123", "TKD");
+        req.setCaptchaInput("AbCd23");
+        when(captchaService.consumeChallenge(session, "AbCd23")).thenReturn(true);
+        when(request.getHeader("X-FORWARDED-FOR")).thenReturn("10.55.66.77, 10.0.0.2");
+
+        ResponseEntity<?> response = controller.validateUser(req, request);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(orchestrator).validateCredentials("SREEJU", "test@123", "TKD", "10.55.66.77");
     }
 
     @Test

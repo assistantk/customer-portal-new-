@@ -37,7 +37,47 @@ public class LogFileStartupVerifier implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             Path logDirectory = Paths.get(configuredLogDirectory).toAbsolutePath().normalize();
-            Files.createDirectories(logDirectory);
+            Path baseDirectory = logDirectory.getParent();
+
+            // 1. Check whether base logging directory exists (e.g. /switch/applogs/WEBAPPI)
+            if (baseDirectory != null && Files.exists(baseDirectory)) {
+                LOGGER.info("Base logging directory exists: {}", baseDirectory);
+            } else if (baseDirectory != null) {
+                LOGGER.warn("Base logging directory does not exist yet: {}; attempting creation", baseDirectory);
+                try {
+                    Files.createDirectories(baseDirectory);
+                } catch (Exception ex) {
+                    LOGGER.warn("Could not create base directory {}: {}", baseDirectory, ex.getMessage());
+                }
+            }
+
+            // 2. Create the FreightCodeLog directory if it does not exist
+            if (!Files.exists(logDirectory)) {
+                Files.createDirectories(logDirectory);
+                LOGGER.info("Created application log directory: {}", logDirectory);
+            }
+
+            // 3. Automatically create required internal folders
+            String[] internalFolders = {
+                "Controllers",
+                "Services",
+                "Repositories",
+                "DAO",
+                "Configuration",
+                "Security",
+                "DTO",
+                "Entities",
+                "Exceptions",
+                "Application",
+                "archive"
+            };
+            for (String folder : internalFolders) {
+                Path folderPath = logDirectory.resolve(folder);
+                if (!Files.exists(folderPath)) {
+                    Files.createDirectories(folderPath);
+                }
+            }
+
             if (!Files.isDirectory(logDirectory) || !Files.isWritable(logDirectory)) {
                 throw startupFailure(logDirectory, "directory is not writable");
             }
@@ -54,6 +94,11 @@ public class LogFileStartupVerifier implements ApplicationRunner {
                 throw startupFailure(logDirectory, "active log file is not configured");
             }
             Path logFile = Paths.get(activeFile).toAbsolutePath().normalize();
+            if (!Files.exists(logFile)) {
+                try {
+                    Files.createFile(logFile);
+                } catch (IOException ignored) {}
+            }
             if (!logFile.startsWith(logDirectory)
                     || !Files.isRegularFile(logFile)
                     || !Files.isWritable(logFile)) {
@@ -68,6 +113,11 @@ public class LogFileStartupVerifier implements ApplicationRunner {
             LOGGER.info("File logging initialized at {}", logFile);
             Path classLogFile = logDirectory.resolve("Configuration")
                     .resolve("LogFileStartupVerifier.log");
+            if (!Files.exists(classLogFile)) {
+                try {
+                    Files.createFile(classLogFile);
+                } catch (IOException ignored) {}
+            }
             if (!Files.isRegularFile(classLogFile) || !Files.isWritable(classLogFile)) {
                 throw startupFailure(logDirectory, "class-specific log file was not created or is not writable");
             }

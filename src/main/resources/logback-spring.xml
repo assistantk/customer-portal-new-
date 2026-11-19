@@ -2,7 +2,7 @@
 <configuration>
 
     <!-- Override with LOG_PATH or logging.file.path; local dev defaults in application-dev.properties. -->
-    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="/switch/Application_Logs/FreightCodeLog"/>
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="/switch/applogs/WEBAPPI/FreightCodeLog"/>
     <springProperty scope="context" name="CLASS_LOG_MAX_SIZE" source="logging.class-file.max-size" defaultValue="20MB"/>
     <springProperty scope="context" name="CLASS_LOG_MAX_HISTORY" source="logging.class-file.max-history" defaultValue="30"/>
     <springProperty scope="context" name="CLASS_LOG_TOTAL_SIZE_CAP" source="logging.class-file.total-size-cap" defaultValue="1GB"/>

@@ -4,6 +4,7 @@ import com.cris.customerportal.dto.RmsApiResponse;
 import com.cris.customerportal.dto.RmsLoginRequest;
 import com.cris.customerportal.dto.RmsOtpGenerateRequest;
 import com.cris.customerportal.dto.RmsOtpVerifyRequest;
+import com.cris.customerportal.dto.RmsSessionMaintenanceRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,6 +41,7 @@ public class RmsApiClient {
 
     private final String validateUserUrl;
     private final String logoutUrl;
+    private final String sessionMaintenanceUrl;
     private final String generateOtpUrl;
     private final String verifyOtpUrl;
     private final RestTemplate restTemplate;
@@ -54,7 +56,20 @@ public class RmsApiClient {
             String verifyOtpPath,
             long connectTimeoutMs,
             long readTimeoutMs) {
-        this(builder, baseUrl, otpBaseUrl, validateUserPath, "/ATUSERLGOT", generateOtpPath, verifyOtpPath, connectTimeoutMs, readTimeoutMs);
+        this(builder, baseUrl, otpBaseUrl, validateUserPath, "/ATUSERLGOT", "/ATSESNMNTC", generateOtpPath, verifyOtpPath, connectTimeoutMs, readTimeoutMs);
+    }
+
+    public RmsApiClient(
+            RestTemplateBuilder builder,
+            String baseUrl,
+            String otpBaseUrl,
+            String validateUserPath,
+            String logoutPath,
+            String generateOtpPath,
+            String verifyOtpPath,
+            long connectTimeoutMs,
+            long readTimeoutMs) {
+        this(builder, baseUrl, otpBaseUrl, validateUserPath, logoutPath, "/ATSESNMNTC", generateOtpPath, verifyOtpPath, connectTimeoutMs, readTimeoutMs);
     }
 
     @Autowired
@@ -64,6 +79,7 @@ public class RmsApiClient {
             @Value("${rms.api.otp-base-url:http://10.60.201.192:7101/RMS}") String otpBaseUrl,
             @Value("${rms.api.validate-user-path:/ATVLDTUSER}") String validateUserPath,
             @Value("${rms.api.logout-path:/ATUSERLGOT}") String logoutPath,
+            @Value("${rms.api.session-maintenance-path:/ATSESNMNTC}") String sessionMaintenancePath,
             @Value("${rms.api.generate-otp-path:/RTGNRTOTP}") String generateOtpPath,
             @Value("${rms.api.verify-otp-path:/RTVRFYOTP}") String verifyOtpPath,
             @Value("${rms.api.connect-timeout-ms:5000}") long connectTimeoutMs,
@@ -73,10 +89,11 @@ public class RmsApiClient {
 
         String normalizedBaseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
         String normalizedOtpBaseUrl = otpBaseUrl.replaceAll("/+$", "");
-        this.validateUserUrl = normalizedBaseUrl + validateUserPath;
-        this.logoutUrl       = normalizedBaseUrl + (logoutPath != null ? logoutPath : "/ATUSERLGOT");
-        this.generateOtpUrl  = normalizedOtpBaseUrl + generateOtpPath;
-        this.verifyOtpUrl    = normalizedOtpBaseUrl + verifyOtpPath;
+        this.validateUserUrl        = normalizedBaseUrl + validateUserPath;
+        this.logoutUrl              = normalizedBaseUrl + (logoutPath != null ? logoutPath : "/ATUSERLGOT");
+        this.sessionMaintenanceUrl  = normalizedBaseUrl + (sessionMaintenancePath != null ? sessionMaintenancePath : "/ATSESNMNTC");
+        this.generateOtpUrl         = normalizedOtpBaseUrl + generateOtpPath;
+        this.verifyOtpUrl           = normalizedOtpBaseUrl + verifyOtpPath;
 
         this.restTemplate = builder
                 .setConnectTimeout(Duration.ofMillis(connectTimeoutMs))
@@ -179,6 +196,35 @@ public class RmsApiClient {
         } catch (RestClientException ex) {
             LOGGER.error("HTTP error calling ATUSERLGOT");
             throw new RmsApiException("RMS logout service error.");
+        }
+    }
+
+    public RmsApiResponse terminateAllSessions(RmsSessionMaintenanceRequest request) {
+        LOGGER.info("Dispatching ATSESNMNTC session termination request");
+        try {
+            ResponseEntity<String> response =
+                    restTemplate.postForEntity(sessionMaintenanceUrl, request, String.class);
+            String rawJson = response.getBody();
+            if (rawJson == null || rawJson.trim().isEmpty()) {
+                LOGGER.error("Empty response received from ATSESNMNTC");
+                throw new RmsApiException("Empty response received from RMS session maintenance service.");
+            }
+            RmsApiResponse body = objectMapper.readValue(rawJson, RmsApiResponse.class);
+            LOGGER.info("ATSESNMNTC response parsed: status={} errorNo={}",
+                    body.getStatus(), body.getErrorNo());
+            return body;
+        } catch (ResourceAccessException ex) {
+            LOGGER.error("Network/timeout error calling ATSESNMNTC");
+            throw new RmsApiException("RMS session maintenance service is currently unreachable. Please try again later.");
+        } catch (JsonProcessingException ex) {
+            LOGGER.error("JSON parse error calling ATSESNMNTC");
+            throw new RmsApiException("RMS session maintenance response format error.");
+        } catch (HttpStatusCodeException ex) {
+            LOGGER.error("HTTP error calling ATSESNMNTC: status={}", ex.getRawStatusCode());
+            throw new RmsApiException("RMS session maintenance service error.");
+        } catch (RestClientException ex) {
+            LOGGER.error("HTTP error calling ATSESNMNTC");
+            throw new RmsApiException("RMS session maintenance service error.");
         }
     }
 

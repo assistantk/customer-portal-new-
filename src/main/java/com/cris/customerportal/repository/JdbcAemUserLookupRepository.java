@@ -38,29 +38,33 @@ public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
 
     @Override
     public Optional<AemUserLookupResult> findByIdentifier(String identifier) {
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = prepareLookup(connection, identifier)) {
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    LOGGER.debug("TMS3T.AEM_USER lookup returned no account");
-                    return Optional.empty();
-                }
+        try (Connection connection = dataSource.getConnection()) {
+            logDatasourceContext(connection);
+            try (PreparedStatement statement = connection.prepareStatement(FIND_BY_IDENTIFIER_SQL)) {
+                statement.setString(1, identifier);
+                statement.setString(2, identifier);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        LOGGER.debug("TMS3T.AEM_USER lookup returned no account");
+                        return Optional.empty();
+                    }
 
-                AemUserLookupResult user = new AemUserLookupResult(
-                        resultSet.getString("AAVUSERID"),
-                        resultSet.getString("AAVEMAILID"),
-                        null,
-                        resultSet.getString("AAVPSWD"),
-                        "Y",
-                        eligibilityFailures(resultSet)
-                );
+                    AemUserLookupResult user = new AemUserLookupResult(
+                            resultSet.getString("AAVUSERID"),
+                            resultSet.getString("AAVEMAILID"),
+                            null,
+                            resultSet.getString("AAVPSWD"),
+                            "Y",
+                            eligibilityFailures(resultSet)
+                    );
 
-                if (resultSet.next()) {
-                    LOGGER.info("AEM credential authentication rejected: identifier matched multiple accounts");
-                    throw new InvalidCredentialsException("Invalid User ID/Email or Password.");
+                    if (resultSet.next()) {
+                        LOGGER.info("AEM credential authentication rejected: identifier matched multiple accounts");
+                        throw new InvalidCredentialsException("Invalid User ID/Email or Password.");
+                    }
+                    LOGGER.debug("TMS3T.AEM_USER lookup returned one account");
+                    return Optional.of(user);
                 }
-                LOGGER.debug("TMS3T.AEM_USER lookup returned one account");
-                return Optional.of(user);
             }
         } catch (SQLException exception) {
             LOGGER.error("AEM account lookup failed in TMS3T.AEM_USER. SQLState={} ErrorCode={}",
@@ -89,14 +93,6 @@ public class JdbcAemUserLookupRepository implements AemUserLookupRepository {
         if (resultSet.getInt(columnLabel) != 1) {
             failures.add(reason);
         }
-    }
-
-    private PreparedStatement prepareLookup(Connection connection, String identifier) throws SQLException {
-        logDatasourceContext(connection);
-        PreparedStatement statement = connection.prepareStatement(FIND_BY_IDENTIFIER_SQL);
-        statement.setString(1, identifier);
-        statement.setString(2, identifier);
-        return statement;
     }
 
     private void logDatasourceContext(Connection connection) {

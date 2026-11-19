@@ -56,7 +56,7 @@ public class RmsLoginRequest implements Serializable {
     private String F_SRVCNAME = "ATVLDTUSER";
 
     @JsonProperty("F_SESNNUMB")
-    private String F_SESNNUMB = "1";
+    private String F_SESNNUMB = "";
 
     @JsonProperty("F_FLINFLAG")
     private String F_FLINFLAG = "W";

@@ -39,12 +39,70 @@ class RmsAuthOrchestratorTest {
         accepted.setRoleId("SR-DCM|DCM");
         accepted.setEmail("krishnan.sreeju@gmail.com");
         accepted.setMobileNo("9910303868");
+        RmsApiResponse sessionTermAccepted = new RmsApiResponse();
+        sessionTermAccepted.setErrorNo("0");
+        sessionTermAccepted.setStatus("S");
+        sessionTermAccepted.setSrvcName("ATSESNMNTC");
+        when(mockClient.terminateAllSessions(any())).thenReturn(sessionTermAccepted);
         when(mockClient.validateUser(any(RmsLoginRequest.class))).thenReturn(accepted);
         when(mockClient.generateOtp(any(RmsOtpGenerateRequest.class))).thenReturn(accepted);
         when(mockClient.verifyOtp(any(RmsOtpVerifyRequest.class))).thenReturn(accepted);
         when(mockClient.validateUser(argThat(req -> req != null && "TIMEOUT".equals(req.getF_USERID()))))
                 .thenThrow(new RmsApiException("Connection timed out"));
         orchestrator = new RmsAuthOrchestrator(mockClient, "FreightCodeGenerator", "1.1.1.1");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Pre-Login ATSESNMNTC Tests
+    // ─────────────────────────────────────────────────────────────
+    @Test
+    void testPreLogin_terminatesSessionsBeforeAtvldtuser_passesDynamicClientIdAndCapturesSessionNumber() {
+        RmsApiResponse termResponse = new RmsApiResponse();
+        termResponse.setErrorNo("0");
+        termResponse.setStatus("S");
+        termResponse.setSesnNumb("101");
+        when(mockClient.terminateAllSessions(any())).thenReturn(termResponse);
+
+        RmsApiResponse loginResponse = new RmsApiResponse();
+        loginResponse.setErrorNo("0");
+        loginResponse.setUserId("SREEJU");
+        loginResponse.setSrvcName("ATVLDTUSER");
+        loginResponse.setRoleId("SR-DCM");
+        loginResponse.setSesnNumb("202");
+        when(mockClient.validateUser(any())).thenReturn(loginResponse);
+
+        RmsAuthSessionContext ctx = orchestrator.validateCredentials("SREEJU", "test@123", "TKD", "192.168.1.100");
+
+        assertNotNull(ctx);
+        assertEquals("202", ctx.getSessionNumber());
+        assertEquals("192.168.1.100", ctx.getClientId());
+        assertEquals("202", ctx.getLoginRequest().getF_SESNNUMB());
+        assertEquals("192.168.1.100", ctx.getLoginRequest().getF_CLNTID());
+
+        // Verify sequential order: terminateAllSessions was called, then validateUser
+        org.mockito.InOrder inOrder = inOrder(mockClient);
+        inOrder.verify(mockClient).terminateAllSessions(argThat(req ->
+                "SREEJU".equals(req.getF_USERID())
+                        && "LOGOUT_ALL_SESN".equals(req.getF_AJSTFLAG())
+                        && "192.168.1.100".equals(req.getF_CLNTID())));
+        inOrder.verify(mockClient).validateUser(argThat(req ->
+                "SREEJU".equals(req.getF_USERID())
+                        && "192.168.1.100".equals(req.getF_CLNTID())));
+    }
+
+    @Test
+    void testPreLogin_whenAtsesnmntcFails_doesNotCallAtvldtuser() {
+        RmsApiResponse termFail = new RmsApiResponse();
+        termFail.setStatus("E");
+        termFail.setErrorNo("SESSION_TERMINATION_FAILED");
+        termFail.setMessage("Active session could not be closed");
+        when(mockClient.terminateAllSessions(any())).thenReturn(termFail);
+
+        RmsApiException ex = assertThrows(RmsApiException.class, () ->
+                orchestrator.validateCredentials("SREEJU", "test@123", "TKD", "10.0.0.1"));
+
+        assertTrue(ex.getMessage().contains("Active session could not be closed") || ex.getMessage().contains("SESSION_TERMINATION_FAILED"));
+        verify(mockClient, never()).validateUser(any());
     }
 
     // ─────────────────────────────────────────────────────────────

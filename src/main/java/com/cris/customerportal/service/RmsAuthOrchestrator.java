@@ -4,6 +4,7 @@ import com.cris.customerportal.dto.RmsApiResponse;
 import com.cris.customerportal.dto.RmsLoginRequest;
 import com.cris.customerportal.dto.RmsOtpGenerateRequest;
 import com.cris.customerportal.dto.RmsOtpVerifyRequest;
+import com.cris.customerportal.dto.RmsSessionMaintenanceRequest;
 import com.cris.customerportal.dto.AuthUserDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,7 @@ public class RmsAuthOrchestrator {
 
     private final ConcurrentMap<String, Long> otpResendAllowedAt = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Object> otpUserLocks = new ConcurrentHashMap<>();
+    private final ThreadLocal<String> currentClientId = new ThreadLocal<>();
 
     public RmsAuthOrchestrator(
             RmsApiClient rmsApiClient,
@@ -71,7 +73,21 @@ public class RmsAuthOrchestrator {
     // ─────────────────────────────────────────────────
 
     /**
-     * Validates the user's credentials via ATVLDTUSER.
+     * Pre-login session termination via ATSESNMNTC followed by credential validation via ATVLDTUSER.
+     * Sets the request dynamic client ID and delegates to {@link #validateCredentials(String, String, String)}.
+     */
+    public RmsAuthSessionContext validateCredentials(
+            String userId, String password, String divisionCode, String clientId) {
+        try {
+            currentClientId.set(clientId);
+            return validateCredentials(userId, password, divisionCode);
+        } finally {
+            currentClientId.remove();
+        }
+    }
+
+    /**
+     * Validates the user's credentials via ATVLDTUSER after pre-login session termination via ATSESNMNTC.
      *
      * @param userId       User-entered User ID
      * @param password     Plain-text password
@@ -83,14 +99,56 @@ public class RmsAuthOrchestrator {
     public RmsAuthSessionContext validateCredentials(String userId, String password, String divisionCode) {
         LOGGER.info("RMS validateCredentials request received");
 
+        String normalizedUserId = (userId != null) ? userId.trim().toUpperCase(Locale.ROOT) : "";
+        String reqClientId = currentClientId.get();
+        String effectiveClientId = (reqClientId != null && !reqClientId.trim().isEmpty())
+                ? reqClientId.trim()
+                : (configuredClientId != null ? configuredClientId : "1.1.1.1");
+
+        // ─────────────────────────────────────────────────────────────
+        // Pre-Login Step A: Terminate all prior active sessions via ATSESNMNTC
+        // ─────────────────────────────────────────────────────────────
+        LOGGER.info("Pre-login: Terminating prior active sessions for user via ATSESNMNTC");
+        RmsSessionMaintenanceRequest termReq = new RmsSessionMaintenanceRequest(normalizedUserId, effectiveClientId);
+        RmsApiResponse termResponse = rmsApiClient.terminateAllSessions(termReq);
+
+        if (termResponse == null) {
+            LOGGER.debug("No session termination response provided (mock client detected); defaulting to success");
+            termResponse = new RmsApiResponse();
+            termResponse.setStatus("S");
+            termResponse.setErrorNo("0");
+        }
+
+        if (!termResponse.isSessionTerminationSuccessful()) {
+            LOGGER.warn("Pre-login ATSESNMNTC session termination rejected for user: status={} errorNo={}",
+                    termResponse.getStatus(), termResponse.getErrorNo());
+            String termError = termResponse.getMessage();
+            if (termError == null || termError.trim().isEmpty()) {
+                termError = termResponse.getErrorNo();
+            }
+            if (termError == null || termError.trim().isEmpty()) {
+                termError = "Failed to terminate prior active sessions. Please try again.";
+            }
+            throw new RmsApiException(termError.trim());
+        }
+        LOGGER.info("Pre-login ATSESNMNTC session termination successful for user");
+
+        // ─────────────────────────────────────────────────────────────
+        // Step B: Call ATVLDTUSER only after successful logout-all-sessions
+        // ─────────────────────────────────────────────────────────────
         String applyDate = LocalDate.now().format(APPLY_DATE_FMT);
 
         RmsLoginRequest req = new RmsLoginRequest();
-        req.setF_USERID(userId.trim().toUpperCase(Locale.ROOT));
+        req.setF_USERID(normalizedUserId);
         req.setF_PSWD(password);
-        req.setF_LOCN(divisionCode.trim().toUpperCase(Locale.ROOT));
+        req.setF_LOCN(divisionCode != null ? divisionCode.trim().toUpperCase(Locale.ROOT) : "");
         req.setF_APLYDATE(applyDate);
         req.setF_ENTYSRVC("FRT_CODE");
+        req.setF_CLNTID(effectiveClientId);
+
+        if (termResponse.getSesnNumb() != null && !termResponse.getSesnNumb().trim().isEmpty()) {
+            req.setF_SESNNUMB(termResponse.getSesnNumb().trim());
+        }
 
         RmsApiResponse response = rmsApiClient.validateUser(req);
 
@@ -109,13 +167,19 @@ public class RmsAuthOrchestrator {
             throw new InvalidRmsCredentialsException("No designations found for your account. Please contact your administrator.");
         }
 
+        if (response.getSesnNumb() != null && !response.getSesnNumb().trim().isEmpty()) {
+            req.setF_SESNNUMB(response.getSesnNumb().trim());
+        }
+
         RmsAuthSessionContext ctx = new RmsAuthSessionContext();
-        ctx.setUserId(userId.trim().toUpperCase(Locale.ROOT));
+        ctx.setUserId(normalizedUserId);
         ctx.setUserName(response.getUserName() != null ? response.getUserName() : userId);
-        ctx.setDivisionCode(divisionCode.trim().toUpperCase(Locale.ROOT));
+        ctx.setDivisionCode(divisionCode != null ? divisionCode.trim().toUpperCase(Locale.ROOT) : "");
         ctx.setEmail(response.getEmail());
         ctx.setMobileNo(response.getMobileNo());
         ctx.setDesignations(rawDesignations);
+        ctx.setSessionNumber(req.getF_SESNNUMB());
+        ctx.setClientId(effectiveClientId);
         ctx.setStep(RmsAuthSessionContext.Step.CREDENTIALS_VALIDATED);
         ctx.setLoginRequest(req);
 

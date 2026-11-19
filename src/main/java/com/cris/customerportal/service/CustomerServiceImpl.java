@@ -307,31 +307,33 @@ public class CustomerServiceImpl implements CustomerService {
         + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
     try (Connection conn = dataSource.getConnection();
        PreparedStatement ps = conn.prepareStatement(sql)) {
-   ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
-   try (ResultSet rs = ps.executeQuery()) {
-    if (rs.next()) {
-     com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
-     response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
-     response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
-     response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
-     response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
-     response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
-     response.setPincode(rs.getString("MAVPCOCODE"));
-     response.setDivision(rs.getString("MAVIMPLREMK"));
-     response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
-     
-     List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
-         conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", response.getCustomerCode(),
-         "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
-     response.setGstins(details);
-     response.setGstinNumbers(details.isEmpty() ? null : details.stream()
-         .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
-         .collect(Collectors.joining(",")));
-     return response;
-    } else {
+    ps.setString(1, customerCode == null ? null : customerCode.trim().toUpperCase(Locale.ROOT));
+    com.cris.customerportal.dto.OldCustomerResponse response = null;
+    try (ResultSet rs = ps.executeQuery()) {
+     if (rs.next()) {
+      response = new com.cris.customerportal.dto.OldCustomerResponse();
+      response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
+      response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
+      response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
+      response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+      response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
+      response.setPincode(rs.getString("MAVPCOCODE"));
+      response.setDivision(rs.getString("MAVIMPLREMK"));
+      response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
+     }
+    }
+    if (response == null) {
      throw new ResourceNotFoundException("No record found for this Global Customer Code.");
     }
-   }
+    List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+        conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", response.getCustomerCode(),
+        "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
+    response.setGstins(details);
+    response.setGstinNumbers(details.isEmpty() ? null : details.stream()
+        .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+        .collect(Collectors.joining(",")));
+    return response;
+   
   } catch (SQLException e) {
      log.error("CustomerServiceImpl.lookupOldCustomerByCode: SQLState={} ErrorCode={} stackTrace={}",
              e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
@@ -431,8 +433,8 @@ public class CustomerServiceImpl implements CustomerService {
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, term);
+    List<com.cris.customerportal.dto.OldCustomerResponse> responses = new ArrayList<>();
     try (ResultSet rs = ps.executeQuery()) {
-     List<com.cris.customerportal.dto.OldCustomerResponse> responses = new ArrayList<>();
      while (rs.next()) {
       com.cris.customerportal.dto.OldCustomerResponse response = new com.cris.customerportal.dto.OldCustomerResponse();
       response.setCustomerCode(rs.getString("MAVGLBLCUSTCODE"));
@@ -445,17 +447,18 @@ public class CustomerServiceImpl implements CustomerService {
       response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
       responses.add(response);
      }
-     for (com.cris.customerportal.dto.OldCustomerResponse r : responses) {
-      List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
-          conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", r.getCustomerCode(),
-          "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
-      r.setGstins(details);
-      r.setGstinNumbers(details.isEmpty() ? null : details.stream()
-          .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
-          .collect(Collectors.joining(",")));
-     }
-     return responses;
     }
+    for (com.cris.customerportal.dto.OldCustomerResponse r : responses) {
+     List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+         conn, "MEMGLBLCUSTDTLS", "MAVGLBLCUSTCODE", r.getCustomerCode(),
+         "MAVGLBLCUSTADDRTEXT", glblDtlsCityCol);
+     r.setGstins(details);
+     r.setGstinNumbers(details.isEmpty() ? null : details.stream()
+         .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+         .collect(Collectors.joining(",")));
+    }
+    return responses;
+   
    } catch (SQLException e) {
     log.error("CustomerServiceImpl.searchGlobalCustomersByCompanyName: SQLState={} ErrorCode={} stackTrace={}",
         e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
@@ -499,8 +502,8 @@ public class CustomerServiceImpl implements CustomerService {
     if (!isCodeOnly && !isNameOnly) {
      ps.setString(2, term);
     }
+    List<com.cris.customerportal.dto.GlobalAgentResponse> responses = new ArrayList<>();
     try (ResultSet rs = ps.executeQuery()) {
-     List<com.cris.customerportal.dto.GlobalAgentResponse> responses = new ArrayList<>();
      while (rs.next()) {
       com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
       response.setCode(rs.getString("MAVHNDAGNTCODE"));
@@ -512,17 +515,18 @@ public class CustomerServiceImpl implements CustomerService {
       response.setCreationDate(rs.getString("MAVVERIFICATIONDATE"));
       responses.add(response);
      }
-     for (com.cris.customerportal.dto.GlobalAgentResponse r : responses) {
-      List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
-          conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", r.getCode(),
-          "MAVHNDGAGNTADDRTEXT", "MAVHNDGAGNTCITYNAME");
-      r.setGstins(details);
-      r.setGstinNumbers(details.isEmpty() ? null : details.stream()
-          .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
-          .collect(Collectors.joining(",")));
-     }
-     return responses;
     }
+    for (com.cris.customerportal.dto.GlobalAgentResponse r : responses) {
+     List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+         conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", r.getCode(),
+         "MAVHNDGAGNTADDRTEXT", "MAVHNDAGNTCITYNAME");
+     r.setGstins(details);
+     r.setGstinNumbers(details.isEmpty() ? null : details.stream()
+         .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+         .collect(Collectors.joining(",")));
+    }
+    return responses;
+   
    } catch (SQLException e) {
     log.error("CustomerServiceImpl.searchHandlingAgents: SQLState={} ErrorCode={} stackTrace={}",
         e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
@@ -639,31 +643,32 @@ public class CustomerServiceImpl implements CustomerService {
   char[] chars = candidate.toCharArray();
   
   int attempts = 0;
-  while (true) {
-   try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+  try (Connection conn = dataSource.getConnection();
+       PreparedStatement ps = conn.prepareStatement(sql)) {
+   while (attempts < 26 * 26 * 26) {
     ps.setString(1, candidate);
     try (ResultSet rs = ps.executeQuery()) {
      if (!rs.next()) return candidate;
     }
-   } catch (SQLException e) {
-    log.error("CustomerServiceImpl.generateUniqueCodeJDBC: SQLState={} ErrorCode={} stackTrace={}",
-            e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
-    throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
-   }
-   
-   attempts++;
-   if (attempts < 26) {
-       chars[3] = (char) ('A' + (attempts % 26));
-   } else if (attempts < 26 * 26) {
-       chars[2] = (char) ('A' + ((attempts / 26) % 26));
-       chars[3] = (char) ('A' + (attempts % 26));
-   } else {
-       chars[1] = (char) ('A' + ((attempts / (26 * 26)) % 26));
-       chars[2] = (char) ('A' + ((attempts / 26) % 26));
-       chars[3] = (char) ('A' + (attempts % 26));
-   }
+    
+    attempts++;
+    if (attempts < 26) {
+        chars[3] = (char) ('A' + (attempts % 26));
+    } else if (attempts < 26 * 26) {
+        chars[2] = (char) ('A' + ((attempts / 26) % 26));
+        chars[3] = (char) ('A' + (attempts % 26));
+    } else {
+        chars[1] = (char) ('A' + ((attempts / (26 * 26)) % 26));
+        chars[2] = (char) ('A' + ((attempts / 26) % 26));
+        chars[3] = (char) ('A' + (attempts % 26));
+    }
     candidate = new String(chars);
+   }
+   throw new RuntimeException("Exhausted all candidate codes for base: " + base);
+  } catch (SQLException e) {
+   log.error("CustomerServiceImpl.generateUniqueCodeJDBC: SQLState={} ErrorCode={} stackTrace={}",
+           e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
+   throw new RuntimeException("Database error in generateUniqueCodeJDBC", e);
   }
  }
 
@@ -1848,9 +1853,10 @@ public class CustomerServiceImpl implements CustomerService {
      try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
      ps.setString(1, handlingCode == null ? null : handlingCode.trim().toUpperCase(Locale.ROOT));
+     com.cris.customerportal.dto.GlobalAgentResponse response = null;
      try (ResultSet rs = ps.executeQuery()) {
       if (rs.next()) {
-       com.cris.customerportal.dto.GlobalAgentResponse response = new com.cris.customerportal.dto.GlobalAgentResponse();
+       response = new com.cris.customerportal.dto.GlobalAgentResponse();
        response.setCode(rs.getString("MAVHNDAGNTCODE"));
        response.setCompanyName(rs.getString("MAVHNDAGNTNAME"));
        response.setAddress(rs.getString("MAVHNDAGNTADDRTEXT"));
@@ -1861,19 +1867,20 @@ public class CustomerServiceImpl implements CustomerService {
        response.setDivision(rs.getString("MAVIMPLREMK"));
        response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
        response.setStatus("Active");
-
-       List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
-           conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", response.getCode(),
-           "MAVHNDGAGNTADDRTEXT", "MAVHNDGAGNTCITYNAME");
-       response.setGstins(details);
-       response.setGstinNumbers(details.isEmpty() ? null : details.stream()
-           .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
-           .collect(Collectors.joining(",")));
-       return response;
-      } else {
-       throw new ResourceNotFoundException("Handling agent code not found.");
       }
      }
+     if (response == null) {
+      throw new ResourceNotFoundException("Handling agent code not found.");
+     }
+     List<com.cris.customerportal.dto.PanGstinRecord> details = fetchGstinDetails(
+         conn, "MEMGLBLHNDGAGNTDTLS", "MAVHNDGAGNTCODE", response.getCode(),
+         "MAVHNDGAGNTADDRTEXT", "MAVHNDAGNTCITYNAME");
+     response.setGstins(details);
+     response.setGstinNumbers(details.isEmpty() ? null : details.stream()
+         .map(com.cris.customerportal.dto.PanGstinRecord::getGstin)
+         .collect(Collectors.joining(",")));
+     return response;
+    
     } catch (SQLException e) {
      log.error("CustomerServiceImpl.lookupHandlingAgentByCode: SQLState={} ErrorCode={} stackTrace={}",
              e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
@@ -1893,22 +1900,27 @@ public class CustomerServiceImpl implements CustomerService {
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, ownershipCode == null ? null : ownershipCode.trim().toUpperCase(Locale.ROOT));
+    java.util.Map<String, String> result = null;
+    String custCode = null;
     try (ResultSet rs = ps.executeQuery()) {
      if (rs.next()) {
-      java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
-      result.put("ownershipCode", rs.getString("MAVGLBLCUSTCODE"));
+      result = new java.util.LinkedHashMap<>();
+      custCode = rs.getString("MAVGLBLCUSTCODE");
+      result.put("ownershipCode", custCode);
       result.put("ownershipDesc", rs.getString("MAVGLBLCUSTNAME"));
       result.put("address", rs.getString("MAVGLBLCUSTADDRTEXT"));
       result.put("panNumber", rs.getString("MAVCUSTPANNUMB"));
       result.put("city", rs.getString("MAVGNBLCUSTCITYNAME"));
       result.put("pincode", rs.getString("MAVPCOCODE"));
-
-      List<String> gstins = fetchGstinsForGlobalCustomer(conn, rs.getString("MAVGLBLCUSTCODE"));
-      result.put("gstinNumbers", gstins.isEmpty() ? null : String.join(",", gstins));
-      return result;
      }
-     return null;
     }
+    if (result != null) {
+     List<String> gstins = fetchGstinsForGlobalCustomer(conn, custCode);
+     result.put("gstinNumbers", gstins.isEmpty() ? null : String.join(",", gstins));
+     return result;
+    }
+    return null;
+   
    } catch (SQLException e) {
     log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnership: SQLState={} ErrorCode={} stackTrace={}",
             e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));
@@ -2091,22 +2103,27 @@ public class CustomerServiceImpl implements CustomerService {
    try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
     ps.setString(1, partyCode == null ? null : partyCode.trim().toUpperCase(Locale.ROOT));
+    java.util.Map<String, String> result = null;
+    String custCode = null;
     try (ResultSet rs = ps.executeQuery()) {
      if (rs.next()) {
-      java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
-      result.put("partyCode", rs.getString("MAVGLBLCUSTCODE"));
+      result = new java.util.LinkedHashMap<>();
+      custCode = rs.getString("MAVGLBLCUSTCODE");
+      result.put("partyCode", custCode);
       result.put("partyDesc", rs.getString("MAVGLBLCUSTNAME"));
       result.put("address", rs.getString("MAVGLBLCUSTADDRTEXT"));
       result.put("panNumber", rs.getString("MAVCUSTPANNUMB"));
       result.put("city", rs.getString("MAVGNBLCUSTCITYNAME"));
       result.put("pincode", rs.getString("MAVPCOCODE"));
-
-      List<String> gstins = fetchGstinsForGlobalCustomer(conn, rs.getString("MAVGLBLCUSTCODE"));
-      result.put("gstinNumbers", gstins.isEmpty() ? null : String.join(",", gstins));
-      return result;
      }
-     return null;
     }
+    if (result != null) {
+     List<String> gstins = fetchGstinsForGlobalCustomer(conn, custCode);
+     result.put("gstinNumbers", gstins.isEmpty() ? null : String.join(",", gstins));
+     return result;
+    }
+    return null;
+   
    } catch (SQLException e) {
     log.error("CustomerServiceImpl.lookupGlobalCustomerForOwnershipParty: SQLState={} ErrorCode={} stackTrace={}",
             e.getSQLState(), e.getErrorCode(), DataMaskingUtil.formatThrowable(e));

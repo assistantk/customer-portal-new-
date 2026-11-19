@@ -125,8 +125,9 @@ public class AuthController {
         }
 
         try {
+            String clientId = extractClientId(request);
             RmsAuthSessionContext ctx = rmsAuthOrchestrator.validateCredentials(
-                    userId.trim(), password, divisionCode.trim());
+                    userId.trim(), password, divisionCode.trim(), clientId);
 
             request.changeSessionId();
             HttpSession session = request.getSession(true);
@@ -538,13 +539,38 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
-    private String extractClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.trim().isEmpty() && !"unknown".equalsIgnoreCase(xff.trim())) {
-            return xff.split(",")[0].trim();
+    /**
+     * Extracts the client ID dynamically from the HTTP request using the supplied Java logic:
+     * - Check X-FORWARDED-FOR header
+     * - Fall back to request.getRemoteAddr()
+     * - If multiple comma-separated IPs exist, extract the first one
+     * - Safely handle null, empty, whitespace
+     */
+    public static String extractClientId(HttpServletRequest request) {
+        if (request == null) {
+            return "127.0.0.1";
         }
-        String remoteAddr = request.getRemoteAddr();
-        return (remoteAddr != null && !remoteAddr.isEmpty()) ? remoteAddr : "1.1.1.1";
+        String strClntId = request.getHeader("X-FORWARDED-FOR");
+        if (strClntId == null || strClntId.trim().isEmpty()) {
+            strClntId = request.getHeader("X-Forwarded-For");
+        }
+        if (strClntId == null || strClntId.trim().isEmpty()) {
+            strClntId = request.getRemoteAddr();
+        }
+        if (strClntId != null) {
+            if (strClntId.indexOf(",") > 0) {
+                strClntId = strClntId.substring(0, strClntId.indexOf(","));
+            }
+            strClntId = strClntId.trim();
+        }
+        if (strClntId == null || strClntId.isEmpty()) {
+            strClntId = request.getRemoteAddr() != null ? request.getRemoteAddr().trim() : "";
+        }
+        return (strClntId != null && !strClntId.isEmpty()) ? strClntId : "127.0.0.1";
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        return extractClientId(request);
     }
 
     private static Map<String, Object> errorBody(String message) {

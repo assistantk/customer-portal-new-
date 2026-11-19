@@ -86,6 +86,10 @@ public class RmsApiResponse {
     @JsonAlias({"service", "SRVC"})
     private JsonNode serviceNode;
 
+    @JsonProperty("F_SESNNUMB")
+    @JsonAlias({"sesnNumb", "SESNNUMB", "F_SESN_NUMB", "sessionNumber", "sesn_numb", "F_SESNNO", "SESNNO"})
+    private JsonNode sesnNumbNode;
+
     public RmsApiResponse() {}
 
     public String getStatus() {
@@ -222,6 +226,13 @@ public class RmsApiResponse {
         this.serviceNode = s != null ? TextNode.valueOf(s) : null;
     }
 
+    public String getSesnNumb() {
+        return sesnNumbNode != null && !sesnNumbNode.isNull() ? sesnNumbNode.asText().trim() : null;
+    }
+    public void setSesnNumb(String sn) {
+        this.sesnNumbNode = sn != null ? TextNode.valueOf(sn) : null;
+    }
+
     /**
      * Resiliently extracts all designations from F_ROLEID, F_DESIG, and F_DATA.
      * Handles string literals, delimited strings ("SR-DCM|DCM"), JSON arrays of strings (["SR-DCM", "DCM"]),
@@ -312,6 +323,47 @@ public class RmsApiResponse {
                 || normalized.contains("wrong") || normalized.contains("incorrect")
                 || normalized.contains("denied") || normalized.contains("locked")
                 || normalized.contains("expired") || normalized.contains("unauthorized");
+    }
+
+    /**
+     * Determines whether ATSESNMNTC session termination was successful.
+     * Evaluates F_ERRORNO, F_STATUS, F_VALDFLAG, F_RMRK, and F_MSG for failure indicators.
+     */
+    public boolean isSessionTerminationSuccessful() {
+        if (hasFailureIndicator(getStatus()) || hasFailureIndicator(getMessage()) || hasFailureIndicator(getRmrk())) {
+            return false;
+        }
+        String err = getErrorNo();
+        if (err != null && !err.trim().isEmpty()) {
+            String trimmedErr = err.trim();
+            if (!"0".equals(trimmedErr) && !"00".equals(trimmedErr) && !"SUCCESS".equalsIgnoreCase(trimmedErr)) {
+                return false;
+            }
+        }
+        String st = getStatus();
+        if (st != null && !st.trim().isEmpty()) {
+            String s = st.trim().toUpperCase(Locale.ROOT);
+            if ("E".equals(s) || "ERROR".equals(s) || "F".equals(s) || "FAIL".equals(s) || "FAILED".equals(s)) {
+                return false;
+            }
+            if ("S".equals(s) || "SUCCESS".equals(s)) {
+                return true;
+            }
+        }
+        String vf = getValdFlag();
+        if (vf != null && !vf.trim().isEmpty()) {
+            String v = vf.trim().toUpperCase(Locale.ROOT);
+            if ("N".equals(v) || "F".equals(v) || "E".equals(v)) {
+                return false;
+            }
+            if ("S".equals(v) || "Y".equals(v) || "R".equals(v) || "V".equals(v)) {
+                return true;
+            }
+        }
+        if (err == null || err.trim().isEmpty() || "0".equals(err.trim()) || "00".equals(err.trim()) || "SUCCESS".equalsIgnoreCase(err.trim())) {
+            return true;
+        }
+        return false;
     }
 
     private void extractFromNode(JsonNode node, List<String> target) {

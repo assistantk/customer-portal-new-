@@ -116,6 +116,7 @@ class RmsApiClientTest {
             request.setF_ROLEID("SR-DCM");
             request.setF_SRVCNAME("ATUSERLGOT");
             request.setF_ENTYSRVC("FRT_CODE");
+            request.setF_SESNNUMB("42");
 
             RmsApiResponse response = client.logoutUser(request);
             JsonNode sent = new ObjectMapper().readTree(requestBody.get());
@@ -136,11 +137,61 @@ class RmsApiClientTest {
             assertEquals("Y", sent.path("F_COMMITFLAG").asText());
             assertEquals("R", sent.path("F_FUNCDESC").asText());
             assertEquals("ATUSERLGOT", sent.path("F_SRVCNAME").asText());
-            assertEquals("1", sent.path("F_SESNNUMB").asText());
+            assertEquals("42", sent.path("F_SESNNUMB").asText());
             assertEquals("W", sent.path("F_FLINFLAG").asText());
             assertEquals("FRT_CODE", sent.path("F_ENTYSRVC").asText());
             assertEquals("04-11-2026", sent.path("F_APLYDATE").asText());
             assertTrue(response.isSuccess());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void terminateAllSessionsPostsRequiredFieldsAsJsonToAtsesnmntc() throws IOException {
+        AtomicReference<String> requestMethod = new AtomicReference<>();
+        AtomicReference<String> requestContentType = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/RMS/ATSESNMNTC", exchange -> {
+            requestMethod.set(exchange.getRequestMethod());
+            requestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = ("{\"F_ERORNO\":\"0\",\"F_USERID\":\"DYNAMIC\","
+                    + "\"F_SRVCNAME\":\"ATSESNMNTC\",\"F_STATUS\":\"S\",\"F_RMRK\":\"SUCCESS\"}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            RmsApiClient client = new RmsApiClient(
+                    new RestTemplateBuilder(),
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/RMS",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/RMS",
+                    "/ATVLDTUSER",
+                    "/ATUSERLGOT",
+                    "/ATSESNMNTC",
+                    "/RTGNRTOTP",
+                    "/RTVRFYOTP",
+                    5000,
+                    10000);
+            com.cris.customerportal.dto.RmsSessionMaintenanceRequest request =
+                    new com.cris.customerportal.dto.RmsSessionMaintenanceRequest("DYNAMIC", "10.20.30.40");
+
+            RmsApiResponse response = client.terminateAllSessions(request);
+            JsonNode sent = new ObjectMapper().readTree(requestBody.get());
+
+            assertEquals("POST", requestMethod.get());
+            assertNotNull(requestContentType.get());
+            assertTrue(requestContentType.get().startsWith("application/json"));
+            assertEquals("DYNAMIC", sent.path("F_USERID").asText());
+            assertEquals("LOGOUT_ALL_SESN", sent.path("F_AJSTFLAG").asText());
+            assertEquals("10.20.30.40", sent.path("F_CLNTID").asText());
+            assertTrue(response.isSessionTerminationSuccessful());
         } finally {
             server.stop(0);
         }

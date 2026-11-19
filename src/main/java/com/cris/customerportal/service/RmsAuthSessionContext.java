@@ -26,6 +26,8 @@ public class RmsAuthSessionContext implements Serializable {
     private String divisionCode;
     private List<String> designations;
     private String selectedDesignation;
+    private String sessionNumber;
+    private String clientId;
     private RmsLoginRequest loginRequest;
 
     public RmsAuthSessionContext() {}
@@ -53,6 +55,12 @@ public class RmsAuthSessionContext implements Serializable {
 
     public String getSelectedDesignation()                  { return selectedDesignation; }
     public void setSelectedDesignation(String v)            { this.selectedDesignation = v; }
+
+    public String getSessionNumber()                        { return sessionNumber; }
+    public void setSessionNumber(String v)                  { this.sessionNumber = v; }
+
+    public String getClientId()                             { return clientId; }
+    public void setClientId(String v)                       { this.clientId = v; }
 
     public RmsLoginRequest getLoginRequest()                { return loginRequest; }
     public void setLoginRequest(RmsLoginRequest v)          { this.loginRequest = v; }
