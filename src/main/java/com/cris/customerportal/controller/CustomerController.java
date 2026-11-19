@@ -127,18 +127,22 @@ public class CustomerController {
     @GetMapping("/check-gstin-duplicate")
     public ResponseEntity<com.cris.customerportal.dto.GstinDuplicateCheckResult> checkGstinDuplicate(
             @RequestParam String gstin,
-            @RequestParam(required = false) String currentCode) {
-        LOGGER.info("GSTIN duplicate check request: gstin={} currentCode={}",
-                DataMaskingUtil.maskSensitive(gstin), currentCode);
-        com.cris.customerportal.dto.GstinDuplicateCheckResult result = service.checkGstinDuplicate(gstin, currentCode);
+            @RequestParam(required = false) String currentCode,
+            @RequestParam String codeType) {
+        LOGGER.info("GSTIN duplicate check request: gstin={} currentCode={} codeType={}",
+                DataMaskingUtil.maskSensitive(gstin), currentCode, codeType);
+        com.cris.customerportal.dto.GstinDuplicateCheckResult result =
+                service.checkGstinDuplicate(gstin, currentCode, codeType);
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/check-pan-duplicate")
     public ResponseEntity<com.cris.customerportal.dto.PanDuplicateCheckResult> checkPanDuplicate(
-            @RequestParam String pan) {
-        LOGGER.info("PAN duplicate check request: pan={}", DataMaskingUtil.maskSensitive(pan));
-        com.cris.customerportal.dto.PanDuplicateCheckResult result = service.checkPanDuplicate(pan);
+            @RequestParam String pan,
+            @RequestParam String codeType) {
+        LOGGER.info("PAN duplicate check request: pan={} codeType={}",
+                DataMaskingUtil.maskSensitive(pan), codeType);
+        com.cris.customerportal.dto.PanDuplicateCheckResult result = service.checkPanDuplicate(pan, codeType);
         return ResponseEntity.ok(result);
     }
 

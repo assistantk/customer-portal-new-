@@ -129,29 +129,29 @@ class CustomerControllerTest {
     void testCheckGstinDuplicate_delegatesToService() {
         com.cris.customerportal.dto.GstinDuplicateCheckResult expected =
                 new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "AVAILABLE", "GSTIN is available");
-        when(customerService.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD")).thenReturn(expected);
+        when(customerService.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD", "HANDLING_AGENT")).thenReturn(expected);
 
         ResponseEntity<com.cris.customerportal.dto.GstinDuplicateCheckResult> resp =
-                controller.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD");
+                controller.checkGstinDuplicate("20APEPA6196G1Z9", "ABCD", "HANDLING_AGENT");
 
         assertNotNull(resp);
         assertEquals(200, resp.getStatusCodeValue());
         assertSame(expected, resp.getBody());
-        verify(customerService, times(1)).checkGstinDuplicate("20APEPA6196G1Z9", "ABCD");
+        verify(customerService, times(1)).checkGstinDuplicate("20APEPA6196G1Z9", "ABCD", "HANDLING_AGENT");
     }
 
     @Test
     void testCheckPanDuplicate_delegatesToService() {
         com.cris.customerportal.dto.PanDuplicateCheckResult expected =
                 new com.cris.customerportal.dto.PanDuplicateCheckResult(false, "AVAILABLE", "PAN is available");
-        when(customerService.checkPanDuplicate("ABCDE1234F")).thenReturn(expected);
+        when(customerService.checkPanDuplicate("ABCDE1234F", "GLOBAL")).thenReturn(expected);
 
         ResponseEntity<com.cris.customerportal.dto.PanDuplicateCheckResult> resp =
-                controller.checkPanDuplicate("ABCDE1234F");
+                controller.checkPanDuplicate("ABCDE1234F", "GLOBAL");
 
         assertNotNull(resp);
         assertEquals(200, resp.getStatusCodeValue());
         assertSame(expected, resp.getBody());
-        verify(customerService, times(1)).checkPanDuplicate("ABCDE1234F");
+        verify(customerService, times(1)).checkPanDuplicate("ABCDE1234F", "GLOBAL");
     }
 }

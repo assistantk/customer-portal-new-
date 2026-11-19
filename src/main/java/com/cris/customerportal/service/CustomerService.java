@@ -18,11 +18,13 @@ public interface CustomerService {
   void updateOldCustomerJDBC(java.util.Map<String, String> formData);
   com.cris.customerportal.dto.GlobalAgentResponse lookupHandlingAgentByCode(String handlingCode);
   com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin, String currentCode);
+  com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin, String currentCode, String codeType);
   default com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin) {
     return checkGstinDuplicate(gstin, null);
   }
 
   com.cris.customerportal.dto.PanDuplicateCheckResult checkPanDuplicate(String pan);
+  com.cris.customerportal.dto.PanDuplicateCheckResult checkPanDuplicate(String pan, String codeType);
   // Ownership (MEMWGONOWNRSHIP)
   java.util.Map<String, String> lookupGlobalCustomerForOwnership(String ownershipCode);
   java.util.Map<String, String> lookupOwnershipJDBC(String ownershipCode);

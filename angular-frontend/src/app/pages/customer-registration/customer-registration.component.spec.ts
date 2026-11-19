@@ -48,6 +48,18 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
         }
       })),
       checkOwnershipPartyDuplicate: vi.fn().mockReturnValue(of({ duplicate: false })),
+      checkPanDuplicate: vi.fn().mockReturnValue(of({
+        duplicate: false,
+        status: 'AVAILABLE',
+        message: 'PAN is available',
+        companies: []
+      })),
+      checkGstinDuplicate: vi.fn().mockReturnValue(of({
+        duplicate: false,
+        status: 'AVAILABLE',
+        message: 'GSTIN is available',
+        records: []
+      })),
       ocrImage: vi.fn(),
       verifySemGstin: vi.fn().mockReturnValue(of({
         verified: false,
@@ -1808,6 +1820,48 @@ describe('CustomerRegistrationComponent - Submission and Loading State', () => {
       component.handleNewCodeTypeChange('GLOBAL');
       expect(component.codeType).toBe('GLOBAL');
       expect(component.currentLogo).toBe('assets/glbl_transparent.webp');
+    });
+
+    it('rechecks PAN for the selected record type and ignores a stale result after switching types', () => {
+      const globalResponse = new Subject<any>();
+      const handlingResponse = new Subject<any>();
+      customerServiceMock.checkPanDuplicate.mockImplementation((_pan: string, codeType: string) =>
+        codeType === 'GLOBAL' ? globalResponse : handlingResponse
+      );
+      component.mode = 'new';
+      component.form.panNumber = 'ABCDE1234F';
+
+      vi.useFakeTimers();
+      try {
+        component.triggerPanDuplicateCheck(component.form.panNumber);
+        vi.advanceTimersByTime(350);
+
+        component.handleNewCodeTypeChange('HANDLING_AGENT');
+        vi.advanceTimersByTime(350);
+
+        globalResponse.next({
+          duplicate: true,
+          status: 'DUPLICATE',
+          message: 'Global Customer exists',
+          companies: [{ recordType: 'Global Customer', codeType: 'global', companyCode: 'RAHB' }]
+        });
+        expect(component.showPanDuplicateModal).toBe(false);
+        expect(component.panDuplicateStatus).toBe('checking');
+
+        handlingResponse.next({
+          duplicate: false,
+          status: 'AVAILABLE',
+          message: 'PAN is available',
+          companies: []
+        });
+
+        expect(customerServiceMock.checkPanDuplicate).toHaveBeenNthCalledWith(1, 'ABCDE1234F', 'GLOBAL');
+        expect(customerServiceMock.checkPanDuplicate).toHaveBeenNthCalledWith(2, 'ABCDE1234F', 'HANDLING_AGENT');
+        expect(component.panDuplicateStatus).toBe('available');
+        expect(component.selectedPanCompany).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should keep Old User and New Entry codeType independent', () => {

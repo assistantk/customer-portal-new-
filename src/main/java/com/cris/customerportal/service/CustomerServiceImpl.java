@@ -677,6 +677,13 @@ public class CustomerServiceImpl implements CustomerService {
 
  @Override
  public com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(String gstin, String currentCode) {
+  return checkGstinDuplicate(gstin, currentCode, null);
+ }
+
+ @Override
+ public com.cris.customerportal.dto.GstinDuplicateCheckResult checkGstinDuplicate(
+     String gstin, String currentCode, String codeType) {
+  String requestedType = codeType == null ? null : normalizeDuplicateCodeType(codeType);
   if (gstin == null || gstin.trim().isEmpty()) {
    return new com.cris.customerportal.dto.GstinDuplicateCheckResult(false, "AVAILABLE", "GSTIN is empty", Collections.emptyList());
   }
@@ -698,6 +705,7 @@ public class CustomerServiceImpl implements CustomerService {
 
   try (Connection conn = dataSource.getConnection()) {
    if (conn != null) {
+    if (requestedType == null || "global".equals(requestedType)) {
     try (PreparedStatement ps = conn.prepareStatement(sqlCustDtls)) {
      if (ps != null) {
       ps.setString(1, cleanGstin);
@@ -723,6 +731,8 @@ public class CustomerServiceImpl implements CustomerService {
       }
      }
     }
+    }
+    if (requestedType == null || "handling_agent".equals(requestedType)) {
     try (PreparedStatement ps = conn.prepareStatement(sqlHndgDtls)) {
      if (ps != null) {
       ps.setString(1, cleanGstin);
@@ -744,6 +754,7 @@ public class CustomerServiceImpl implements CustomerService {
          );
          records.add(rec);
         }
+       }
        }
       }
      }
@@ -787,8 +798,21 @@ public class CustomerServiceImpl implements CustomerService {
   }
  }
 
+ private String normalizeDuplicateCodeType(String codeType) {
+  String normalized = codeType == null ? "" : codeType.trim().toLowerCase(Locale.ROOT);
+  if ("global".equals(normalized) || "global_customer".equals(normalized)) return "global";
+  if ("handling".equals(normalized) || "handling_agent".equals(normalized)) return "handling_agent";
+  throw new IllegalArgumentException("Invalid codeType for duplicate verification.");
+ }
+
   @Override
   public com.cris.customerportal.dto.PanDuplicateCheckResult checkPanDuplicate(String pan) {
+   return checkPanDuplicate(pan, null);
+  }
+
+  @Override
+  public com.cris.customerportal.dto.PanDuplicateCheckResult checkPanDuplicate(String pan, String codeType) {
+   String requestedType = codeType == null ? null : normalizeDuplicateCodeType(codeType);
    if (pan == null || pan.trim().isEmpty()) {
     return new com.cris.customerportal.dto.PanDuplicateCheckResult(false, "AVAILABLE", "PAN is empty", Collections.emptyList());
    }
@@ -806,6 +830,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     // 1. Check Global Customer
+    if (requestedType == null || "global".equals(requestedType)) {
     Set<String> glblCodes = new LinkedHashSet<>();
     Map<String, com.cris.customerportal.dto.PanCompanyRecord> glblMap = new LinkedHashMap<>();
 
@@ -914,8 +939,10 @@ public class CustomerServiceImpl implements CustomerService {
       companies.add(company);
      }
     }
+    }
 
     // 2. Check Handling Agent
+    if (requestedType == null || "handling_agent".equals(requestedType)) {
     Set<String> hndgCodes = new LinkedHashSet<>();
     Map<String, com.cris.customerportal.dto.PanCompanyRecord> hndgMap = new LinkedHashMap<>();
 
@@ -1024,6 +1051,7 @@ public class CustomerServiceImpl implements CustomerService {
       companies.add(company);
      }
     }
+    }
 
    } catch (SQLException e) {
     log.error("CustomerServiceImpl.checkPanDuplicate: SQLState={} ErrorCode={} error={}",
@@ -1107,7 +1135,7 @@ public class CustomerServiceImpl implements CustomerService {
   }
 
   if (pan != null && !pan.trim().isEmpty()) {
-   com.cris.customerportal.dto.PanDuplicateCheckResult panCheck = checkPanDuplicate(pan);
+   com.cris.customerportal.dto.PanDuplicateCheckResult panCheck = checkPanDuplicate(pan, type);
    if ("UNAVAILABLE".equals(panCheck.getStatus())) {
     throw new IllegalStateException("Duplicate Check Unavailable – Unable to verify PAN. Registration cannot proceed.");
    }
@@ -1125,7 +1153,7 @@ public class CustomerServiceImpl implements CustomerService {
   }
 
   for (String g : gstinNumbers) {
-   com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, null);
+   com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, null, type);
    if ("UNAVAILABLE".equals(check.getStatus())) {
     throw new IllegalStateException("Duplicate Check Unavailable – Unable to verify this GSTIN.");
    }
@@ -1572,7 +1600,8 @@ public class CustomerServiceImpl implements CustomerService {
         throw new IllegalArgumentException("GSTIN " + g + " does not match PAN number " + activePan);
        }
       }
-      com.cris.customerportal.dto.GstinDuplicateCheckResult check = checkGstinDuplicate(g, customerCode.trim());
+      com.cris.customerportal.dto.GstinDuplicateCheckResult check =
+          checkGstinDuplicate(g, customerCode.trim());
       if ("UNAVAILABLE".equals(check.getStatus())) {
        throw new IllegalStateException("Duplicate Check Unavailable – Unable to verify this GSTIN.");
       }
