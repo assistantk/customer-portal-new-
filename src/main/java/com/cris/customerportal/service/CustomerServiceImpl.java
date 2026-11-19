@@ -1152,10 +1152,9 @@ public class CustomerServiceImpl implements CustomerService {
 
 
   String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
-  String firstGstin = (gstinNumbers != null && !gstinNumbers.isEmpty()) ? gstinNumbers.get(0) : null;
   sql = "global".equals(type)
-      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", " + hndgGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)";
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)";
 
   String finalCode = (providedCode != null && !providedCode.isEmpty())
       ? providedCode.trim().toUpperCase(Locale.ROOT)
@@ -1184,7 +1183,6 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(null);
     insertParameters.add(null);
     insertParameters.add(divisionDesignation);
-    insertParameters.add(firstGstin);
     insertParameters.add(formData.get("panNumber"));
    String executableSql = formatBoundSql(sql, insertParameters) + ";";
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
