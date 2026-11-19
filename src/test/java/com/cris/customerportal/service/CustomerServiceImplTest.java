@@ -2948,7 +2948,8 @@ class CustomerServiceImplTest {
         when(rsCust.getString("EFFECTIVE_TO")).thenReturn(null);
 
         CustomerServiceImpl service = service(dataSource, mailSender);
-        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+        GstinDuplicateCheckResult result =
+            service.checkGstinDuplicate("20APEPA6196G1Z9", null, "GLOBAL");
 
         assertTrue(result.isDuplicate());
         assertEquals("DUPLICATE", result.getStatus());
@@ -2959,6 +2960,7 @@ class CustomerServiceImplTest {
         assertEquals("ABC INDUSTRIES", rec.getCompanyName());
         assertEquals("20APEPA6196G1Z9", rec.getGstin());
         assertFalse(rec.isFlaggedInconsistent());
+        verify(conn, never()).prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS"));
     }
 
     @Test
@@ -2983,7 +2985,8 @@ class CustomerServiceImplTest {
         when(rsHndg.getString("EFFECTIVE_FROM")).thenReturn("2026-02-01");
 
         CustomerServiceImpl service = service(dataSource, mailSender);
-        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9");
+        GstinDuplicateCheckResult result =
+            service.checkGstinDuplicate("20APEPA6196G1Z9", null, "HANDLING_AGENT");
 
         assertTrue(result.isDuplicate());
         assertEquals("DUPLICATE", result.getStatus());
@@ -2993,6 +2996,7 @@ class CustomerServiceImplTest {
         assertEquals("H123", rec.getExistingCode());
         assertEquals("FAST LOGISTICS", rec.getCompanyName());
         assertFalse(rec.isFlaggedInconsistent());
+        verify(conn, never()).prepareStatement(contains("FROM MEMGLBLCUSTDTLS"));
     }
 
     @Test
@@ -3058,6 +3062,26 @@ class CustomerServiceImplTest {
         assertFalse(result.isDuplicate());
         assertEquals("UNAVAILABLE", result.getStatus());
         assertTrue(result.getMessage().contains("Unavailable"));
+    }
+
+    @Test
+    void checkGstinDuplicate_scopesHandlingAgentCheckToHandlingDetailTable() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS"))).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(false);
+
+        GstinDuplicateCheckResult result =
+            service(dataSource, mock(JavaMailSender.class))
+                .checkGstinDuplicate("20APEPA6196G1Z9", null, "HANDLING_AGENT");
+
+        assertFalse(result.isDuplicate());
+        assertEquals("AVAILABLE", result.getStatus());
+        verify(conn, never()).prepareStatement(contains("FROM MEMGLBLCUSTDTLS"));
     }
 
     @Test
@@ -3296,7 +3320,8 @@ class CustomerServiceImplTest {
         assertEquals("AVAILABLE", service.checkPanDuplicate("INVALID123").getStatus());
 
         // Valid but not in DB
-        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res =
+            service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
         assertFalse(res.isDuplicate());
         assertEquals("AVAILABLE", res.getStatus());
         assertTrue(res.getCompanies().isEmpty());
@@ -3331,7 +3356,8 @@ class CustomerServiceImplTest {
         when(rsDtls.getString("MANPINCODE")).thenReturn("110001");
 
         CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
-        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res =
+            service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
 
         assertTrue(res.isDuplicate());
         assertEquals("DUPLICATE", res.getStatus());
@@ -3344,6 +3370,7 @@ class CustomerServiceImplTest {
         assertEquals("Global Customer", comp.getRecordType());
         assertEquals(1, comp.getGstins().size());
         assertEquals("07ABCDE1234F1Z5", comp.getGstins().get(0).getGstin());
+        verify(conn, never()).prepareStatement(contains("MEMGLBLHNDGAGNT"));
     }
 
     @Test
@@ -3375,7 +3402,8 @@ class CustomerServiceImplTest {
         when(rsDtls.getString("MANPINCODE")).thenReturn("400001");
 
         CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
-        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res =
+            service.checkPanDuplicate("ABCDE1234F", "HANDLING_AGENT");
 
         assertTrue(res.isDuplicate());
         assertEquals("DUPLICATE", res.getStatus());
@@ -3386,6 +3414,7 @@ class CustomerServiceImplTest {
         assertEquals("Handling Agent", comp.getRecordType());
         assertEquals(1, comp.getGstins().size());
         assertEquals("27ABCDE1234F1Z8", comp.getGstins().get(0).getGstin());
+        verify(conn, never()).prepareStatement(contains("MEMGLBLCUST"));
     }
 
     @Test
@@ -3399,6 +3428,27 @@ class CustomerServiceImplTest {
         assertFalse(res.isDuplicate());
         assertEquals("UNAVAILABLE", res.getStatus());
         assertTrue(res.getMessage().contains("Unavailable"));
+    }
+
+    @Test
+    void checkPanDuplicate_scopesHandlingAgentCheckToHandlingTables() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(false);
+
+        com.cris.customerportal.dto.PanDuplicateCheckResult result =
+            service(dataSource, mock(JavaMailSender.class)).checkPanDuplicate("ABCDE1234F", "HANDLING_AGENT");
+
+        assertFalse(result.isDuplicate());
+        assertEquals("AVAILABLE", result.getStatus());
+        verify(conn, never()).prepareStatement(contains("MEMGLBLCUST"));
+        verify(conn).prepareStatement(contains("FROM MEMGLBLHNDGAGNT WHERE"));
+        verify(conn).prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS"));
     }
 
     @Test

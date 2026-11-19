@@ -548,8 +548,6 @@ export class PdfGeneratorService {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 12;
     const tableWidth = pageWidth - margin * 2;
-    const lineHeight = 3.2;
-    const fontSize = 7.2;
     const fallbackSignature = this.resolveSignatureDetails();
     const divisionColumnIndex = reportData.columns.findIndex((column) => column.toLowerCase() === 'division');
     const reportDivision = divisionColumnIndex >= 0
@@ -561,11 +559,20 @@ export class PdfGeneratorService {
     let lastTableBottomY = margin + 28;
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(fontSize);
-    const widths = reportData.columns.map((column) =>
-      Math.max(25, Math.min(58, doc.getTextWidth(this.verificationColumnLabel(column)) + 9))
-    );
-    const columnGroups = this.createVerificationColumnGroups(widths, tableWidth);
+    doc.setFontSize(7.2);
+    const preferredWidths = reportData.columns.map((column, index) => {
+      const labelWidth = doc.getTextWidth(this.verificationColumnLabel(column)) + 9;
+      const valueWidth = reportData.rows.reduce((maxWidth, row) =>
+        Math.max(maxWidth, doc.getTextWidth(String(row[index] ?? '')) + 8), 0);
+      return Math.max(25, Math.min(58, labelWidth, valueWidth || labelWidth));
+    });
+    const preferredWidthTotal = preferredWidths.reduce((total, width) => total + width, 0);
+    const widthScale = preferredWidthTotal > tableWidth ? tableWidth / preferredWidthTotal : 1;
+    const extraColumnWidth = preferredWidths.length > 0 && preferredWidthTotal < tableWidth
+      ? (tableWidth - preferredWidthTotal) / preferredWidths.length
+      : 0;
+    const widths = preferredWidths.map((width) => width * widthScale + extraColumnWidth);
+    const minimumColumnWidth = widths.length > 0 ? Math.min(...widths) : tableWidth;
     const generatedAt = formatIstTimestamp(data.generatedAt || new Date());
 
     // Prefer record date from source record column, fallback to generatedAt or system date
@@ -576,89 +583,64 @@ export class PdfGeneratorService {
       recordDate
     );
 
-    let lastTableY = margin;
+    let y = this.drawVerificationPageHeader(
+      doc,
+      reportData,
+      generatedAt,
+      margin,
+      pageWidth
+    );
+    const headerFontSize = Math.max(3, Math.min(7.2, minimumColumnWidth * 0.48));
+    const tableGroup = {
+      indices: reportData.columns.map((_, index) => index),
+      widths
+    };
+    y = this.drawVerificationTableHeader(
+      doc,
+      reportData.columns,
+      tableGroup,
+      margin,
+      y,
+      headerFontSize
+    );
 
-    columnGroups.forEach((group, groupIndex) => {
-      if (groupIndex > 0) {
-        doc.addPage();
-      }
+    const tableBottom = pageHeight - 40;
+    const availableRowHeight = reportData.rows.length > 0
+      ? Math.max(0, (tableBottom - y) / reportData.rows.length)
+      : 7;
+    const rowHeight = Math.min(7, availableRowHeight);
+    const fontSize = Math.max(0.1, Math.min(7.2, rowHeight * 1.5, minimumColumnWidth * 0.48));
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(fontSize);
 
-      let y = this.drawVerificationPageHeader(
-        doc,
-        reportData,
-        generatedAt,
-        margin,
-        pageWidth
-      );
-      y = this.drawVerificationTableHeader(
-        doc,
-        reportData.columns,
-        group,
-        margin,
-        y,
-        fontSize
-      );
-      let groupLastTableBottomY = y;
-
-      const tableBottom = pageHeight - 60;
-      reportData.rows.forEach((row, rowIndex) => {
-        const wrappedCells = group.indices.map((columnIndex, index) => {
-          const value = row[columnIndex] ?? '';
-          const width = group.widths[index];
-          return doc.splitTextToSize(value, Math.max(5, width - 4)) as string[];
-        });
-        const rowLineCount = Math.max(1, ...wrappedCells.map((lines) => lines.length));
-        let lineOffset = 0;
-
-        while (lineOffset < rowLineCount) {
-          let availableLines = Math.floor((tableBottom - y - 3) / lineHeight);
-          if (availableLines < 1) {
-            doc.addPage();
-            y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
-            y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
-            groupLastTableBottomY = y;
-            availableLines = Math.floor((tableBottom - y - 3) / lineHeight);
-          }
-
-          const segmentLines = Math.min(rowLineCount - lineOffset, availableLines);
-          const rowHeight = segmentLines * lineHeight + 3;
-          let x = margin;
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(fontSize);
-          doc.setTextColor(30, 41, 59);
-
-          group.widths.forEach((width, columnIndex) => {
-            doc.setFillColor(rowIndex % 2 === 0 ? 248 : 255, rowIndex % 2 === 0 ? 250 : 255, rowIndex % 2 === 0 ? 252 : 255);
-            doc.setDrawColor(203, 213, 225);
-            doc.rect(x, y, width, rowHeight, 'FD');
-            const lines = wrappedCells[columnIndex].slice(lineOffset, lineOffset + segmentLines);
-            if (lines.length > 0) {
-              doc.text(lines, x + 2, y + 3, { lineHeightFactor: 1.1 });
-            }
-            x += width;
-          });
-
-          y += rowHeight;
-          groupLastTableBottomY = y + 4;
-          lineOffset += segmentLines;
-          if (lineOffset < rowLineCount) {
-            doc.addPage();
-            y = this.drawVerificationPageHeader(doc, reportData, generatedAt, margin, pageWidth);
-            y = this.drawVerificationTableHeader(doc, reportData.columns, group, margin, y, fontSize);
-            groupLastTableBottomY = y;
-          }
+    reportData.rows.forEach((row, rowIndex) => {
+      let x = margin;
+      doc.setTextColor(30, 41, 59);
+      tableGroup.widths.forEach((width, columnIndex) => {
+        doc.setFillColor(rowIndex % 2 === 0 ? 248 : 255, rowIndex % 2 === 0 ? 250 : 255, rowIndex % 2 === 0 ? 252 : 255);
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(x, y, width, rowHeight, 'FD');
+        const value = this.fitVerificationCellText(
+          doc,
+          String(row[columnIndex] ?? ''),
+          Math.max(0, width - 4)
+        );
+        if (value) {
+          doc.text(value, x + 2, y + rowHeight / 2 + fontSize * 0.12, { baseline: 'middle' });
         }
+        x += width;
       });
-
-      if (reportData.rows.length === 0) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(9);
-        doc.setTextColor(100, 116, 139);
-        doc.text('No records found.', margin, y + 7);
-        groupLastTableBottomY = y + 12;
-      }
-      lastTableBottomY = groupLastTableBottomY;
+      y += rowHeight;
     });
+
+    if (reportData.rows.length === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text('No records found.', margin, y + 7);
+      y += 12;
+    }
+    lastTableBottomY = y + 4;
 
     const finalPageNumber = doc.getNumberOfPages();
     doc.setPage(finalPageNumber);
@@ -738,32 +720,26 @@ export class PdfGeneratorService {
     return null;
   }
 
-  private createVerificationColumnGroups(widths: number[], availableWidth: number): Array<{ indices: number[]; widths: number[] }> {
-    if (widths.length === 0) {
-      return [{ indices: [0], widths: [availableWidth] }];
+  private fitVerificationCellText(doc: jsPDF, value: string, maxWidth: number): string {
+    if (!value || maxWidth <= 0 || doc.getTextWidth(value) <= maxWidth) {
+      return maxWidth > 0 ? value : '';
+    }
+    const ellipsis = '...';
+    if (doc.getTextWidth(ellipsis) > maxWidth) {
+      return '';
     }
 
-    const groups: Array<{ indices: number[]; widths: number[] }> = [];
-    let indices: number[] = [];
-    let groupWidths: number[] = [];
-    let usedWidth = 0;
-
-    widths.forEach((width, index) => {
-      if (indices.length > 0 && usedWidth + width > availableWidth) {
-        groups.push({ indices, widths: groupWidths });
-        indices = index === 0 ? [] : [0];
-        groupWidths = index === 0 ? [] : [widths[0]];
-        usedWidth = index === 0 ? 0 : widths[0];
+    let low = 0;
+    let high = value.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (doc.getTextWidth(value.slice(0, middle) + ellipsis) <= maxWidth) {
+        low = middle;
+      } else {
+        high = middle - 1;
       }
-      indices.push(index);
-      groupWidths.push(width);
-      usedWidth += width;
-    });
-
-    if (indices.length > 0) {
-      groups.push({ indices, widths: groupWidths });
     }
-    return groups;
+    return value.slice(0, low) + ellipsis;
   }
 
   private drawVerificationPageHeader(
@@ -844,6 +820,9 @@ export class PdfGeneratorService {
     return normalized.includes('email')
       || normalized.includes('phone')
       || normalized.includes('mobile')
-      || normalized.includes('pincode');
+      || normalized.includes('pincode')
+      || normalized.includes('zone')
+      || normalized.includes('implementation')
+      || normalized.includes('impldate');
   }
 }

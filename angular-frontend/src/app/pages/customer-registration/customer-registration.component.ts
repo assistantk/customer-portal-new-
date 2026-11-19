@@ -268,14 +268,19 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     const reqId = ++this.panCheckReqId;
+    const codeType = this.newCodeType;
     this.panDuplicateStatus = 'checking';
     this.panDuplicateMessage = undefined;
+    this.panDuplicateResult = null;
+    this.selectedPanCompany = null;
+    this.showPanDuplicateModal = false;
+    this.showPanConfirmationModal = false;
     this.cdr.markForCheck();
 
     this.panCheckTimer = setTimeout(() => {
-      this.customerService.checkPanDuplicate(cleanPan).subscribe({
+      this.customerService.checkPanDuplicate(cleanPan, codeType).subscribe({
         next: (res) => {
-          if (this.panCheckReqId !== reqId) return;
+          if (this.panCheckReqId !== reqId || this.newCodeType !== codeType) return;
           if (res.status === 'DUPLICATE' && res.companies && res.companies.length > 0) {
             this.panDuplicateStatus = 'duplicate';
             this.panDuplicateMessage = res.message;
@@ -296,7 +301,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         },
         error: () => {
-          if (this.panCheckReqId !== reqId) return;
+          if (this.panCheckReqId !== reqId || this.newCodeType !== codeType) return;
           this.panDuplicateStatus = 'unavailable';
           this.panDuplicateMessage = 'Duplicate Check Unavailable – Unable to verify this PAN.';
           this.panDuplicateResult = null;
@@ -589,15 +594,17 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
     }
 
     const reqId = (this.gstins[index].duplicateCheckReqId || 0) + 1;
+    const codeType = this.codeType;
     this.gstins[index].duplicateCheckReqId = reqId;
     this.gstins[index].duplicateStatus = 'checking';
     this.cdr.markForCheck();
 
     this.duplicateCheckTimers[index] = setTimeout(() => {
       const currentCode = this.mode === 'old' ? (this.verifiedCustomerCode || this.form.customerCode) : undefined;
-      this.customerService.checkGstinDuplicate(cleanGstin, currentCode).subscribe({
+      this.customerService.checkGstinDuplicate(cleanGstin, codeType, currentCode).subscribe({
         next: (res) => {
           if (!this.gstins[index] || this.gstins[index].duplicateCheckReqId !== reqId) return;
+          if (this.codeType !== codeType) return;
           if (cleanGstin !== (this.gstins[index].gstin || '').trim().toUpperCase()) return;
 
           if (res.status === 'DUPLICATE') {
@@ -617,6 +624,7 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
         },
         error: () => {
           if (!this.gstins[index] || this.gstins[index].duplicateCheckReqId !== reqId) return;
+          if (this.codeType !== codeType) return;
           this.gstins[index].duplicateStatus = 'unavailable';
           this.gstins[index].duplicateMessage = 'Duplicate Check Unavailable – Unable to verify this GSTIN.';
           this.gstins[index].duplicateRecords = [];
@@ -1859,7 +1867,18 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
   }
 
   handleNewCodeTypeChange(newType: 'GLOBAL' | 'HANDLING_AGENT'): void {
+    if (this.newCodeType === newType) return;
     this.newCodeType = newType;
+    if (this.mode === 'new') {
+      if (this.form.panNumber?.trim()) {
+        this.triggerPanDuplicateCheck(this.form.panNumber);
+      }
+      this.gstins.forEach((entry, index) => {
+        if (entry.gstin?.trim()) {
+          this.triggerGstinDuplicateCheck(index, entry.gstin);
+        }
+      });
+    }
     if (this.mode === 'new' && this.form.companyName?.trim()) {
       this.handleNewCompanyNameChange(this.form.companyName);
     }

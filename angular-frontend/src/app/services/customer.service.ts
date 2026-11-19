@@ -323,9 +323,13 @@ export class CustomerService {
     );
   }
 
-  checkGstinDuplicate(gstin: string, currentCode?: string): Observable<GstinDuplicateCheckResult> {
+  checkGstinDuplicate(
+    gstin: string,
+    codeType: 'GLOBAL' | 'HANDLING_AGENT',
+    currentCode?: string
+  ): Observable<GstinDuplicateCheckResult> {
     const clean = (gstin || '').trim().toUpperCase();
-    let params: any = { gstin: clean };
+    let params: any = { gstin: clean, codeType };
     if (currentCode) {
       params.currentCode = currentCode;
     }
@@ -342,10 +346,10 @@ export class CustomerService {
     );
   }
 
-  checkPanDuplicate(pan: string): Observable<PanDuplicateCheckResult> {
+  checkPanDuplicate(pan: string, codeType: 'GLOBAL' | 'HANDLING_AGENT'): Observable<PanDuplicateCheckResult> {
     const clean = (pan || '').trim().toUpperCase();
     return this.http.get<PanDuplicateCheckResult>(`${this.API}/customers/check-pan-duplicate`, {
-      params: { pan: clean },
+      params: { pan: clean, codeType },
       withCredentials: true
     }).pipe(
       catchError(() => of({

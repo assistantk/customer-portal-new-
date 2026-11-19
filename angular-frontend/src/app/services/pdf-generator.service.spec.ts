@@ -312,7 +312,7 @@ describe('PdfGeneratorService', () => {
       expect(previewUrl).toBe('blob:http://localhost/mock-preview-url');
     });
 
-    it('generates a landscape verification report with retained fields and omits contact details and pincode', () => {
+    it('generates a landscape verification report without contact, pincode, zone, or implementation-date columns', () => {
       mockAuthService.setCurrentUser({
         userId: '5219',
         userName: 'SREEJU'
@@ -328,6 +328,8 @@ describe('PdfGeneratorService', () => {
           'panNumber',
           'division',
           'additionalField',
+          'zone',
+          'implementationDate',
           'emailId',
           'phoneNumber',
           'pincode'
@@ -339,6 +341,8 @@ describe('PdfGeneratorService', () => {
           'AMKPB8046M',
           'SR.DCM/RNY',
           'API EXTRA FIELD VALUE',
+          'HIDDEN ZONE VALUE',
+          'HIDDEN IMPLEMENTATION DATE',
           'hidden-email@example.test',
           'hidden-phone-9910303868',
           'hidden-pincode-784501'
@@ -360,8 +364,11 @@ describe('PdfGeneratorService', () => {
       expect(text).not.toContain('(SR.DCM/CSTM) Tj');
       expect(text).toContain('(SR.DCM/) Tj');
       expect(text).toContain('(SR.DCM/RNY) Tj');
-      expect(text).toContain('(API EXTRA FIELD) Tj');
-      expect(text).toContain('(VALUE) Tj');
+      expect(text).toContain('(API EXTRA FIELD VALUE) Tj');
+      expect(text).not.toContain('Zone');
+      expect(text).not.toContain('Implementation Date');
+      expect(text).not.toContain('HIDDEN ZONE VALUE');
+      expect(text).not.toContain('HIDDEN IMPLEMENTATION DATE');
       expect(text).not.toContain('Email Id');
       expect(text).not.toContain('Phone Number');
       expect(text).not.toContain('Pincode');
@@ -372,18 +379,22 @@ describe('PdfGeneratorService', () => {
       expect(doc.getNumberOfPages()).toBe(1);
     });
 
-    it('splits wide, long verification results across landscape pages without dropping the final row', () => {
+    it('fits wide, long verification results and every result row on one landscape page', () => {
       const columns = [
         'customerCode',
         'companyName',
         'address',
-        ...Array.from({ length: 10 }, (_, index) => `additionalField${index}`)
+        ...Array.from({ length: 10 }, (_, index) => `additionalField${index}`),
+        'zone',
+        'implementationDate'
       ];
       const rows = Array.from({ length: 24 }, (_, rowIndex) => [
-        `CODE${rowIndex}`,
+        rowIndex === 23 ? 'LASTROW' : `CODE${rowIndex}`,
         `Company ${rowIndex}`,
         `Long address ${'TEZPUR ASSAM '.repeat(30)}`,
-        ...Array.from({ length: 10 }, (_, index) => `Value ${rowIndex}-${index}`)
+        ...Array.from({ length: 10 }, (_, index) => `Value ${rowIndex}-${index}`),
+        `ZONE-${rowIndex}`,
+        `IMPLEMENTATION-DATE-${rowIndex}`
       ]);
       rows[rows.length - 1][2] = 'FINAL LONG ADDRESS VALUE';
 
@@ -395,12 +406,14 @@ describe('PdfGeneratorService', () => {
         generatedAt: new Date('2026-10-30T09:57:55.000Z')
       });
 
-      expect(doc.getNumberOfPages()).toBeGreaterThan(2);
+      expect(doc.getNumberOfPages()).toBe(1);
       const output = doc.output('arraybuffer');
       const text = new TextDecoder().decode(new Uint8Array(output));
-      expect(text).toContain('(FINAL LONG) Tj');
-      expect(text).toContain('(ADDRESS VALUE) Tj');
-      expect(text).toContain(`Page ${doc.getNumberOfPages()} of ${doc.getNumberOfPages()}`);
+      expect(text).toContain('(LASTROW) Tj');
+      expect(text).toContain('...');
+      expect(text).not.toContain('ZONE-');
+      expect(text).not.toContain('IMPLEMENTATION-DATE');
+      expect(text).toContain('Page 1 of 1');
     });
 
     it('embeds the official signature image and dynamic credentials in verification report PDF', () => {
@@ -461,7 +474,7 @@ describe('PdfGeneratorService', () => {
       expect(saveSpy).toHaveBeenCalledWith('test_verification.pdf');
     });
 
-    it('automatically adds a dedicated final page for the signature block when table rows occupy the bottom area', () => {
+    it('keeps table rows and signature together on one page when the table is long', () => {
       mockAuthService.setCurrentUser({
         userId: '3562',
         userName: 'RAMESH CHANDRA',
@@ -469,7 +482,6 @@ describe('PdfGeneratorService', () => {
         divisionCode: 'CSTM'
       });
 
-      // Rows that fill page 1 down to y ~ 160mm (overflowing the landscape signature zone)
       const rows = Array.from({ length: 30 }, (_, i) => [
         `CODE${i}`,
         `Customer Company Name ${i}`,
@@ -486,13 +498,12 @@ describe('PdfGeneratorService', () => {
       });
 
       const pageCount = doc.getNumberOfPages();
-      expect(pageCount).toBeGreaterThanOrEqual(2);
+      expect(pageCount).toBe(1);
 
-      // The signature is on the final page
-      doc.setPage(pageCount);
       const binary = doc.output();
-      expect(binary).toContain('/Subtype /Image');
-      expect(binary).toContain(`Page ${pageCount} of ${pageCount}`);
+      expect(binary).toContain('eSigned by');
+      expect(binary).toContain('(CODE29) Tj');
+      expect(binary).toContain('Freight Customer Code | Page 1 of 1');
     });
   });
 
@@ -688,7 +699,7 @@ describe('PdfGeneratorService', () => {
         expect(doc.output()).toContain('Freight Customer Code | Page 1 of 1');
       });
 
-      it('renders signature on final page of multi-page landscape verification PDF without overlapping data', () => {
+      it('keeps a large verification table on a single landscape page', () => {
         // Many rows causing multi-page
         const rows = Array.from({ length: 45 }, (_, i) => [
           `C${i}`,
@@ -702,9 +713,9 @@ describe('PdfGeneratorService', () => {
           rows
         });
         const totalPages = doc.getNumberOfPages();
-        expect(totalPages).toBeGreaterThan(1);
-        expect(doc.output()).toContain('/Subtype /Image');
-        expect(doc.output()).toContain(`Page ${totalPages} of ${totalPages}`);
+        expect(totalPages).toBe(1);
+        expect(doc.output()).toContain('eSigned by');
+        expect(doc.output()).toContain('Freight Customer Code | Page 1 of 1');
       });
     });
 
