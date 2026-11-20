@@ -61,7 +61,7 @@ chcp 65001
 .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Maven compiles Java sources as UTF-8, Logback writes console and file logs as UTF-8, and the local Spring Boot JVM runs with `-Dfile.encoding=UTF-8`. Local development uses `./logs`; deployed WARs default to `/switch/applogs/WEBAPPI/FreightCodeLog`. Override the deployment directory with `LOG_PATH` or `-Dlogging.file.path`. For Windows CMD, run `chcp 65001` before starting the application. Use a terminal font with Unicode coverage for characters such as `µ`; code-page and font settings affect display, not the UTF-8 log files.
+Maven compiles Java sources as UTF-8 and Logback writes console output as UTF-8. Deployed WARs write logs to the WebLogic server log, so startup does not depend on an application-specific directory or its permissions. For Windows CMD, run `chcp 65001` before starting the application. Use a terminal font with Unicode coverage for characters such as `µ`; code-page and font settings affect display, not the UTF-8 log output.
 
 By default, Spring Boot listens at `http://localhost:8080`. For local HTTP development, `REQUIRE_HTTPS=false` may be used only for browser-to-backend traffic; do not use it in deployed environments. Credential validation always calls the live RMS API at `http://10.60.201.192:7101/RMS/ATVLDTUSER` by default. Local mock credential authentication is disabled.
 
@@ -199,23 +199,9 @@ The expected successful statuses are login `200`, session `200`, and logout `200
 
 Spring Boot 2.7.12 uses Spring Framework 5.3, Java 8-compatible bytecode, and the `javax.servlet` API. The Maven WAR excludes embedded Tomcat and its Servlet/EL APIs; WebLogic must supply the servlet container and EL implementation. The source repository does not specify the production WebLogic version, so confirm the actual WebLogic release and supported JDK/Servlet specifications with the server administrator. This Spring Boot line requires a Servlet 3.1-compatible container; Jakarta-only servlet containers are not compatible without upgrading/migrating the application.
 
-For readable Unicode logs on WebLogic, configure the WebLogic server JVM startup options with `-Dfile.encoding=UTF-8` and configure the Windows server console code page with `chcp 65001` when applicable. On PowerShell, set `[Console]::InputEncoding` and `[Console]::OutputEncoding` to `[System.Text.UTF8Encoding]::new()` before starting WebLogic. These are server/terminal settings and should not be added to the WAR or `weblogic.xml`; the application Logback console and file encoders already use UTF-8.
+For readable Unicode logs on WebLogic, configure the WebLogic server JVM startup options with `-Dfile.encoding=UTF-8` and configure the Windows server console code page with `chcp 65001` when applicable. On PowerShell, set `[Console]::InputEncoding` and `[Console]::OutputEncoding` to `[System.Text.UTF8Encoding]::new()` before starting WebLogic. These are server/terminal settings and should not be added to the WAR or `weblogic.xml`; the application Logback console encoder uses UTF-8.
 
-The backend WAR writes `FreightCodeLog.log`, `FreightCodeError.log`, `Application.log`, and lazily-created class-specific logs under `/switch/applogs/WEBAPPI/FreightCodeLog` by default. Logback creates the final directory and category subdirectories when the server user can write to `/switch/applogs/WEBAPPI`. Rolling archives are compressed by date and index at 20 MB, retained for 30 days, and capped by the configured size limits. Startup fails with a clear diagnostic if the directory, main log, or class-specific appender cannot be created or written. Timestamps use the server JVM's configured timezone; set `-Duser.timezone=Asia/Kolkata` in the server startup options only if the host should use IST.
-
-Before deploying, have the server administrator identify the actual Tomcat/WebLogic service account and grant it access to the parent directory. For example, replace `APP_USER` and `APP_GROUP` with the service account and group:
-
-```sh
-sudo install -d -o APP_USER -g APP_GROUP -m 0750 /switch/applogs/WEBAPPI
-sudo -u APP_USER test -w /switch/applogs/WEBAPPI
-```
-
-The application creates `FreightCodeLog` under that parent on startup. If the log directory already exists, grant that exact directory to the service account without changing permissions recursively:
-
-```sh
-sudo chown APP_USER:APP_GROUP /switch/applogs/WEBAPPI/FreightCodeLog
-sudo chmod 0750 /switch/applogs/WEBAPPI/FreightCodeLog
-```
+The WebLogic deployment uses the UTF-8 console appender, which WebLogic captures in its server log. No application log directory or filesystem permissions need to be configured. Timestamps use the server JVM's configured timezone; set `-Duser.timezone=Asia/Kolkata` in the server startup options only if the host should use IST.
 
 Session management remains container-backed. Deploying frontend and backend under distinct contexts on the same origin allows the browser to send the backend session cookie to `/FreightCodeApi` when API requests include credentials. For production, use HTTPS and confirm WebLogic's session-cookie `HttpOnly`, `Secure`, and `SameSite` settings match the organization's policy; do not force `Secure` cookies while serving over plain HTTP.
 
@@ -242,29 +228,15 @@ The backend uses a production-ready SLF4J + Logback configuration with contextua
 
 | Environment | Default Log Directory | Configuration Override | Description |
 | :--- | :--- | :--- | :--- |
-| **Local Development** | `./logs/` | `dev` profile or `LOG_PATH=./logs` | Files written relative to current working directory. |
-| **Linux Server / WebLogic** | `/switch/applogs/WEBAPPI/FreightCodeLog/` | `LOG_PATH` or `-Dlogging.file.path` | Ensure the server user can create the directory and write its files. |
-| **Docker Container** | `/switch/applogs/WEBAPPI/FreightCodeLog/` | `LOG_PATH` or `-Dlogging.file.path` | Mount a host volume at the configured path. Standard console output remains accessible via `docker logs <container_id>`. |
+| **Local Development** | Console | `dev` profile | Logs are written to the terminal. |
+| **Linux Server / WebLogic** | WebLogic server log | Server logging configuration | WebLogic captures application console output; no application log directory is needed. |
+| **Docker Container** | Container console | Container logging configuration | Standard console output is accessible via `docker logs <container_id>`. |
 
 ### Appenders and Rolling Policy
 
 1. **Console Appender (`CONSOLE`):**
    - Output includes timestamp, level, thread, request ID, logger/class, message, and full exception stack traces.
-   - Automatically outputs color-coded logs in development, and standard text in production.
-2. **All-levels Rolling File (`FreightCodeLog.log`):**
-   - Captures all application and framework logs.
-   - Rolled daily and on reaching 20 MB: `FreightCodeLog.%d{yyyy-MM-dd}.%i.log.gz`.
-   - Retention: **30 days** with a **1 GB total size cap**.
-3. **Error-only Rolling File (`FreightCodeError.log`):**
-   - Filtered with `ThresholdFilter` set strictly to `ERROR`.
-   - Captures exceptions and critical system failures.
-   - Rolled daily and on reaching 20 MB: `FreightCodeError.%d{yyyy-MM-dd}.%i.log.gz` (30 days history, 200 MB cap).
-4. **Per-class rolling files (`CLASS_FILES`):**
-   - Sifts application log events by their Java logger name and creates a class log on that class's first event; it does not pre-create empty files.
-   - Routes common packages to `Controllers/`, `Services/`, `Repositories/`, `DAO/`, `Configuration/`, `Security/`, `DTO/`, `Entities/`, and `Exceptions/`. Other framework logs go to `Application.log`.
-   - Public methods crossing Spring proxy boundaries in controllers, services, repositories, audit, exception, and configuration components log sanitized arguments, result summaries, status, duration, and sanitized exception stack traces.
-   - Every class using its own SLF4J logger is routed to its own destination. DTOs, entities, exceptions without log calls, static/private helper methods, and self-invoked methods that do not cross a Spring proxy do not emit synthetic method-entry logs; no class-specific file appears unless that class logs.
-   - Each class log rolls by date or at 20 MB and retains up to 30 days. Override using `CLASS_LOG_MAX_SIZE`, `CLASS_LOG_MAX_HISTORY`, `CLASS_LOG_TOTAL_SIZE_CAP`, `CLASS_LOG_MAX_OPEN_FILES`, and `CLASS_LOG_TIMEOUT` (a Logback duration such as `30 minutes`; or the matching `logging.class-file.*` properties).
+   - Output includes timestamp, level, thread, request ID, logger/class, message, and full exception stack traces in all profiles. WebLogic and container platforms capture this console output in their configured server logs.
 
 ### Profiles and SQL Logging
 
