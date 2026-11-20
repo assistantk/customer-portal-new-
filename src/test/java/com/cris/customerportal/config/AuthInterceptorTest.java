@@ -168,4 +168,24 @@ class AuthInterceptorTest {
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         assertTrue(responseWriter.toString().contains("Authentication required"));
     }
+
+    @Test
+    void supersededSession_isRejectedWith401SessionSuperseded() throws Exception {
+        com.cris.customerportal.service.ActiveUserSessionRegistry mockRegistry =
+                mock(com.cris.customerportal.service.ActiveUserSessionRegistry.class);
+        AuthInterceptor interceptorWithRegistry = new AuthInterceptor(mockRegistry);
+
+        AuthUserDto user = new AuthUserDto("USR1", "Standard User", "USER", "Y");
+        user.setDesignation("SR-DCM");
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute(AuthController.AUTH_SESSION_KEY)).thenReturn(user);
+        when(request.getRequestURI()).thenReturn("/api/customers/lookup");
+        when(mockRegistry.isSessionActive(eq("USR1"), eq(session))).thenReturn(false);
+
+        assertFalse(interceptorWithRegistry.preHandle(request, response, new Object()));
+        verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        verify(session).invalidate();
+        assertTrue(responseWriter.toString().contains("SESSION_SUPERSEDED"));
+        assertTrue(responseWriter.toString().contains("another device"));
+    }
 }

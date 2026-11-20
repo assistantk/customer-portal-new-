@@ -22,7 +22,9 @@ export class AuthInterceptor implements HttpInterceptor {
     return next.handle(authReq).pipe(
       catchError((error: HttpErrorResponse) => {
         if (error.status === 401) {
-          this.authService.handleAuthExpired();
+          const isSuperseded = error.error?.code === 'SESSION_SUPERSEDED'
+            || (typeof error.error?.message === 'string' && error.error.message.includes('another device'));
+          this.authService.handleAuthExpired(isSuperseded);
         }
         return throwError(() => error);
       })

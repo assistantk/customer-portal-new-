@@ -86,6 +86,13 @@ export class LoginComponent implements OnInit, OnDestroy {
     });
 
     this.authService.setRmsTempUser(null);
+    try {
+      const logoutReason = sessionStorage.getItem('auth_logout_reason');
+      if (logoutReason) {
+        this.error = logoutReason;
+        sessionStorage.removeItem('auth_logout_reason');
+      }
+    } catch (_) {}
     this.loadCaptcha();
     this.checkPendingOtpStatus();
   }

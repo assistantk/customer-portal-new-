@@ -2,14 +2,28 @@ package com.cris.customerportal.config;
 
 import com.cris.customerportal.controller.AuthController;
 import com.cris.customerportal.dto.AuthUserDto;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import com.cris.customerportal.service.ActiveUserSessionRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
+
+    private final ActiveUserSessionRegistry sessionRegistry;
+
+    public AuthInterceptor() {
+        this(null);
+    }
+
+    @Autowired
+    public AuthInterceptor(@Autowired(required = false) ActiveUserSessionRegistry sessionRegistry) {
+        this.sessionRegistry = sessionRegistry;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -22,7 +36,18 @@ public class AuthInterceptor implements HandlerInterceptor {
                 ? (AuthUserDto) session.getAttribute(AuthController.AUTH_SESSION_KEY)
                 : null;
         if (user == null) {
-            writeUnauthorized(response);
+            writeUnauthorized(response, "SESSION_EXPIRED", "Authentication required. Please log in.");
+            return false;
+        }
+
+        if (sessionRegistry != null && !sessionRegistry.isSessionActive(user.getUserId(), session)) {
+            try {
+                session.removeAttribute(AuthController.AUTH_SESSION_KEY);
+                session.removeAttribute(AuthController.RMS_LOGOUT_CONTEXT_KEY);
+                session.invalidate();
+            } catch (Exception ignored) {}
+            writeUnauthorized(response, "SESSION_SUPERSEDED",
+                    "Your session has been terminated because this account was logged in from another device.");
             return false;
         }
 
@@ -61,10 +86,11 @@ public class AuthInterceptor implements HandlerInterceptor {
         response.getWriter().write("{\"success\":false,\"message\":\"" + escapedMessage + "\"}");
     }
 
-    private void writeUnauthorized(HttpServletResponse response) throws Exception {
+    private void writeUnauthorized(HttpServletResponse response, String code, String message) throws Exception {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
+        String escapedMessage = message.replace("\\", "\\\\").replace("\"", "\\\"");
         response.getWriter().write(
-                "{\"success\":false,\"code\":\"SESSION_EXPIRED\",\"message\":\"Authentication required. Please log in.\"}");
+                "{\"success\":false,\"code\":\"" + code + "\",\"message\":\"" + escapedMessage + "\"}");
     }
 }

@@ -509,4 +509,13 @@ describe('LoginComponent - 3-Step RMS Authentication Integration', () => {
     expect(component.validatedUser).toBeNull();
     expect(authServiceMock.setRmsTempUser).toHaveBeenCalledWith(null);
   });
+
+  it('displays session superseded notification when auth_logout_reason is present in sessionStorage', () => {
+    sessionStorage.setItem('auth_logout_reason', 'Your session has been terminated because this account was logged in from another device.');
+    const newComponent = new LoginComponent(fb, authServiceMock, routerMock, cdrMock);
+    newComponent.ngOnInit();
+
+    expect(newComponent.error).toBe('Your session has been terminated because this account was logged in from another device.');
+    expect(sessionStorage.getItem('auth_logout_reason')).toBeNull();
+  });
 });

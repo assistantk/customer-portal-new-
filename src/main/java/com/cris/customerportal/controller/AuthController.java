@@ -20,9 +20,11 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.cris.customerportal.service.ActiveUserSessionRegistry;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -45,25 +47,35 @@ public class AuthController {
     private final CaptchaService captchaService;
     private final RmsAuthOrchestrator rmsAuthOrchestrator;
     private final boolean requireHttps;
+    private final ActiveUserSessionRegistry sessionRegistry;
 
     public AuthController(CaptchaService captchaService) {
-        this(captchaService, null, false);
+        this(captchaService, null, false, new ActiveUserSessionRegistry());
     }
 
     public AuthController(
             CaptchaService captchaService,
             RmsAuthOrchestrator rmsAuthOrchestrator) {
-        this(captchaService, rmsAuthOrchestrator, false);
+        this(captchaService, rmsAuthOrchestrator, false, new ActiveUserSessionRegistry());
+    }
+
+    public AuthController(
+            CaptchaService captchaService,
+            RmsAuthOrchestrator rmsAuthOrchestrator,
+            boolean requireHttps) {
+        this(captchaService, rmsAuthOrchestrator, requireHttps, new ActiveUserSessionRegistry());
     }
 
     @Autowired
     public AuthController(
             CaptchaService captchaService,
             @Autowired(required = false) RmsAuthOrchestrator rmsAuthOrchestrator,
-            @Value("${app.security.require-https:true}") boolean requireHttps) {
+            @Value("${app.security.require-https:true}") boolean requireHttps,
+            @Autowired(required = false) ActiveUserSessionRegistry sessionRegistry) {
         this.captchaService = captchaService;
         this.rmsAuthOrchestrator = rmsAuthOrchestrator;
         this.requireHttps = requireHttps;
+        this.sessionRegistry = sessionRegistry != null ? sessionRegistry : new ActiveUserSessionRegistry();
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -423,6 +435,19 @@ public class AuthController {
             }
             session.setMaxInactiveInterval(AUTHENTICATED_SESSION_TIMEOUT_SECONDS);
 
+            // Register single active session in registry
+            String sessionToken = UUID.randomUUID().toString();
+            session.setAttribute(ActiveUserSessionRegistry.SESSION_USER_ATTRIBUTE, authenticatedUser.getUserId());
+            session.setAttribute(ActiveUserSessionRegistry.SESSION_TOKEN_ATTRIBUTE, sessionToken);
+            if (sessionRegistry != null) {
+                sessionRegistry.registerSession(
+                        authenticatedUser.getUserId(),
+                        session.getId(),
+                        sessionToken,
+                        session,
+                        clientIp);
+            }
+
             LOGGER.info("User successfully verified OTP. Status: {}. Authenticated session established.",
                     HttpStatus.OK.value());
 
@@ -492,6 +517,14 @@ public class AuthController {
         }
 
         RmsLoginRequest logoutReq = (RmsLoginRequest) session.getAttribute(RMS_LOGOUT_CONTEXT_KEY);
+        AuthUserDto user = (AuthUserDto) session.getAttribute(AUTH_SESSION_KEY);
+        String sessionToken = (String) session.getAttribute(ActiveUserSessionRegistry.SESSION_TOKEN_ATTRIBUTE);
+        String sessionId = session.getId();
+
+        if (user != null && user.getUserId() != null && sessionRegistry != null) {
+            sessionRegistry.unregisterSession(user.getUserId(), sessionId, sessionToken);
+        }
+
         session.invalidate();
 
         if (logoutReq != null && rmsAuthOrchestrator != null) {
@@ -525,6 +558,21 @@ public class AuthController {
         if (session != null) {
             AuthUserDto user = (AuthUserDto) session.getAttribute(AUTH_SESSION_KEY);
             if (user != null) {
+                if (sessionRegistry != null && !sessionRegistry.isSessionActive(user.getUserId(), session)) {
+                    LOGGER.warn("Session superseded for user {} on checkSession", user.getUserId());
+                    try {
+                        session.removeAttribute(AUTH_SESSION_KEY);
+                        session.removeAttribute(RMS_LOGOUT_CONTEXT_KEY);
+                        session.invalidate();
+                    } catch (Exception ignored) {}
+                    Map<String, Object> body = new HashMap<>();
+                    body.put("success", false);
+                    body.put("authenticated", false);
+                    body.put("code", "SESSION_SUPERSEDED");
+                    body.put("message", "Your session has been terminated because this account was logged in from another device.");
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+                }
+
                 Map<String, Object> body = new HashMap<>();
                 body.put("success", true);
                 body.put("authenticated", true);

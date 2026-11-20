@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { HttpErrorResponse, HttpHandler, HttpRequest } from '@angular/common/http';
 import { throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,7 +24,28 @@ describe('AuthInterceptor', () => {
       handler as unknown as HttpHandler
     ).subscribe({ error: () => undefined });
 
-    expect(authService.handleAuthExpired).toHaveBeenCalledTimes(1);
+    expect(authService.handleAuthExpired).toHaveBeenCalledWith(false);
     expect(authService.logout).not.toHaveBeenCalled();
+  });
+
+  it('notifies authService that session was superseded when receiving 401 SESSION_SUPERSEDED', () => {
+    const authService = {
+      handleAuthExpired: vi.fn(),
+      logout: vi.fn()
+    };
+    const interceptor = new AuthInterceptor(authService as unknown as AuthService);
+    const handler = {
+      handle: vi.fn(() => throwError(() => new HttpErrorResponse({
+        status: 401,
+        error: { success: false, code: 'SESSION_SUPERSEDED', message: 'Your session has been terminated because this account was logged in from another device.' }
+      })))
+    };
+
+    interceptor.intercept(
+      new HttpRequest('GET', '/api/customers/lookup'),
+      handler as unknown as HttpHandler
+    ).subscribe({ error: () => undefined });
+
+    expect(authService.handleAuthExpired).toHaveBeenCalledWith(true);
   });
 });

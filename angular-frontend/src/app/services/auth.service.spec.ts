@@ -1,9 +1,15 @@
+// @vitest-environment jsdom
 import '@angular/compiler';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
 import { AuthService, AuthUserData } from './auth.service';
+
+try {
+  TestBed.initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
+} catch (_) {}
 
 describe('AuthService', () => {
   let service: AuthService;

@@ -338,9 +338,14 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.API}/register`, req, { withCredentials: true });
   }
 
-  handleAuthExpired(): void {
+  handleAuthExpired(superseded = false): void {
     this.setRmsTempUser(null);
     this.updateCurrentUser(null);
+    if (superseded) {
+      try {
+        sessionStorage.setItem('auth_logout_reason', 'Your session has been terminated because this account was logged in from another device.');
+      } catch (_) {}
+    }
   }
 
   private updateCurrentUser(user: AuthUserData | null): void {
