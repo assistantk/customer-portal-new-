@@ -486,30 +486,61 @@ public class ImageOcrServiceImpl implements ImageOcrService {
     }
 
     private String extractLegalName(String text) {
+        if (text == null) return null;
         Pattern pattern = Pattern.compile("(?:1\\.?\\s*)?(?:Legal\\s+Name(?:\\s+of\\s+Business)?)\\s*[:\\-]?\\s*([^\\n\\r|]+)", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) {
-            return cleanName(matcher.group(1));
+        while (matcher.find()) {
+            String candidate = cleanName(matcher.group(1));
+            if (candidate != null && !isInvalidBusinessName(candidate)) {
+                return candidate;
+            }
         }
         return null;
     }
 
     private String extractTradeName(String text) {
+        if (text == null) return null;
         Pattern pattern = Pattern.compile("(?:2\\.?\\s*)?(?:Trade\\s+Name(?:\\s*,\\s*if\\s+any)?)\\s*[:\\-]?\\s*([^\\n\\r|]+)", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) {
-            return cleanName(matcher.group(1));
+        while (matcher.find()) {
+            String candidate = cleanName(matcher.group(1));
+            if (candidate != null && !isInvalidBusinessName(candidate)) {
+                return candidate;
+            }
         }
         return null;
     }
 
     private String cleanName(String name) {
         if (name == null) return null;
-        String cleaned = name.replaceAll("(?i)\\b(?:NA|N/A|None|Not Applicable)\\b", "")
-                .replaceAll("[|;:_~*]+", " ")
+        String cleaned = name
+                .replaceAll("(?i)\\b(?:NA|N/A|None|Not Applicable|Null|Nil)\\b", "")
+                .replaceAll("(?i)\\b(?:designation|superintendent|commissioner|assistant\\s+commissioner|approving\\s+authority|signature|jurisdiction|jurisdiction\\s+office|photo|particulars\\s+of\\s+approving\\s+authority)\\b.*$", "")
+                .replaceAll("(?i)\\bname\\s*[:\\-].*$", "")
+                .replaceAll("(?i)\\bname\\s+[A-Za-z\\s]+(?:designation).*$", "")
+                .replaceAll("(?i)\\b(?:additional\\s+trade\\s+names?|trade\\s+name|constitution\\s+of\\s+business|gstin|pan|principal\\s+place|address\\s+of|date\\s+of|type\\s+of\\s+registration)\\b.*$", "")
+                .replaceAll("[|;:_~*\\\\/]+", " ")
                 .replaceAll("\\s+", " ")
+                .replaceAll("^[\\s:;,\\-|?{}()\\[\\]\\\\/]+|[\\s:;,\\-|?{}()\\[\\]\\\\/]+$", "")
                 .trim();
-        return cleaned.isEmpty() ? null : cleaned;
+        return (cleaned.isEmpty() || isInvalidBusinessName(cleaned)) ? null : cleaned;
+    }
+
+    private boolean isInvalidBusinessName(String name) {
+        if (name == null) return true;
+        String clean = name.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (clean.length() < 3) return true;
+        if (clean.equals("ms") || clean.equals("messrs") || clean.equals("name")
+                || clean.equals("designation") || clean.equals("superintendent")
+                || clean.equals("approvingauthority") || clean.equals("signature")
+                || clean.equals("governmentofindia") || clean.equals("registrationcertificate")) {
+            return true;
+        }
+        String withoutPrefix = name.trim().replaceFirst("(?i)^(?:m/s\\.?|messrs\\.?)\\s+", "").trim();
+        String cleanWithoutPrefix = withoutPrefix.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (cleanWithoutPrefix.length() < 2) return true;
+        return cleanWithoutPrefix.equals("designation") || cleanWithoutPrefix.equals("superintendent")
+                || cleanWithoutPrefix.equals("approvingauthority") || cleanWithoutPrefix.equals("name");
     }
 
     private String extractAddress(String text) {

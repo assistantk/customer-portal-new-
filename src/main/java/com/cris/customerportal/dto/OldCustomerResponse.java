@@ -11,6 +11,7 @@ public class OldCustomerResponse {
     private String address;
     private String panNumber;
     private String gstinNumbers;
+    private String primaryGstin;
     private String city;
     private String pincode;
     private String zone;
@@ -54,6 +55,9 @@ public class OldCustomerResponse {
 
     public String getGstinNumbers() { return gstinNumbers; }
     public void setGstinNumbers(String gstinNumbers) { this.gstinNumbers = gstinNumbers; }
+
+    public String getPrimaryGstin() { return primaryGstin; }
+    public void setPrimaryGstin(String primaryGstin) { this.primaryGstin = primaryGstin; }
 
     public List<String> getHandlingAgentCodes() { return handlingAgentCodes; }
     public void setHandlingAgentCodes(List<String> handlingAgentCodes) {

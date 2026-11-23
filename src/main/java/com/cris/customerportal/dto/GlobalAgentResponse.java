@@ -14,6 +14,7 @@ public class GlobalAgentResponse {
     // Additional Handling Agent columns exposed for Old User / Handling Agent mode
     private String panNumber;
     private String gstinNumbers;
+    private String primaryGstin;
     private String centBlng;
     private String pcoCode;
     private String edMndFlag;
@@ -47,6 +48,9 @@ public class GlobalAgentResponse {
 
     public String getGstinNumbers() { return gstinNumbers; }
     public void setGstinNumbers(String gstinNumbers) { this.gstinNumbers = gstinNumbers; }
+
+    public String getPrimaryGstin() { return primaryGstin; }
+    public void setPrimaryGstin(String primaryGstin) { this.primaryGstin = primaryGstin; }
 
     public String getCentBlng() { return centBlng; }
     public void setCentBlng(String centBlng) { this.centBlng = centBlng; }

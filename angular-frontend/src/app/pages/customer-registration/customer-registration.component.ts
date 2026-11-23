@@ -3442,9 +3442,10 @@ export class CustomerRegistrationComponent implements OnInit, OnDestroy {
             : (legalName && legalName.trim()
                 ? legalName.trim()
                 : (businessName ? businessName.trim() : ''));
-          if (extractedCompany) {
+          const hasUserEnteredName = Boolean(this.companyNameManuallyEdited || (this.form.companyName && this.form.companyName.trim().length >= 2));
+          if (extractedCompany && !hasUserEnteredName) {
             if (this.mode === 'new') {
-              this.handleNewCompanyNameChange(extractedCompany);
+              this.handleNewCompanyNameChange(extractedCompany, false);
             } else {
               this.form.companyName = extractedCompany;
             }

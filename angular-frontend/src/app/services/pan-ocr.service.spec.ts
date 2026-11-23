@@ -2,7 +2,7 @@
 import { vi } from 'vitest';
 import { PanOcrService } from './pan-ocr.service';
 import { describe, expect, it } from 'vitest';
-import { cleanAndShortenAddress, extractGstinDetailsFromText, combineMultiPageDetails } from './pan-ocr.service';
+import { cleanAndShortenAddress, extractGstinDetailsFromText, combineMultiPageDetails, isInvalidBusinessName, reconstructSpatialText } from './pan-ocr.service';
 import { generateCustomerCode } from './customer-code-generator';
 
 vi.mock('pdfjs-dist', () => ({
@@ -337,5 +337,69 @@ describe('GSTIN OCR text extraction', () => {
     expect(combined.address).not.toContain('Nalanda');
     expect(combined.address).not.toContain('400018');
     expect(combined.address).not.toContain('803216');
+  });
+
+  it('Test Scenario 6: excludes officer name, designation, and signature text from company name', () => {
+    const textWithApprovingOfficer = [
+      'Government of India',
+      'Form GST REG-06',
+      'Registration Certificate',
+      'Registration Number: 17AABCR1234E1Z1',
+      '1. Legal Name: CHEERFUL TRADERS PRIVATE LIMITED',
+      '2. Trade Name, if any: CHEERFUL TRADERS',
+      '3. Constitution of Business: Private Limited Company',
+      'Address of Principal Place of Business: 123 BAZAAR ROAD, SHILLONG, Meghalaya, 793001',
+      'Signature',
+      'Name: CHEERFUL RYNGKHLEM',
+      'Designation: Superintendent',
+      'Jurisdiction Office: Shillong Circle'
+    ].join('\n');
+
+    const details = extractGstinDetailsFromText(textWithApprovingOfficer);
+    expect(details.legalName).toBe('CHEERFUL TRADERS PRIVATE LIMITED');
+    expect(details.tradeName).toBe('CHEERFUL TRADERS');
+    expect(details.businessName).toBe('CHEERFUL TRADERS');
+    expect(details.businessName).not.toContain('CHEERFUL RYNGKHLEM');
+    expect(details.businessName).not.toContain('DESIGNATION');
+    expect(details.businessName).not.toContain('Superintendent');
+  });
+
+  it('Scenario 6b: correctly ignores stray designation / officer fragments when Legal Name is followed by signature block', () => {
+    // When spatial reconstruction or OCR text presents table adjacent to officer block
+    const trickyText = '1. Legal Name: M/S NAME CHEERFUL RYNGKHLEM DESIGNATION/ 2. Trade Name: NA';
+    const details = extractGstinDetailsFromText(trickyText);
+    // Should NOT accept the officer/designation fragment as a valid company name
+    expect(details.businessName).toBeNull();
+    expect(details.legalName).toBeNull();
+  });
+
+  it('isInvalidBusinessName rejects honorifics, officer titles, and empty labels', () => {
+    expect(isInvalidBusinessName('M/S')).toBe(true);
+    expect(isInvalidBusinessName('M/S.')).toBe(true);
+    expect(isInvalidBusinessName('MS')).toBe(true);
+    expect(isInvalidBusinessName('Designation')).toBe(true);
+    expect(isInvalidBusinessName('Superintendent')).toBe(true);
+    expect(isInvalidBusinessName('Approving Authority')).toBe(true);
+    expect(isInvalidBusinessName('Signature')).toBe(true);
+    expect(isInvalidBusinessName('NAME CHEERFUL RYNGKHLEM DESIGNATION')).toBe(true);
+    expect(isInvalidBusinessName('CHEERFUL TRADERS PRIVATE LIMITED')).toBe(false);
+  });
+
+  it('reconstructSpatialText groups items by vertical line and sorts horizontally', () => {
+    const items = [
+      { str: 'Trade Name:', transform: [1, 0, 0, 1, 50, 700] },
+      { str: 'MY COMPANY', transform: [1, 0, 0, 1, 150, 701] },
+      { str: 'Legal Name:', transform: [1, 0, 0, 1, 50, 720] },
+      { str: 'MY LEGAL ENTITY', transform: [1, 0, 0, 1, 150, 719] },
+      { str: 'Signature', transform: [1, 0, 0, 1, 400, 200] },
+      { str: 'Superintendent', transform: [1, 0, 0, 1, 400, 180] }
+    ];
+
+    const result = reconstructSpatialText(items);
+    const lines = result.split('\n');
+    expect(lines[0]).toBe('Legal Name: MY LEGAL ENTITY');
+    expect(lines[1]).toBe('Trade Name: MY COMPANY');
+    expect(lines[2]).toBe('Signature');
+    expect(lines[3]).toBe('Superintendent');
   });
 });

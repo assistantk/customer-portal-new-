@@ -45,16 +45,15 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-            () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-                "codeType", "global",
-                "companyName", "A".repeat(41),
-                "address", "Address",
-                "city", "City",
-                "operatingDivision", "Division",
-                "zone", "Zone",
-                "panNumber", "ABCDE1234F",
-                "gstinNumbers", "07ABCDE1234F1Z5"
-            )));
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                        "codeType", "global",
+                        "companyName", "A".repeat(41),
+                        "address", "Address",
+                        "city", "City",
+                        "operatingDivision", "Division",
+                        "zone", "Zone",
+                        "panNumber", "ABCDE1234F",
+                        "gstinNumbers", "07ABCDE1234F1Z5")));
 
         assertEquals("Company name cannot exceed 40 characters.", error.getMessage());
         verifyNoInteractions(dataSource, mailSender);
@@ -65,8 +64,8 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-            () -> service(dataSource, mock(JavaMailSender.class))
-                .generateUniqueCodeJDBC("A".repeat(41), "global"));
+                () -> service(dataSource, mock(JavaMailSender.class))
+                        .generateUniqueCodeJDBC("A".repeat(41), "global"));
 
         assertEquals("Company name cannot exceed 40 characters.", error.getMessage());
         verifyNoInteractions(dataSource);
@@ -94,8 +93,8 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVIMPLREMK")).thenReturn("SR.DCM/RNY");
         when(lookupRs.getString("MAVVERIFICATIONDATE")).thenReturn("2026-11-02");
 
-        com.cris.customerportal.dto.OldCustomerResponse result =
-                service(dataSource, mailSender).lookupOldCustomerByCode("saeb");
+        com.cris.customerportal.dto.OldCustomerResponse result = service(dataSource, mailSender)
+                .lookupOldCustomerByCode("saeb");
 
         assertEquals("M/S SAMPLE COMPANY", result.getCompanyName());
         assertEquals("RAILWAY ROAD", result.getAddress());
@@ -104,11 +103,10 @@ class CustomerServiceImplTest {
         assertEquals("SR.DCM/RNY", result.getDivision());
         assertEquals("2026-11-02", result.getCreationDate());
         assertEquals("ABCDE1234F", result.getPanNumber());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("MAVPCOCODE")
-                    && sql.contains("MAVIMPLREMK")
-                    && sql.contains("NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE")
-                    && !sql.contains("TO_CHAR(")));
+        verify(connection).prepareStatement(argThat(sql -> sql.contains("MAVPCOCODE")
+                && sql.contains("MAVIMPLREMK")
+                && sql.contains("NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE")
+                && !sql.contains("TO_CHAR(")));
     }
 
     @Test
@@ -138,8 +136,8 @@ class CustomerServiceImplTest {
         when(detailsRs.getString("EFFECTIVE_FROM")).thenReturn("2026-11-12", "2026-11-11");
         when(detailsRs.getString("EFFECTIVE_TO")).thenReturn(null, null);
 
-        com.cris.customerportal.dto.OldCustomerResponse result =
-                service(dataSource, mock(JavaMailSender.class)).lookupOldCustomerByCode("msgg");
+        com.cris.customerportal.dto.OldCustomerResponse result = service(dataSource, mock(JavaMailSender.class))
+                .lookupOldCustomerByCode("msgg");
 
         assertEquals(2, result.getGstins().size());
         assertEquals("07CBDPG4131J1ZS", result.getGstins().get(0).getGstin());
@@ -192,8 +190,8 @@ class CustomerServiceImplTest {
         when(detailsRs.getString("EFFECTIVE_FROM")).thenReturn("2026-11-12");
         when(detailsRs.getString("EFFECTIVE_TO")).thenReturn("2027-11-11");
 
-        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
-                service(dataSource, mock(JavaMailSender.class)).searchHandlingAgents("AG01", "CODE");
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .searchHandlingAgents("AG01", "CODE");
 
         assertEquals(1, results.size());
         assertEquals(1, results.get(0).getGstins().size());
@@ -205,12 +203,12 @@ class CustomerServiceImplTest {
         assertEquals("2026-11-12", results.get(0).getGstins().get(0).getEffectiveFrom());
         assertEquals("2027-11-11", results.get(0).getGstins().get(0).getEffectiveTo());
         verify(detailsPs).setString(1, "AG01");
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ?")
-                    && sql.contains("MAVHNDGAGNTADDRTEXT AS REGISTERED_ADDRESS")
-                    && sql.contains("MADIMPLDATE")
-                    && sql.contains("MADDATEEFCTFROM")
-                    && sql.contains("MADDATEEFCTTO")));
+        verify(connection)
+                .prepareStatement(argThat(sql -> sql.contains("FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ?")
+                        && sql.contains("MAVHNDGAGNTADDRTEXT AS REGISTERED_ADDRESS")
+                        && sql.contains("MADIMPLDATE")
+                        && sql.contains("MADDATEEFCTFROM")
+                        && sql.contains("MADDATEEFCTTO")));
     }
 
     @Test
@@ -251,8 +249,8 @@ class CustomerServiceImplTest {
         when(agentPs.executeQuery()).thenReturn(agentRs);
         when(agentRs.next()).thenReturn(false);
 
-        List<com.cris.customerportal.dto.OldCustomerResponse> results =
-                service(dataSource, mock(JavaMailSender.class)).lookupOldCustomerByGstin("07CBDPG4131J1ZS");
+        List<com.cris.customerportal.dto.OldCustomerResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .lookupOldCustomerByGstin("07CBDPG4131J1ZS");
 
         assertEquals(1, results.size());
         assertEquals(1, results.get(0).getGstins().size());
@@ -283,16 +281,14 @@ class CustomerServiceImplTest {
         when(customerRs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
         when(agentRs.getString(1)).thenReturn("HA01", "HA01");
 
-        List<com.cris.customerportal.dto.OldCustomerResponse> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .lookupOldCustomerByGstin("07abcde1234f1z5");
+        List<com.cris.customerportal.dto.OldCustomerResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .lookupOldCustomerByGstin("07abcde1234f1z5");
 
         assertEquals(1, results.size());
         assertEquals(List.of("HA01"), results.get(0).getHandlingAgentCodes());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMGLBLHNDGAGNTDTLS")
-                    && sql.contains("MAVCUSTGSTNUMB = ?")
-                    && sql.contains("SELECT DISTINCT MAVHNDGAGNTCODE")));
+        verify(connection).prepareStatement(argThat(sql -> sql.contains("FROM MEMGLBLHNDGAGNTDTLS")
+                && sql.contains("MAVCUSTGSTNUMB = ?")
+                && sql.contains("SELECT DISTINCT MAVHNDGAGNTCODE")));
         verify(agentLookup).setString(1, "07ABCDE1234F1Z5");
     }
 
@@ -313,9 +309,8 @@ class CustomerServiceImplTest {
         when(agentRs.next()).thenReturn(true, false);
         when(agentRs.getString(1)).thenReturn("HA01");
 
-        List<com.cris.customerportal.dto.OldCustomerResponse> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .lookupOldCustomerByGstin("07ABCDE1234F1Z5");
+        List<com.cris.customerportal.dto.OldCustomerResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .lookupOldCustomerByGstin("07ABCDE1234F1Z5");
 
         assertEquals(1, results.size());
         assertNull(results.get(0).getCustomerCode());
@@ -336,17 +331,16 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ALPS");
         when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
 
-        List<Map<String, String>> results =
-                service(dataSource, mock(JavaMailSender.class)).searchOwnershipCodes("alps");
+        List<Map<String, String>> results = service(dataSource, mock(JavaMailSender.class))
+                .searchOwnershipCodes("alps");
 
         assertEquals(1, results.size());
         assertEquals(Map.of(
                 "ownershipCode", "ALPS",
                 "companyName", "M/S ALPS MINING SERVICES PRIVATE LIMITED"), results.get(0));
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMWGONOWNRSHIP")
-                    && sql.contains("MAVWGONOWNRSHIPCODE")
-                    && sql.contains("MAVWGONOWNRSHIPDESC")));
+        verify(connection).prepareStatement(argThat(sql -> sql.contains("FROM MEMWGONOWNRSHIP")
+                && sql.contains("MAVWGONOWNRSHIPCODE")
+                && sql.contains("MAVWGONOWNRSHIPDESC")));
         verify(search).setString(1, "ALPS");
         verify(search).setString(2, "ALPS");
     }
@@ -367,17 +361,16 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("SAMPLE ROAD");
         when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
 
-        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
-                service(dataSource, mock(JavaMailSender.class)).searchHandlingAgents("sample");
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .searchHandlingAgents("sample");
 
         assertEquals(1, results.size());
         assertEquals("HA01", results.get(0).getCode());
         assertEquals("M/S SAMPLE AGENT", results.get(0).getCompanyName());
         assertEquals("SAMPLE ROAD", results.get(0).getAddress());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMGLBLHNDGAGNT")
-                    && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTCODE")
-                    && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTNAME")));
+        verify(connection).prepareStatement(argThat(sql -> sql.contains("FROM MEMGLBLHNDGAGNT")
+                && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTCODE")
+                && sql.contains("INSTR(UPPER(NVL(MAVHNDGAGNTNAME")));
         verify(search).setString(1, "SAMPLE");
         verify(search).setString(2, "SAMPLE");
     }
@@ -395,32 +388,29 @@ class CustomerServiceImplTest {
         when(existsRs.next()).thenReturn(false);
 
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "MSBC",
-            "companyName", " M/S: BALAJI ENTERPRISES ",
-            "address", "O'Brien Road",
-            "city", "Dhanbad",
-            "pincode", "440001",
-            "zone", "Central Railway",
-            "operatingDivision", "Dhanbad (DHN)",
-            "gstinNumbers", "20APEPA6196G1Z9",
-            "panNumber", "APEPA6196G"
-        ));
+                "codeType", "global",
+                "customerCode", "MSBC",
+                "companyName", " M/S: BALAJI ENTERPRISES ",
+                "address", "O'Brien Road",
+                "city", "Dhanbad",
+                "pincode", "440001",
+                "zone", "Central Railway",
+                "operatingDivision", "Dhanbad (DHN)",
+                "gstinNumbers", "20APEPA6196G1Z9",
+                "panNumber", "APEPA6196G"));
 
         String body = emailedBody(mailSender);
         assertTrue(body.startsWith("Dear DBA Team,\n\n"
-            + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
-            + "Operation: INSERT\n"
-            + "Table: MEMGLBLCUST, MEMGLBLCUSTDTLS\n"
-            + "Code: MSBC\n\n"
-            + "SQL QUERY:\n"
-            + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
+                + "Kindly execute the attached/below script on rfrn3t and training.\n\n"
+                + "Operation: INSERT\n"
+                + "Table: MEMGLBLCUST, MEMGLBLCUSTDTLS\n"
+                + "Code: MSBC\n\n"
+                + "SQL QUERY:\n"
+                + "----------------------------------------1 PARENT INSERT---------------------------\n\n"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S: BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'APEPA6196G');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('MSBC','M/S: BALAJI ENTERPRISES','O''BRIEN ROAD','DHANBAD',NULL,NULL,NULL,SYSDATE,'SR.DCM/DHN',NULL,'20APEPA6196G1Z9','APEPA6196G');"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S: BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('MSBC', 'M/S: BALAJI ENTERPRISES', 'O''BRIEN ROAD', 'DHANBAD', 440001, SYSDATE, NULL, '20APEPA6196G1Z9', 'APEPA6196G', SYSDATE, NULL);"));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC\n\nSQL QUERY:\n"));
         assertFalse(body.contains("Prasanta Mondal"));
         assertFalse(body.contains("Chief Manager / FOIS"));
@@ -444,19 +434,18 @@ class CustomerServiceImplTest {
         when(existsRs.next()).thenReturn(false);
 
         assertDoesNotThrow(() -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "MSBC",
-            "companyName", "M/S BALAJI ENTERPRISES",
-            "address", "O'Brien Road",
-            "city", "Dhanbad",
-            "pincode", "",
-            "zone", "Central Railway",
-            "operatingDivision", "Dhanbad (DHN)",
-            "gstinNumbers", "20APEPA6196G1Z9",
-            "panNumber", "APEPA6196G"
-        )));
+                "codeType", "global",
+                "customerCode", "MSBC",
+                "companyName", "M/S BALAJI ENTERPRISES",
+                "address", "O'Brien Road",
+                "city", "Dhanbad",
+                "pincode", "",
+                "zone", "Central Railway",
+                "operatingDivision", "Dhanbad (DHN)",
+                "gstinNumbers", "20APEPA6196G1Z9",
+                "panNumber", "APEPA6196G")));
         assertTrue(emailedBody(mailSender).contains(
-            "Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC"));
+                "Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: MSBC"));
     }
 
     @Test
@@ -476,24 +465,24 @@ class CustomerServiceImplTest {
                 when(existsRs.next()).thenReturn(false);
 
                 Map<String, String> formData = new HashMap<>(Map.of(
-                    "codeType", codeType,
-                    "customerCode", "ABCD",
-                    "companyName", "Example Company",
-                    "address", "Main Road",
-                    "operatingDivision", "Dhanbad (DNR)",
-                    "zone", "East Central Railway",
-                    "gstinNumbers", "10ABACA6462C1ZD",
-                    "panNumber", "ABACA6462C"
-                ));
-                if (city != null) formData.put("city", city);
+                        "codeType", codeType,
+                        "customerCode", "ABCD",
+                        "companyName", "Example Company",
+                        "address", "Main Road",
+                        "operatingDivision", "Dhanbad (DNR)",
+                        "zone", "East Central Railway",
+                        "gstinNumbers", "10ABACA6462C1ZD",
+                        "panNumber", "ABACA6462C"));
+                if (city != null)
+                    formData.put("city", city);
 
                 service(dataSource, mailSender).registerNewEntryJDBC(formData);
 
                 String body = emailedBody(mailSender);
                 assertTrue(body.contains("INSERT INTO " + table), body);
                 String citySql = "global".equals(codeType)
-                    ? "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE"
-                    : "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE";
+                        ? "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE"
+                        : "'MAIN ROAD',NULL,NULL,NULL,NULL,SYSDATE";
                 assertTrue(body.contains(citySql), body);
                 assertFalse(body.contains("'NULL'"), body);
                 verify(connection, never()).prepareStatement(startsWith("INSERT"));
@@ -516,21 +505,20 @@ class CustomerServiceImplTest {
             when(existsRs.next()).thenReturn(false);
 
             service(dataSource, mailSender).registerNewEntryJDBC(new HashMap<>(Map.of(
-                "codeType", codeType,
-                "customerCode", "ABCD",
-                "companyName", "Example Company",
-                "address", "Main Road",
-                "city", "  New Delhi  ",
-                "operatingDivision", "Dhanbad (DNR)",
-                "zone", "East Central Railway",
-                "gstinNumbers", "10ABACA6462C1ZD",
-                "panNumber", "ABACA6462C"
-            )));
+                    "codeType", codeType,
+                    "customerCode", "ABCD",
+                    "companyName", "Example Company",
+                    "address", "Main Road",
+                    "city", "  New Delhi  ",
+                    "operatingDivision", "Dhanbad (DNR)",
+                    "zone", "East Central Railway",
+                    "gstinNumbers", "10ABACA6462C1ZD",
+                    "panNumber", "ABACA6462C")));
 
             String body = emailedBody(mailSender);
             String citySql = "global".equals(codeType)
-                ? "'MAIN ROAD','NEW DELHI'"
-                : "'MAIN ROAD','NEW DELHI'";
+                    ? "'MAIN ROAD','NEW DELHI'"
+                    : "'MAIN ROAD','NEW DELHI'";
             assertTrue(body.contains(citySql), body);
             assertFalse(body.contains("'  NEW DELHI  '"), body);
         }
@@ -542,22 +530,21 @@ class CustomerServiceImplTest {
             javax.validation.Validator validator = factory.getValidator();
             for (String city : new String[] { null, "", "   " }) {
                 CustomerRegistrationRequest request = new CustomerRegistrationRequest(
-                    "Example Company",
-                    "ABCD",
-                    "Main Road",
-                    city,
-                    "",
-                    List.of(new GstinRequest("Delhi", "10ABACA6462C1ZD")),
-                    "ABACA6462C",
-                    "Dhanbad (DNR)",
-                    "East Central Railway",
-                    null,
-                    null,
-                    "GLOBAL"
-                );
+                        "Example Company",
+                        "ABCD",
+                        "Main Road",
+                        city,
+                        "",
+                        List.of(new GstinRequest("Delhi", "10ABACA6462C1ZD")),
+                        "ABACA6462C",
+                        "Dhanbad (DNR)",
+                        "East Central Railway",
+                        null,
+                        null,
+                        "GLOBAL");
 
                 assertTrue(validator.validate(request).stream()
-                    .noneMatch(violation -> "city".equals(violation.getPropertyPath().toString())));
+                        .noneMatch(violation -> "city".equals(violation.getPropertyPath().toString())));
             }
         }
     }
@@ -575,28 +562,25 @@ class CustomerServiceImplTest {
         when(existsRs.next()).thenReturn(false);
 
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "ASEB",
-            "companyName", "AVANTIKA SOLAR ENERGY PRIVATE LIMITED",
-            "address", "FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014",
-            "city", "PATNA",
-            "pincode", "800014",
-            "zone", "East Central Railway",
-            "operatingDivision", "Danapur (DNR)",
-            "gstinNumbers", "10ABACA6462C1ZD",
-            "panNumber", "ABACA6462C"
-        ));
+                "codeType", "global",
+                "customerCode", "ASEB",
+                "companyName", "AVANTIKA SOLAR ENERGY PRIVATE LIMITED",
+                "address", "FLAT NO. -301, RAMAGRIHAM APTT, VIJAY NAGAR, PATNA, BIHAR, 800014",
+                "city", "PATNA",
+                "pincode", "800014",
+                "zone", "East Central Railway",
+                "operatingDivision", "Danapur (DNR)",
+                "gstinNumbers", "10ABACA6462C1ZD",
+                "panNumber", "ABACA6462C"));
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("Operation: INSERT\nTable: MEMGLBLCUST, MEMGLBLCUSTDTLS\nCode: ASEB"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
-                + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
-                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'ABACA6462C');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED',"
+                        + "'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014','PATNA',"
+                        + "NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,'10ABACA6462C1ZD','ABACA6462C');"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', 'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR ENERGY PRIVATE LIMITED', 'FLAT NO. -301,RAMAGRIHAM APTT,VIJAY NAGAR,PATNA,BIHAR,800014', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"));
         assertFalse(body.contains("INSERT INTO MEMGLBLCUST ("));
         verify(existsPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("INSERT"));
@@ -615,26 +599,23 @@ class CustomerServiceImplTest {
         when(existsRs.next()).thenReturn(false);
 
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "ASEB",
-            "companyName", "  m/s AVANTIKA SOLAR  ",
-            "address", "Patna Road",
-            "city", "Patna",
-            "pincode", "800014",
-            "zone", "East Central Railway",
-            "operatingDivision", "Danapur (DNR)",
-            "gstinNumbers", "10ABACA6462C1ZD",
-            "panNumber", "ABACA6462C"
-        ));
+                "codeType", "global",
+                "customerCode", "ASEB",
+                "companyName", "  m/s AVANTIKA SOLAR  ",
+                "address", "Patna Road",
+                "city", "Patna",
+                "pincode", "800014",
+                "zone", "East Central Railway",
+                "operatingDivision", "Danapur (DNR)",
+                "gstinNumbers", "10ABACA6462C1ZD",
+                "panNumber", "ABACA6462C"));
 
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR',"
-                + "'PATNA ROAD','PATNA',NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,"
-                + "'ABACA6462C');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('ASEB','M/S AVANTIKA SOLAR',"
+                        + "'PATNA ROAD','PATNA',NULL,NULL,NULL,SYSDATE,'SR.DCM/DNR',NULL,"
+                        + "'10ABACA6462C1ZD','ABACA6462C');"));
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR', 'PATNA ROAD', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ASEB', 'M/S AVANTIKA SOLAR', 'PATNA ROAD', 'PATNA', 800014, SYSDATE, NULL, '10ABACA6462C1ZD', 'ABACA6462C', SYSDATE, NULL);"));
     }
 
     @Test
@@ -645,31 +626,29 @@ class CustomerServiceImplTest {
         ResultSet existsRs = mock(ResultSet.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?")).thenReturn(existsPs);
+        when(connection.prepareStatement("SELECT 1 FROM MEMGLBLHNDGAGNT WHERE MAVHNDGAGNTCODE = ?"))
+                .thenReturn(existsPs);
         when(existsPs.executeQuery()).thenReturn(existsRs);
         when(existsRs.next()).thenReturn(false);
 
         service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "handling_agent",
-            "customerCode", "JDPL",
-            "companyName", "JINDAL PIPES LIMITED",
-            "address", "22ND MILE STONE, DELHI HAPUR ROAD",
-            "city", "PARBHANI",
-            "pincode", "431401",
-            "zone", "South Central Railway",
-            "operatingDivision", "Madurai (MDU)",
-            "gstinNumbers", "09AAACJ2055K1ZJ",
-            "panNumber", "AAACJ2055K"
-        ));
+                "codeType", "handling_agent",
+                "customerCode", "JDPL",
+                "companyName", "JINDAL PIPES LIMITED",
+                "address", "22ND MILE STONE, DELHI HAPUR ROAD",
+                "city", "PARBHANI",
+                "pincode", "431401",
+                "zone", "South Central Railway",
+                "operatingDivision", "Madurai (MDU)",
+                "gstinNumbers", "09AAACJ2055K1ZJ",
+                "panNumber", "AAACJ2055K"));
 
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED',"
-                + "'22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,"
-                + "'SR.DCM/MDU',NULL,'AAACJ2055K');"
-        ));
+                "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED',"
+                        + "'22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,"
+                        + "'SR.DCM/MDU',NULL,'09AAACJ2055K1ZJ','AAACJ2055K');"));
         assertTrue(emailedBody(mailSender).contains(
-            "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1ZJ', 'AAACJ2055K', SYSDATE, NULL);"));
         assertFalse(emailedBody(mailSender).contains("INSERT INTO MEMGLBLHNDGAGNT ("));
         verify(existsPs, never()).executeUpdate();
     }
@@ -679,35 +658,30 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
         emailService.sendDbaSqlEmail(List.of(
-            new DbaEmailService.SqlRequest(
-                "INSERT",
-                "MEMGLBLHNDGAGNT",
-                "RINK",
-                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME, ADDRESS, CITY, COL5, COL6, COL7, COL8, COL9, COL10, GSTIN, PAN) "
-                    + "VALUES ('RINK', 'RINKU BORUAH', 'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501', "
-                    + "'TEZPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/RNY', NULL, '18AMKPB8046M2ZM', 'AMKPB8046M');"
-            ),
-            new DbaEmailService.SqlRequest(
-                "INSERT",
-                "MEMGLBLHNDGAGNT",
-                "EXISTING",
-                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('EXISTING', 'm/s Already Prefixed');"
-            ),
-            new DbaEmailService.SqlRequest(
-                "INSERT",
-                "MEMGLBLHNDGAGNT",
-                "PUNCTUATED",
-                "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('PUNCTUATED', 'm/s: Already Prefixed');"
-            )
-        ));
+                new DbaEmailService.SqlRequest(
+                        "INSERT",
+                        "MEMGLBLHNDGAGNT",
+                        "RINK",
+                        "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME, ADDRESS, CITY, COL5, COL6, COL7, COL8, COL9, COL10, GSTIN, PAN) "
+                                + "VALUES ('RINK', 'RINKU BORUAH', 'NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501', "
+                                + "'TEZPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/RNY', NULL, '18AMKPB8046M2ZM', 'AMKPB8046M');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT",
+                        "MEMGLBLHNDGAGNT",
+                        "EXISTING",
+                        "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('EXISTING', 'm/s Already Prefixed');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT",
+                        "MEMGLBLHNDGAGNT",
+                        "PUNCTUATED",
+                        "INSERT INTO MEMGLBLHNDGAGNT (CODE, NAME) VALUES ('PUNCTUATED', 'm/s: Already Prefixed');")));
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         String body = message.getValue().getText();
         assertTrue(body.contains(
-            "VALUES('RINK','M/S RINKU BORUAH','NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501',"
-                + "'TEZPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/RNY',NULL,'18AMKPB8046M2ZM','AMKPB8046M');"
-        ));
+                "VALUES('RINK','M/S RINKU BORUAH','NIL, PUTIKHATI DEKARGAON, TEZPUR, SONITPUR, ASSAM, 784501',"
+                        + "'TEZPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/RNY',NULL,'18AMKPB8046M2ZM','AMKPB8046M');"));
         assertTrue(body.contains("VALUES('EXISTING','M/S ALREADY PREFIXED');"));
         assertTrue(body.contains("VALUES('PUNCTUATED','M/S: ALREADY PREFIXED');"));
         assertFalse(body.contains("'M/S M/S"));
@@ -719,14 +693,12 @@ class CustomerServiceImplTest {
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
 
         emailService.sendDbaSqlEmail(List.of(
-            new DbaEmailService.SqlRequest(
-                "UPDATE",
-                "MEMGLBLCUST",
-                "AB12",
-                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S: GREEN GLOBE' "
-                    + "WHERE MAVGLBLCUSTCODE = 'AB12';"
-            )
-        ));
+                new DbaEmailService.SqlRequest(
+                        "UPDATE",
+                        "MEMGLBLCUST",
+                        "AB12",
+                        "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S: GREEN GLOBE' "
+                                + "WHERE MAVGLBLCUSTCODE = 'AB12';")));
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("MAVGLBLCUSTNAME = 'M/S: GREEN GLOBE'"));
@@ -752,21 +724,19 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "AB12",
-            "companyName", "New Name",
-            "address", "O'Brien, Street",
-            "city", "Nagpur",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "New Name",
+                "address", "O'Brien, Street",
+                "city", "Nagpur",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         assertTrue(emailedBody(mailSender).contains(
-            "UPDATE MEMGLBLCUST SET\n"
-                + "MAVGLBLCUSTNAME = 'M/S NEW NAME',\n"
-                + "MAVGLBLCUSTADDRTEXT = 'O''BRIEN,STREET'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'AB12';"
-        ));
+                "UPDATE MEMGLBLCUST SET\n"
+                        + "MAVGLBLCUSTNAME = 'M/S NEW NAME',\n"
+                        + "MAVGLBLCUSTADDRTEXT = 'O''BRIEN,STREET'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'AB12';"));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?"));
         verify(lookupPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("UPDATE"));
@@ -791,14 +761,13 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "A",
-            "companyName", "New Name",
-            "address", "Old Address",
-            "city", "Nagpur",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "A",
+                "companyName", "New Name",
+                "address", "Old Address",
+                "city", "Nagpur",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         assertTrue(emailedBody(mailSender).contains("WHERE MAVGLBLCUSTCODE = 'A';"));
         verify(lookupPs, atLeastOnce()).setString(1, "A");
@@ -833,14 +802,14 @@ class CustomerServiceImplTest {
                 when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("PATNA");
 
                 Map<String, String> formData = new HashMap<>(Map.of(
-                    "codeType", codeType,
-                    "customerCode", "ABCD",
-                    "companyName", "Example Company",
-                    "address", "Main Road",
-                    "panNumber", "ABACA6462C",
-                    "gstinNumbers", "10ABACA6462C1ZD"
-                ));
-                if (city != null) formData.put("city", city);
+                        "codeType", codeType,
+                        "customerCode", "ABCD",
+                        "companyName", "Example Company",
+                        "address", "Main Road",
+                        "panNumber", "ABACA6462C",
+                        "gstinNumbers", "10ABACA6462C1ZD"));
+                if (city != null)
+                    formData.put("city", city);
 
                 service(dataSource, mailSender).updateOldCustomerJDBC(formData);
 
@@ -879,14 +848,13 @@ class CustomerServiceImplTest {
             when(lookupRs.getString("MAVHNDAGNTCITYNAME")).thenReturn("PATNA");
 
             service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-                "codeType", codeType,
-                "customerCode", "ABCD",
-                "companyName", "Example Company",
-                "address", "Main Road",
-                "city", "  New Delhi  ",
-                "panNumber", "ABACA6462C",
-                "gstinNumbers", "10ABACA6462C1ZD"
-            ));
+                    "codeType", codeType,
+                    "customerCode", "ABCD",
+                    "companyName", "Example Company",
+                    "address", "Main Road",
+                    "city", "  New Delhi  ",
+                    "panNumber", "ABACA6462C",
+                    "gstinNumbers", "10ABACA6462C1ZD"));
 
             String body = emailedBody(mailSender);
             assertTrue(body.contains("UPDATE " + table), body);
@@ -916,18 +884,17 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("Nagpur");
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "AB12",
-            "companyName", "M/S ALPS MINING SERVICES",
-            "address", "New Address",
-            "city", "Nagpur",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S ALPS MINING SERVICES",
+                "address", "New Address",
+                "city", "Nagpur",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTADDRTEXT = 'NEW ADDRESS'\n"
-            + "WHERE MAVGLBLCUSTCODE = 'AB12';"));
+                + "WHERE MAVGLBLCUSTCODE = 'AB12';"));
         assertFalse(body.contains("MAVGLBLCUSTNAME ="));
         assertFalse(body.contains("M/S NEW ADDRESS"));
     }
@@ -950,20 +917,18 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVCUSTGSTNUMB")).thenReturn("27AAAAA1111A1Z5");
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "HANDLING_AGENT",
-            "customerCode", "H001",
-            "companyName", "New Cargo",
-            "address", "Port Road",
-            "city", "Mumbai",
-            "panNumber", "AAAAA1111A",
-            "gstinNumbers", "27AAAAA1111A1Z5"
-        ));
+                "codeType", "HANDLING_AGENT",
+                "customerCode", "H001",
+                "companyName", "New Cargo",
+                "address", "Port Road",
+                "city", "Mumbai",
+                "panNumber", "AAAAA1111A",
+                "gstinNumbers", "27AAAAA1111A1Z5"));
 
         assertTrue(emailedBody(mailSender).contains(
-            "UPDATE MEMGLBLHNDGAGNT SET\n"
-                + "MAVHNDGAGNTNAME = 'M/S NEW CARGO'\n"
-                + "WHERE MAVHNDGAGNTCODE = 'H001';"
-        ));
+                "UPDATE MEMGLBLHNDGAGNT SET\n"
+                        + "MAVHNDGAGNTNAME = 'M/S NEW CARGO'\n"
+                        + "WHERE MAVHNDGAGNTCODE = 'H001';"));
         verify(lookupPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
@@ -972,30 +937,30 @@ class CustomerServiceImplTest {
     void updateOldCustomerJDBC_includesOnlyChangedMappedFieldsForBothTables() throws SQLException {
         Map<String, Map<String, String>> cases = new LinkedHashMap<>();
         cases.put("company name", Map.of(
-            "companyName", "M/S NEW COMPANY",
-            "expected", "MAVGLBLCUSTNAME = 'M/S NEW COMPANY'"));
+                "companyName", "M/S NEW COMPANY",
+                "expected", "MAVGLBLCUSTNAME = 'M/S NEW COMPANY'"));
         cases.put("address", Map.of(
-            "address", "NEW ROAD,MARKET AREA",
-            "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA'"));
+                "address", "NEW ROAD,MARKET AREA",
+                "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA'"));
         cases.put("GSTIN", Map.of(
-            "gstinNumbers", "29AAAAA1111A1Z5",
-            "expected", "MAVCUSTGSTNUMB = '29AAAAA1111A1Z5'"));
+                "gstinNumbers", "29AAAAA1111A1Z5",
+                "expected", "MAVCUSTGSTNUMB = '29AAAAA1111A1Z5'"));
         cases.put("PAN", Map.of(
-            "panNumber", "BBBBB2222B",
-            "expected", "MAVCUSTPANNUMB = 'BBBBB2222B'"));
+                "panNumber", "BBBBB2222B",
+                "expected", "MAVCUSTPANNUMB = 'BBBBB2222B'"));
         cases.put("city", Map.of(
-            "city", "Mumbai",
-            "expected", "CITYNAME = 'MUMBAI'"));
+                "city", "Mumbai",
+                "expected", "CITYNAME = 'MUMBAI'"));
         cases.put("pincode", Map.of(
-            "pincode", "400001",
-            "expected", "MAVPCOCODE = NULL"));
+                "pincode", "400001",
+                "expected", "MAVPCOCODE = NULL"));
         cases.put("division", Map.of(
-            "operatingDivision", "Mumbai (CSTM)",
-            "expected", "MAVIMPLREMK = 'SR.DCM/CSTM'"));
+                "operatingDivision", "Mumbai (CSTM)",
+                "expected", "MAVIMPLREMK = 'SR.DCM/CSTM'"));
         cases.put("multiple fields", Map.of(
-            "address", "NEW ROAD,MARKET AREA",
-            "panNumber", "BBBBB2222B",
-            "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA',\nMAVCUSTPANNUMB = 'BBBBB2222B'"));
+                "address", "NEW ROAD,MARKET AREA",
+                "panNumber", "BBBBB2222B",
+                "expected", "MAVGLBLCUSTADDRTEXT = 'NEW ROAD,MARKET AREA',\nMAVCUSTPANNUMB = 'BBBBB2222B'"));
 
         for (String codeType : Arrays.asList("global", "handling_agent")) {
             String table = "global".equals(codeType) ? "MEMGLBLCUST" : "MEMGLBLHNDGAGNT";
@@ -1013,27 +978,26 @@ class CustomerServiceImplTest {
                 JavaMailSender mailSender = mock(JavaMailSender.class);
                 when(dataSource.getConnection()).thenReturn(connection);
                 when(connection.prepareStatement(anyString()))
-                    .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
+                        .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
                 when(lookupPs.executeQuery()).thenReturn(lookupRs);
                 when(lookupDetailsPs.executeQuery()).thenReturn(lookupDetailsRs);
                 when(updateDetailsPs.executeQuery()).thenReturn(updateDetailsRs);
                 when(lookupRs.next()).thenReturn(true, false);
                 Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
                 when(lookupRs.getString(anyString()))
-                    .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+                        .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
                 stubSingleExistingGstinDetail(lookupDetailsRs);
                 stubSingleExistingGstinDetail(updateDetailsRs);
 
                 Map<String, String> formData = new HashMap<>(Map.of(
-                    "codeType", codeType,
-                    "customerCode", "AB12",
-                    "companyName", "M/S OLD COMPANY",
-                    "address", "OLD ROAD,MARKET AREA",
-                    "city", "PATNA",
-                    "panNumber", "AAAAA1111A",
-                    "gstinNumbers", "27AAAAA1111A1Z5",
-                    "operatingDivision", "Danapur (DNR)"
-                ));
+                        "codeType", codeType,
+                        "customerCode", "AB12",
+                        "companyName", "M/S OLD COMPANY",
+                        "address", "OLD ROAD,MARKET AREA",
+                        "city", "PATNA",
+                        "panNumber", "AAAAA1111A",
+                        "gstinNumbers", "27AAAAA1111A1Z5",
+                        "operatingDivision", "Danapur (DNR)"));
                 formData.putAll(testCase.getValue());
 
                 service(dataSource, mailSender).updateOldCustomerJDBC(formData);
@@ -1043,19 +1007,26 @@ class CustomerServiceImplTest {
                     String dtlsTable = "global".equals(codeType) ? "MEMGLBLCUSTDTLS" : "MEMGLBLHNDGAGNTDTLS";
                     assertTrue(body.contains("Table: " + dtlsTable), () -> codeType + " GSTIN table:\n" + body);
                     assertTrue(body.contains("INSERT INTO " + dtlsTable), () -> codeType + " GSTIN insert:\n" + body);
-                    assertTrue(body.contains("UPDATE " + dtlsTable + " SET MADDATEEFCTTO = TRUNC(SYSDATE)"), () -> codeType + " GSTIN soft disable:\n" + body);
-                    assertFalse(body.contains("DELETE FROM " + dtlsTable), () -> codeType + " GSTIN delete should not occur:\n" + body);
-                    assertFalse(body.contains("UPDATE " + table + " SET"), () -> codeType + " parent should not be updated on GSTIN change:\n" + body);
+                    assertTrue(body.contains("UPDATE " + dtlsTable + " SET MADDATEEFCTTO = TRUNC(SYSDATE)"),
+                            () -> codeType + " GSTIN soft disable:\n" + body);
+                    assertFalse(body.contains("DELETE FROM " + dtlsTable),
+                            () -> codeType + " GSTIN delete should not occur:\n" + body);
+                    assertTrue(body.contains("UPDATE " + table + " SET"),
+                            () -> codeType + " parent should be updated on GSTIN change:\n" + body);
+                    assertTrue(body.contains("MAVCUSTGSTNUMB = '29AAAAA1111A1Z5'"),
+                            () -> codeType + " parent should update primary GSTIN:\n" + body);
                 } else if ("pincode".equals(testCase.getKey())) {
-                    assertTrue(body.contains("MAVPCOCODE = NULL"), () -> codeType + " pincode should always be NULL:\n" + body);
+                    assertTrue(body.contains("MAVPCOCODE = NULL"),
+                            () -> codeType + " pincode should always be NULL:\n" + body);
                 } else {
                     String expectedAssignments = testCase.getValue().get("expected")
-                        .replace("MAVGLBLCUSTNAME", nameColumn)
-                        .replace("MAVGLBLCUSTADDRTEXT", addressColumn)
-                        .replace("MAVCUSTGSTNUMB", "MAVCUSTGSTNUMB")
-                        .replace("CITYNAME", "global".equals(codeType) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME");
+                            .replace("MAVGLBLCUSTNAME", nameColumn)
+                            .replace("MAVGLBLCUSTADDRTEXT", addressColumn)
+                            .replace("MAVCUSTGSTNUMB", "MAVCUSTGSTNUMB")
+                            .replace("CITYNAME",
+                                    "global".equals(codeType) ? "MAVGNBLCUSTCITYNAME" : "MAVHNDGAGNTCITYNAME");
                     assertTrue(body.contains("UPDATE " + table + " SET\n" + expectedAssignments
-                        + "\nWHERE "), () -> codeType + " " + testCase.getKey() + ":\n" + body);
+                            + "\nWHERE "), () -> codeType + " " + testCase.getKey() + ":\n" + body);
                 }
                 verify(lookupPs, never()).executeUpdate();
                 verify(connection, never()).prepareStatement(startsWith("UPDATE"));
@@ -1078,28 +1049,27 @@ class CustomerServiceImplTest {
                 JavaMailSender mailSender = mock(JavaMailSender.class);
                 when(dataSource.getConnection()).thenReturn(connection);
                 when(connection.prepareStatement(anyString()))
-                    .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
+                        .thenReturn(lookupPs, lookupDetailsPs, updateDetailsPs);
                 when(lookupPs.executeQuery()).thenReturn(lookupRs);
                 when(lookupDetailsPs.executeQuery()).thenReturn(lookupDetailsRs);
                 when(updateDetailsPs.executeQuery()).thenReturn(updateDetailsRs);
                 when(lookupRs.next()).thenReturn(true, false);
                 Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD, MARKET AREA");
                 when(lookupRs.getString(anyString()))
-                    .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
+                        .thenAnswer(invocation -> originalRecord.get(invocation.getArgument(0)));
                 stubSingleExistingGstinDetail(lookupDetailsRs);
                 stubSingleExistingGstinDetail(updateDetailsRs);
 
                 Map<String, String> unchanged = Map.of(
-                    "codeType", codeType,
-                    "customerCode", "AB12",
-                    "companyName", restoreOriginal ? "TEMP COMPANY" : "  m/s old company ",
-                    "address", restoreOriginal ? "TEMP ROAD" : " old road, market area ",
-                    "city", " patna ",
-                    "pincode", " 800001 ",
-                    "panNumber", " aaaaa1111a ",
-                    "gstinNumbers", "27 AAA AA1111A1Z5",
-                    "operatingDivision", "Danapur (DNR)"
-                );
+                        "codeType", codeType,
+                        "customerCode", "AB12",
+                        "companyName", restoreOriginal ? "TEMP COMPANY" : "  m/s old company ",
+                        "address", restoreOriginal ? "TEMP ROAD" : " old road, market area ",
+                        "city", " patna ",
+                        "pincode", " 800001 ",
+                        "panNumber", " aaaaa1111a ",
+                        "gstinNumbers", "27 AAA AA1111A1Z5",
+                        "operatingDivision", "Danapur (DNR)");
                 Map<String, String> submitted = new HashMap<>(unchanged);
                 if (restoreOriginal) {
                     submitted.put("companyName", "M/S OLD COMPANY");
@@ -1108,7 +1078,8 @@ class CustomerServiceImplTest {
 
                 assertDoesNotThrow(() -> service(dataSource, mailSender).updateOldCustomerJDBC(submitted));
                 String body = emailedBody(mailSender);
-                assertTrue(body.contains("MAVPCOCODE = NULL"), () -> codeType + " pincode should be reset to NULL for every update:\n" + body);
+                assertTrue(body.contains("MAVPCOCODE = NULL"),
+                        () -> codeType + " pincode should be reset to NULL for every update:\n" + body);
                 verify(mailSender).send(any(SimpleMailMessage.class));
             }
         }
@@ -1142,15 +1113,14 @@ class CustomerServiceImplTest {
         stubSingleExistingGstinDetail(updateDetailsRs);
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "AB12",
-            "companyName", "M/S NEW COMPANY",
-            "address", "NEW ROAD",
-            "city", "Nagpur",
-            "pincode", "400001",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S NEW COMPANY",
+                "address", "NEW ROAD",
+                "city", "Nagpur",
+                "pincode", "400001",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("MAVPCOCODE = NULL"), body);
@@ -1182,8 +1152,7 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S SOUTH COAST RAILWAY' WHERE MAVWGONOWNRSHIPCODE = 'SCOR';"
-        ));
+                "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S SOUTH COAST RAILWAY' WHERE MAVWGONOWNRSHIPCODE = 'SCOR';"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
         verify(connection).prepareStatement(contains("UPPER(TRIM(MAVWGONOWNRSHIPCODE)) = ?"));
         verify(lookupPs).setString(1, "SCOR");
@@ -1213,9 +1182,8 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S SUSHILA TRANSPORT PVT LTD' "
-                + "WHERE MAVWGONOWNRPRTYCODE = 'SHLA';"
-        ));
+                "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S SUSHILA TRANSPORT PVT LTD' "
+                        + "WHERE MAVWGONOWNRPRTYCODE = 'SHLA';"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
         verify(connection).prepareStatement(contains("UPPER(TRIM(MAVWGONOWNRPRTYCODE)) = ?"));
         verify(lookupPs).setString(1, "SHLA");
@@ -1236,7 +1204,7 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
-            .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
+                .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
@@ -1253,24 +1221,21 @@ class CustomerServiceImplTest {
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME")).thenReturn("O'BRIEN OWNERSHIP");
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "AB12", "Client-supplied name is ignored", "AB12", "Client-supplied name is ignored");
+                "AB12", "Client-supplied name is ignored", "AB12", "Client-supplied name is ignored");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);"
-        ));
+                "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);"));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');"
-        ));
+                "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP ("));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY ("));
         assertTrue(body.contains(
-            "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: AB12\n\nSQL QUERY:\n"
-                + "----------------------------------------1 INSERT---------------------------\n\n"
-                + "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);\n\n"
-                + "----------------------------------------2 INSERT---------------------------\n\n"
-                + "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');\n\n"
-        ));
+                "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: AB12\n\nSQL QUERY:\n"
+                        + "----------------------------------------1 INSERT---------------------------\n\n"
+                        + "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S O''BRIEN OWNERSHIP',NULL,'Y',SYSDATE,NULL);\n\n"
+                        + "----------------------------------------2 INSERT---------------------------\n\n"
+                        + "INSERT INTO MEMWGONOWNRPRTY VALUES('AB12','M/S O''BRIEN OWNERSHIP');\n\n"));
         assertTrue(body.indexOf("MEMWGONOWNRSHIP") < body.indexOf("MEMWGONOWNRPRTY"));
         verify(ownershipLookup, never()).executeUpdate();
         verify(partyLookup, never()).executeUpdate();
@@ -1291,7 +1256,7 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
-            .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
+                .thenReturn(ownershipGlobalLookup, ownershipGlobalLookup, partyGlobalLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
@@ -1302,23 +1267,23 @@ class CustomerServiceImplTest {
         when(ownershipGlobalRs.next()).thenReturn(true, true);
         when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
         when(partyRs.next()).thenReturn(false);
         when(partyGlobalRs.next()).thenReturn(true);
         when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
 
         service(dataSource, mailSender).saveOwnershipJDBC(
-            "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
+                "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: ALPS\n\nSQL QUERY:\n"
-                + "----------------------------------------1 INSERT---------------------------\n\n"
-                + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);\n\n"
-                + "----------------------------------------2 INSERT---------------------------\n\n"
-                + "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');\n\n"));
+                "Operation: INSERT\nTable: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY\nCode: ALPS\n\nSQL QUERY:\n"
+                        + "----------------------------------------1 INSERT---------------------------\n\n"
+                        + "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);\n\n"
+                        + "----------------------------------------2 INSERT---------------------------\n\n"
+                        + "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');\n\n"));
         verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
         verify(ownershipLookup, never()).executeUpdate();
         verify(partyLookup, never()).executeUpdate();
@@ -1339,37 +1304,37 @@ class CustomerServiceImplTest {
         PreparedStatement ownershipGlobalLookup = mock(PreparedStatement.class);
         ResultSet ownershipGlobalRs = mock(ResultSet.class);
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
-            .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
+                .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
         when(ownershipGlobalRs.next()).thenReturn(true);
         when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
         when(partyGlobalLookup.executeQuery()).thenReturn(partyGlobalRs);
         when(ownershipRs.next()).thenReturn(true);
         when(ownershipRs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("ALPS");
         when(ownershipRs.getString("MAVWGONOWNRSHIPDESC"))
-            .thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("M/S ALPS MINING SERVICES PRIVATE LIMITED");
         when(partyRs.next()).thenReturn(false);
         when(partyGlobalRs.next()).thenReturn(true);
         when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED",
-            "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED");
+                "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED",
+                "ALPS", "M/S ALPS MINING SERVICES PRIVATE LIMITED");
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, times(1)).send(message.capture());
         String body = message.getValue().getText();
         assertFalse(body.contains("UPDATE MEMWGONOWNRSHIP"));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"));
+                "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"));
         assertTrue(body.contains("Operation: INSERT\nTable: MEMWGONOWNRPRTY"));
         assertEquals(0, body.split("UPDATE MEMWGONOWNRSHIP", -1).length - 1);
         assertEquals(1, body.split("INSERT INTO MEMWGONOWNRPRTY", -1).length - 1);
@@ -1422,7 +1387,8 @@ class CustomerServiceImplTest {
     }
 
     @Test
-    void lookupOwnershipJDBC_returnsUpdatedGlobalCustomerCompanyNameEvenWhenOwnershipAlreadyExists() throws SQLException {
+    void lookupOwnershipJDBC_returnsUpdatedGlobalCustomerCompanyNameEvenWhenOwnershipAlreadyExists()
+            throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement globalPs = mock(PreparedStatement.class);
@@ -1462,13 +1428,15 @@ class CustomerServiceImplTest {
 
         assertNotNull(result);
         assertEquals("ABC1", result.get("ownershipCode"));
-        // Company name is fetched from MEMGLBLCUST (source of truth), not the older ownership description
+        // Company name is fetched from MEMGLBLCUST (source of truth), not the older
+        // ownership description
         assertEquals("ABC TECHNOLOGIES PRIVATE LIMITED", result.get("ownershipDesc"));
         assertEquals("EXISTING_OWNERSHIP_RECORD", result.get("recordSource"));
     }
 
     @Test
-    void submitOwnershipJDBC_caseA_generatesIndependentUpdateQueriesForBothTablesWhenGlobalCompanyNameChanged() throws SQLException {
+    void submitOwnershipJDBC_caseA_generatesIndependentUpdateQueriesForBothTablesWhenGlobalCompanyNameChanged()
+            throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement globalPs = mock(PreparedStatement.class);
@@ -1503,30 +1471,29 @@ class CustomerServiceImplTest {
         when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S ABC PRIVATE LIMITED");
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
-            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
+                "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
+                "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
 
         String body = emailedBody(mailSender);
         // Verify UPDATE for MEMWGONOWNRSHIP
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"
-        ));
+                "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"));
         // Verify UPDATE for MEMWGONOWNRPRTY
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"
-        ));
+                "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"));
         // Verify no INSERT statements generated for existing records
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
 
         // Verify original DBA email structure and ordering preserved
         assertTrue(body.contains(
-            "----------------------------------------1 UPDATE---------------------------\n\n"
-            + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"));
+                "----------------------------------------1 UPDATE---------------------------\n\n"
+                        + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"));
         assertTrue(body.contains(
-            "----------------------------------------2 UPDATE---------------------------\n\n"
-            + "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"));
-        assertTrue(body.indexOf("----------------------------------------1 UPDATE") < body.indexOf("----------------------------------------2 UPDATE"));
+                "----------------------------------------2 UPDATE---------------------------\n\n"
+                        + "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRPRTYCODE = 'ABC1';"));
+        assertTrue(body.indexOf("----------------------------------------1 UPDATE") < body
+                .indexOf("----------------------------------------2 UPDATE"));
     }
 
     @Test
@@ -1563,16 +1530,14 @@ class CustomerServiceImplTest {
         when(partyRs.next()).thenReturn(false);
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
-            "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
+                "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED",
+                "ABC1", "ABC TECHNOLOGIES PRIVATE LIMITED");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"
-        ));
+                "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ABC TECHNOLOGIES PRIVATE LIMITED' WHERE MAVWGONOWNRSHIPCODE = 'ABC1';"));
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRPRTY VALUES('ABC1','M/S ABC TECHNOLOGIES PRIVATE LIMITED');"
-        ));
+                "INSERT INTO MEMWGONOWNRPRTY VALUES('ABC1','M/S ABC TECHNOLOGIES PRIVATE LIMITED');"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRSHIP"));
         assertTrue(body.indexOf("UPDATE MEMWGONOWNRSHIP") < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
     }
@@ -1606,16 +1571,15 @@ class CustomerServiceImplTest {
         when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("OLD COMPANY NAME");
 
         service(dataSource, mailSender).submitOwnershipJDBC(
-            "AB12", "Untrusted submitted name", "AB12", "Untrusted submitted name");
+                "AB12", "Untrusted submitted name", "AB12", "Untrusted submitted name");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains(
-            "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S LATEST COMPANY NAME',NULL,'Y',SYSDATE,NULL);"));
+                "INSERT INTO MEMWGONOWNRSHIP VALUES('AB12','M/S LATEST COMPANY NAME',NULL,'Y',SYSDATE,NULL);"));
         assertTrue(body.contains(
-            "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S LATEST COMPANY NAME' WHERE MAVWGONOWNRPRTYCODE = 'AB12';"));
+                "UPDATE MEMWGONOWNRPRTY SET MAVWGONOWNRPRTYDESC = 'M/S LATEST COMPANY NAME' WHERE MAVWGONOWNRPRTYCODE = 'AB12';"));
         assertFalse(body.contains("INSERT INTO MEMWGONOWNRPRTY"));
-        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP")
-            < body.indexOf("UPDATE MEMWGONOWNRPRTY"));
+        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP") < body.indexOf("UPDATE MEMWGONOWNRPRTY"));
     }
 
     @Test
@@ -1636,11 +1600,10 @@ class CustomerServiceImplTest {
         when(globalPs.executeQuery()).thenReturn(globalRs);
         when(globalRs.next()).thenReturn(false);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).submitOwnershipJDBC(
-                "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED",
-                "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED")
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).submitOwnershipJDBC(
+                        "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED",
+                        "MISS", "ABC TECHNOLOGIES PRIVATE LIMITED"));
 
         assertTrue(ex.getMessage().contains("does not exist in the Ownership table or Global Customer table"));
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
@@ -1675,25 +1638,24 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
         when(userLookupRepository.findUserContactDetails("SREEJU")).thenReturn(java.util.Optional.of(
-            new JdbcPortalUserLookupRepository.UserContactDetails(
-                "SREEJU", "krishnan.sreeju@gmail.com", "9910303868")));
-        DbaEmailService emailService =
-            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
+                new JdbcPortalUserLookupRepository.UserContactDetails(
+                        "SREEJU", "krishnan.sreeju@gmail.com", "9910303868")));
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com",
+                userLookupRepository);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.getSession(true).setAttribute(
-            AuthController.AUTH_SESSION_KEY,
-            new AuthUserDto("SREEJU", "Sreeju", "USER", "Y", "stale@example.org", "9000000000"));
+                AuthController.AUTH_SESSION_KEY,
+                new AuthUserDto("SREEJU", "Sreeju", "USER", "Y", "stale@example.org", "9000000000"));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         try {
             emailService.sendDbaSqlEmail(List.of(
-                new DbaEmailService.SqlRequest(
-                    "INSERT", "MEMWGONOWNRPRTY", "ALPS",
-                    "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"),
-                new DbaEmailService.SqlRequest(
-                    "INSERT", "MEMWGONOWNRSHIP", "ALPS",
-                    "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);")
-            ));
+                    new DbaEmailService.SqlRequest(
+                            "INSERT", "MEMWGONOWNRPRTY", "ALPS",
+                            "INSERT INTO MEMWGONOWNRPRTY VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED');"),
+                    new DbaEmailService.SqlRequest(
+                            "INSERT", "MEMWGONOWNRSHIP", "ALPS",
+                            "INSERT INTO MEMWGONOWNRSHIP VALUES('ALPS','M/S ALPS MINING SERVICES PRIVATE LIMITED',NULL,'Y',SYSDATE,NULL);")));
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -1716,7 +1678,7 @@ class CustomerServiceImplTest {
                 + "UserID: SREEJU\n"
                 + "Email ID: krishnan.sreeju@gmail.com\n"
                 + "Phone Number: 9910303868",
-            sentMessage.getText());
+                sentMessage.getText());
         verify(userLookupRepository).findUserContactDetails("SREEJU");
     }
 
@@ -1735,7 +1697,7 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("FROM MEMGLBLCUST")))
-            .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
+                .thenReturn(ownershipGlobalLookup, partyGlobalLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRSHIP"))).thenReturn(ownershipLookup);
         when(connection.prepareStatement(contains("FROM MEMWGONOWNRPRTY"))).thenReturn(partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
@@ -1746,20 +1708,19 @@ class CustomerServiceImplTest {
         when(ownershipGlobalRs.next()).thenReturn(true);
         when(ownershipGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(ownershipGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
         when(partyRs.next()).thenReturn(false);
         when(partyGlobalRs.next()).thenReturn(true);
         when(partyGlobalRs.getString("MAVGLBLCUSTCODE")).thenReturn("ALPS");
         when(partyGlobalRs.getString("MAVGLBLCUSTNAME"))
-            .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
+                .thenReturn("ALPS MINING SERVICES PRIVATE LIMITED");
 
         service(dataSource, mailSender).saveOwnershipPartyJDBC(
-            "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
+                "ALPS", "ALPS MINING SERVICES PRIVATE LIMITED");
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("Table: MEMWGONOWNRSHIP, MEMWGONOWNRPRTY"));
-        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP")
-            < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
+        assertTrue(body.indexOf("INSERT INTO MEMWGONOWNRSHIP") < body.indexOf("INSERT INTO MEMWGONOWNRPRTY"));
         verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
     }
 
@@ -1776,7 +1737,7 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString()))
-            .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup);
+                .thenReturn(ownershipLookup, ownershipGlobalLookup, partyLookup);
         when(ownershipLookup.executeQuery()).thenReturn(ownershipRs);
         when(ownershipGlobalLookup.executeQuery()).thenReturn(ownershipGlobalRs);
         when(partyLookup.executeQuery()).thenReturn(partyRs);
@@ -1789,8 +1750,8 @@ class CustomerServiceImplTest {
         when(partyRs.getString("MAVWGONOWNRPRTYDESC")).thenReturn("M/S ALPS");
 
         assertThrows(IllegalArgumentException.class,
-            () -> service(dataSource, mailSender).submitOwnershipJDBC(
-                "AB12", "ALPS", "OTHER", "Other Description"));
+                () -> service(dataSource, mailSender).submitOwnershipJDBC(
+                        "AB12", "ALPS", "OTHER", "Other Description"));
 
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
@@ -1900,11 +1861,11 @@ class CustomerServiceImplTest {
         CustomerServiceImpl customerService = service(dataSource, mailSender);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-            () -> customerService.submitOwnershipJDBC("ZZ99", "Unknown", null, null));
+                () -> customerService.submitOwnershipJDBC("ZZ99", "Unknown", null, null));
 
         assertEquals(
-            "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.",
-            error.getMessage());
+                "This code does not exist in the Ownership table or Global Customer table. Please enter a valid Global Customer Code.",
+                error.getMessage());
         verify(connection, never()).prepareStatement(contains("FROM MEMWGONOWNRSHIP"));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
@@ -1919,7 +1880,7 @@ class CustomerServiceImplTest {
         when(connection.prepareStatement(anyString())).thenThrow(new SQLException("Oracle unavailable"));
 
         assertThrows(RuntimeException.class,
-            () -> service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Description", null, null));
+                () -> service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Description", null, null));
 
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
         verify(connection).prepareStatement(contains("FROM MEMGLBLCUST"));
@@ -1947,10 +1908,9 @@ class CustomerServiceImplTest {
         service(dataSource, mailSender).submitOwnershipJDBC("AB12", "Updated description", null, null);
 
         assertTrue(emailedBody(mailSender).contains(
-            "Operation: UPDATE\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
-                + "----------------------------------------1 UPDATE---------------------------\n\n"
-                + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S UPDATED DESCRIPTION' WHERE MAVWGONOWNRSHIPCODE = 'AB12';"
-        ));
+                "Operation: UPDATE\nTable: MEMWGONOWNRSHIP\nCode: AB12\n\nSQL QUERY:\n"
+                        + "----------------------------------------1 UPDATE---------------------------\n\n"
+                        + "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S UPDATED DESCRIPTION' WHERE MAVWGONOWNRSHIPCODE = 'AB12';"));
         verify(lookupPs, never()).executeUpdate();
         verify(connection, never()).prepareStatement(startsWith("UPDATE"));
     }
@@ -1969,17 +1929,16 @@ class CustomerServiceImplTest {
         doThrow(new MailSendException("SMTP unavailable")).when(mailSender).send(any(SimpleMailMessage.class));
 
         assertThrows(MailSendException.class, () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "ABCD",
-            "companyName", "Acme Ltd",
-            "address", "Main Road",
-            "city", "Nagpur",
-            "pincode", "440001",
-            "zone", "Central Railway",
-            "operatingDivision", "Nagpur (NGP)",
-            "gstinNumbers", "27AAECR3577NLZE",
-            "panNumber", "AAECR3577N"
-        )));
+                "codeType", "global",
+                "customerCode", "ABCD",
+                "companyName", "Acme Ltd",
+                "address", "Main Road",
+                "city", "Nagpur",
+                "pincode", "440001",
+                "zone", "Central Railway",
+                "operatingDivision", "Nagpur (NGP)",
+                "gstinNumbers", "27AAECR3577NLZE",
+                "panNumber", "AAECR3577N")));
         verify(existsPs, never()).executeUpdate();
     }
 
@@ -2109,24 +2068,23 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         JdbcPortalUserLookupRepository userLookupRepository = mock(JdbcPortalUserLookupRepository.class);
         when(userLookupRepository.findUserContactDetails("RAILUSER")).thenReturn(java.util.Optional.of(
-            new JdbcPortalUserLookupRepository.UserContactDetails(
-                "DBUSER", "database.user@example.org", "9910303868")));
-        DbaEmailService emailService =
-            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com", userLookupRepository);
+                new JdbcPortalUserLookupRepository.UserContactDetails(
+                        "DBUSER", "database.user@example.org", "9910303868")));
+        DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com",
+                userLookupRepository);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.getSession(true).setAttribute(
-            AuthController.AUTH_SESSION_KEY,
-            new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "stale@example.org", "9000000000"));
+                AuthController.AUTH_SESSION_KEY,
+                new AuthUserDto("RAILUSER", "Rail User", "USER", "Y", "stale@example.org", "9000000000"));
         request.getSession(false).setAttribute("CURRENT_OPERATING_DIVISION", "Nagpur (NGP)");
         ServletRequestAttributes requestAttributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(requestAttributes);
 
         try {
             emailService.sendDbaSqlEmail(List.of(
-                new DbaEmailService.SqlRequest(
-                    "INSERT", "TEST_TABLE", "A", "INSERT INTO TEST_TABLE VALUES ('A');",
-                    "RAILUSER", "submitted@example.org")
-            ));
+                    new DbaEmailService.SqlRequest(
+                            "INSERT", "TEST_TABLE", "A", "INSERT INTO TEST_TABLE VALUES ('A');",
+                            "RAILUSER", "submitted@example.org")));
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -2134,7 +2092,7 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "UserID: DBUSER\nEmail ID: database.user@example.org\nPhone Number: 9910303868"));
+                "UserID: DBUSER\nEmail ID: database.user@example.org\nPhone Number: 9910303868"));
         verify(userLookupRepository).findUserContactDetails("RAILUSER");
     }
 
@@ -2149,9 +2107,11 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         assertEquals("Request for DELETE – N/A – N/A", message.getValue().getSubject());
         String body = message.getValue().getText();
-        assertTrue(body.contains("Dear DBA Team,\n\nKindly execute the attached/below script on rfrn3t and training.\n\n"));
+        assertTrue(body
+                .contains("Dear DBA Team,\n\nKindly execute the attached/below script on rfrn3t and training.\n\n"));
         assertTrue(body.contains("Operation: DELETE\n"));
-        assertTrue(body.contains("SQL QUERY:\n----------------------------------------1 DELETE---------------------------"));
+        assertTrue(body
+                .contains("SQL QUERY:\n----------------------------------------1 DELETE---------------------------"));
         assertFalse(body.contains("Prasanta Mondal"));
         assertFalse(body.contains("Chief Manager / FOIS"));
         assertFalse(body.contains("8130797454"));
@@ -2179,21 +2139,18 @@ class CustomerServiceImplTest {
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
 
         List<DbaEmailService.SqlRequest> requests = List.of(
-            new DbaEmailService.SqlRequest(
-                "INSERT",
-                "MEMGLBLCUST",
-                "JPPB",
-                "INSERT INTO MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) VALUES ('JPPB', 'M/S JINDAL PARADIP PORT LIMITED', 'MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142', 'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');"
-            )
-        );
+                new DbaEmailService.SqlRequest(
+                        "INSERT",
+                        "MEMGLBLCUST",
+                        "JPPB",
+                        "INSERT INTO MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) VALUES ('JPPB', 'M/S JINDAL PARADIP PORT LIMITED', 'MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142', 'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');"));
 
         emailService.sendDbaSqlEmail(requests);
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLCUST VALUES('JPPB','M/S JINDAL PARADIP PORT LIMITED','MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142','JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('JPPB','M/S JINDAL PARADIP PORT LIMITED','MADUBAN, MADHUBAN, MADHUBAN, PARADIP, JAGATSINGHAPUR, ODISHA, 754142','JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"));
     }
 
     @Test
@@ -2201,73 +2158,71 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
         String sql = "INSERT INTO MEMGLBLHNDGAGNT (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) "
-            + "VALUES ('JPPL', 'M/S JINDAL PARADIP PORT LIMITED', "
-            + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142', "
-            + "'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');";
+                + "VALUES ('JPPL', 'M/S JINDAL PARADIP PORT LIMITED', "
+                + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142', "
+                + "'JAGATSINGHAPUR', NULL, NULL, NULL, SYSDATE, 'SR.DCM/CSTM', NULL, '21AAFCJ6524Q1ZA', 'AAFCJ6524Q');";
 
         emailService.sendDbaSqlEmail(List.of(
-            new DbaEmailService.SqlRequest("INSERT", "MEMGLBLHNDGAGNT", "JPPL", sql)
-        ));
+                new DbaEmailService.SqlRequest("INSERT", "MEMGLBLHNDGAGNT", "JPPL", sql)));
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JPPL','M/S JINDAL PARADIP PORT LIMITED',"
-                + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142',"
-                + "'JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"
-        ));
+                "INSERT INTO MEMGLBLHNDGAGNT VALUES('JPPL','M/S JINDAL PARADIP PORT LIMITED',"
+                        + "'MADHUBAN SUB POST OFFICE,HOUSING BOARD COLONY,HIG - 50 HOUSING BOARD COLONY PARADIP,ODISHA,754142',"
+                        + "'JAGATSINGHAPUR',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'21AAFCJ6524Q1ZA','AAFCJ6524Q');"));
     }
 
     @Test
     void dbaUpdateEmailPrefixesAndNormalizesCompanyNamesWithoutChangingOtherAssignments() {
         assertUpdateEmailSql(
-            "MEMGLBLCUST",
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'ALPS MINING SERVICES' "
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
+                "MEMGLBLCUST",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'ALPS MINING SERVICES' "
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLCUST",
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES' "
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
+                "MEMGLBLCUST",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES' "
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLCUST",
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = '  m/S   Alps Mining Services  ' "
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
+                "MEMGLBLCUST",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = '  m/S   Alps Mining Services  ' "
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING SERVICES'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLCUST",
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'O''BRIEN MINING' "
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S O''BRIEN MINING'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
+                "MEMGLBLCUST",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = 'O''BRIEN MINING' "
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S O''BRIEN MINING'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLHNDGAGNT",
-            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = 'ALPS LOGISTICS' "
-                + "WHERE MAVHNDAGNTCODE = 'ALPS';",
-            "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
-                + "WHERE MAVHNDAGNTCODE = 'ALPS';");
+                "MEMGLBLHNDGAGNT",
+                "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = 'ALPS LOGISTICS' "
+                        + "WHERE MAVHNDAGNTCODE = 'ALPS';",
+                "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
+                        + "WHERE MAVHNDAGNTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLHNDGAGNT",
-            "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = 'm/s ALPS LOGISTICS' "
-                + "WHERE MAVHNDAGNTCODE = 'ALPS';",
-            "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
-                + "WHERE MAVHNDAGNTCODE = 'ALPS';");
+                "MEMGLBLHNDGAGNT",
+                "UPDATE MEMGLBLHNDGAGNT SET MAVHNDAGNTNAME = 'm/s ALPS LOGISTICS' "
+                        + "WHERE MAVHNDAGNTCODE = 'ALPS';",
+                "UPDATE MEMGLBLHNDGAGNT SET\nMAVHNDAGNTNAME = 'M/S ALPS LOGISTICS'\n"
+                        + "WHERE MAVHNDAGNTCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMWGONOWNRSHIP",
-            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'ALPS LOGISTICS' "
-                + "WHERE MAVWGONOWNRSHIPCODE = 'ALPS';",
-            "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ALPS LOGISTICS' "
-                + "WHERE MAVWGONOWNRSHIPCODE = 'ALPS';");
+                "MEMWGONOWNRSHIP",
+                "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'ALPS LOGISTICS' "
+                        + "WHERE MAVWGONOWNRSHIPCODE = 'ALPS';",
+                "UPDATE MEMWGONOWNRSHIP SET MAVWGONOWNRSHIPDESC = 'M/S ALPS LOGISTICS' "
+                        + "WHERE MAVWGONOWNRSHIPCODE = 'ALPS';");
         assertUpdateEmailSql(
-            "MEMGLBLCUST",
-            "UPDATE MEMGLBLCUST SET MAVGLBLCUSTADDRTEXT = 'ALPS ROAD', MAVGNBLCUSTCITYNAME = 'ALPS' "
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTADDRTEXT = 'ALPS ROAD',\n"
-                + "MAVGNBLCUSTCITYNAME = 'ALPS'\nWHERE MAVGLBLCUSTCODE = 'ALPS';");
+                "MEMGLBLCUST",
+                "UPDATE MEMGLBLCUST SET MAVGLBLCUSTADDRTEXT = 'ALPS ROAD', MAVGNBLCUSTCITYNAME = 'ALPS' "
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';",
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTADDRTEXT = 'ALPS ROAD',\n"
+                        + "MAVGNBLCUSTCITYNAME = 'ALPS'\nWHERE MAVGLBLCUSTCODE = 'ALPS';");
     }
 
     @Test
@@ -2279,15 +2234,15 @@ class CustomerServiceImplTest {
         audit.setTableName("MEMGLBLCUST");
         audit.setCustomerCode("ALPS");
         audit.setSqlStatement("UPDATE MEMGLBLCUST SET MAVGLBLCUSTNAME = ' alps mining ' "
-            + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
+                + "WHERE MAVGLBLCUSTCODE = 'ALPS';");
 
         emailService.sendDbaAuditEmail(audit);
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING'\n"
-                + "WHERE MAVGLBLCUSTCODE = 'ALPS';"));
+                "UPDATE MEMGLBLCUST SET\nMAVGLBLCUSTNAME = 'M/S ALPS MINING'\n"
+                        + "WHERE MAVGLBLCUSTCODE = 'ALPS';"));
     }
 
     @Test
@@ -2305,20 +2260,19 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES('RINK','M/S RINKU BORUAH');"));
+                "INSERT INTO MEMGLBLHNDGAGNT VALUES('RINK','M/S RINKU BORUAH');"));
     }
 
     private void assertUpdateEmailSql(String table, String sql, String expectedSql) {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
         emailService.sendDbaSqlEmail(List.of(
-            new DbaEmailService.SqlRequest("UPDATE", table, "ALPS", sql)
-        ));
+                new DbaEmailService.SqlRequest("UPDATE", table, "ALPS", sql)));
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(expectedSql),
-            () -> "Expected email SQL:\n" + expectedSql + "\nEmail body:\n" + message.getValue().getText());
+                () -> "Expected email SQL:\n" + expectedSql + "\nEmail body:\n" + message.getValue().getText());
     }
 
     @Test
@@ -2326,19 +2280,16 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         DbaEmailService emailService = new DbaEmailService(mailSender, "portal@example.com", "dba@example.com");
         List<DbaEmailService.SqlRequest> requests = List.of(
-            new DbaEmailService.SqlRequest(
-                "INSERT", "memglblcust", "ab01",
-                "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'm/s alpha & beta', "
-                    + "'12 mixed Road, sector b', 'new town', null, null, null, sysdate, "
-                    + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');"
-            ),
-            new DbaEmailService.SqlRequest(
-                "INSERT", "MEMGLBLCUST", "cd02",
-                "insert into MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('cd02', 'o''brien services', "
-                    + "'main street, sector c', 'new delhi', null, null, null, sysdate, "
-                    + "'sr.dcm/ndls', null, 'gstindef456', 'pandef');"
-            )
-        );
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "memglblcust", "ab01",
+                        "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'm/s alpha & beta', "
+                                + "'12 mixed Road, sector b', 'new town', null, null, null, sysdate, "
+                                + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');"),
+                new DbaEmailService.SqlRequest(
+                        "INSERT", "MEMGLBLCUST", "cd02",
+                        "insert into MEMGLBLCUST (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('cd02', 'o''brien services', "
+                                + "'main street, sector c', 'new delhi', null, null, null, sysdate, "
+                                + "'sr.dcm/ndls', null, 'gstindef456', 'pandef');"));
 
         emailService.sendDbaSqlEmail(requests);
 
@@ -2346,13 +2297,11 @@ class CustomerServiceImplTest {
         verify(mailSender).send(message.capture());
         String body = message.getValue().getText();
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('AB01','M/S ALPHA - BETA','12 MIXED ROAD, SECTOR B',"
-                + "'NEW TOWN',NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('AB01','M/S ALPHA - BETA','12 MIXED ROAD, SECTOR B',"
+                        + "'NEW TOWN',NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('CD02','O''BRIEN SERVICES','MAIN STREET, SECTOR C',"
-                + "'NEW DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/NDLS',NULL,'GSTINDEF456','PANDEF');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('CD02','O''BRIEN SERVICES','MAIN STREET, SECTOR C',"
+                        + "'NEW DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/NDLS',NULL,'GSTINDEF456','PANDEF');"));
     }
 
     @Test
@@ -2363,19 +2312,17 @@ class CustomerServiceImplTest {
         audit.setOperationType("INSERT");
         audit.setTableName("MEMGLBLCUST");
         audit.setSqlStatement(
-            "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'rail & road', "
-                + "'mixed case address', 'new town', null, null, null, sysdate, "
-                + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');"
-        );
+                "insert into memglblcust (COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8, COL9, COL10, COL11, COL12) values ('ab01', 'rail & road', "
+                        + "'mixed case address', 'new town', null, null, null, sysdate, "
+                        + "'sr.dcm/ab', null, 'gstinabc123', 'panabc');");
 
         emailService.sendDbaAuditEmail(audit);
 
         ArgumentCaptor<SimpleMailMessage> message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         assertTrue(message.getValue().getText().contains(
-            "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL - ROAD','MIXED CASE ADDRESS','NEW TOWN',"
-                + "NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"
-        ));
+                "INSERT INTO MEMGLBLCUST VALUES('AB01','RAIL - ROAD','MIXED CASE ADDRESS','NEW TOWN',"
+                        + "NULL,NULL,NULL,SYSDATE,'SR.DCM/AB',NULL,'GSTINABC123','PANABC');"));
     }
 
     @Test
@@ -2384,33 +2331,29 @@ class CustomerServiceImplTest {
         JavaMailSender mailSender = mock(JavaMailSender.class);
         CustomerServiceImpl service = service(dataSource, mailSender);
 
-        com.cris.customerportal.dto.CustomerRegistrationRequest request =
-            new com.cris.customerportal.dto.CustomerRegistrationRequest(
+        com.cris.customerportal.dto.CustomerRegistrationRequest request = new com.cris.customerportal.dto.CustomerRegistrationRequest(
                 "TEST CORP", "TEST", "ADDR", "CITY", "110001",
-                java.util.Collections.singletonList(new com.cris.customerportal.dto.GstinRequest("07", "07AAAAA0000A1Z5")),
-                "AAAAA0000A", "DIV", "ZONE", "a@b.com", "9999999999", "GLOBAL"
-            );
+                java.util.Collections
+                        .singletonList(new com.cris.customerportal.dto.GstinRequest("07", "07AAAAA0000A1Z5")),
+                "AAAAA0000A", "DIV", "ZONE", "a@b.com", "9999999999", "GLOBAL");
 
         // Path traversal rejection
-        org.springframework.mock.web.MockMultipartFile traversalFile =
-            new org.springframework.mock.web.MockMultipartFile(
-                "gstinFiles", "../bad.pdf", "application/pdf", "%PDF-1.4 test".getBytes()
-            );
-        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(traversalFile)));
+        org.springframework.mock.web.MockMultipartFile traversalFile = new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "../bad.pdf", "application/pdf", "%PDF-1.4 test".getBytes());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.register(request, java.util.Collections.singletonList(traversalFile)));
 
         // Non-PDF mime type
-        org.springframework.mock.web.MockMultipartFile nonPdfFile =
-            new org.springframework.mock.web.MockMultipartFile(
-                "gstinFiles", "test.txt", "text/plain", "hello".getBytes()
-            );
-        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(nonPdfFile)));
+        org.springframework.mock.web.MockMultipartFile nonPdfFile = new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "test.txt", "text/plain", "hello".getBytes());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.register(request, java.util.Collections.singletonList(nonPdfFile)));
 
         // Invalid magic bytes (spoofed .pdf)
-        org.springframework.mock.web.MockMultipartFile spoofedFile =
-            new org.springframework.mock.web.MockMultipartFile(
-                "gstinFiles", "fake.pdf", "application/pdf", "MZexecutable".getBytes()
-            );
-        assertThrows(IllegalArgumentException.class, () -> service.register(request, java.util.Collections.singletonList(spoofedFile)));
+        org.springframework.mock.web.MockMultipartFile spoofedFile = new org.springframework.mock.web.MockMultipartFile(
+                "gstinFiles", "fake.pdf", "application/pdf", "MZexecutable".getBytes());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.register(request, java.util.Collections.singletonList(spoofedFile)));
     }
 
     @Test
@@ -2444,20 +2387,20 @@ class CustomerServiceImplTest {
         assertTrue(CustomerServiceImpl.normalizeAddress(addressWithSpaces).length() <= 100);
 
         String code = service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "G100",
-            "companyName", "TEST CO",
-            "address", addressWithSpaces,
-            "city", "RAIPUR",
-            "operatingDivision", "RAIPUR",
-            "zone", "SECR",
-            "panNumber", "ABCDE1234F",
-            "gstinNumbers", "22ABCDE1234F1Z5"
-        ));
+                "codeType", "global",
+                "customerCode", "G100",
+                "companyName", "TEST CO",
+                "address", addressWithSpaces,
+                "city", "RAIPUR",
+                "operatingDivision", "RAIPUR",
+                "zone", "SECR",
+                "panNumber", "ABCDE1234F",
+                "gstinNumbers", "22ABCDE1234F1Z5"));
 
         assertEquals("G100", code);
         String body = emailedBody(mailSender);
-        assertTrue(body.contains(CustomerServiceImpl.normalizeAddress(addressWithSpaces).toUpperCase(java.util.Locale.ROOT)));
+        assertTrue(body
+                .contains(CustomerServiceImpl.normalizeAddress(addressWithSpaces).toUpperCase(java.util.Locale.ROOT)));
     }
 
     @Test
@@ -2465,19 +2408,17 @@ class CustomerServiceImplTest {
         DataSource dataSource = mock(DataSource.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
         String excessiveAddress = "A".repeat(101);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-                "codeType", "global",
-                "customerCode", "G101",
-                "companyName", "TEST CO",
-                "address", excessiveAddress,
-                "city", "RAIPUR",
-                "operatingDivision", "RAIPUR",
-                "zone", "SECR",
-                "panNumber", "ABCDE1234F",
-                "gstinNumbers", "22ABCDE1234F1Z5"
-            ))
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                        "codeType", "global",
+                        "customerCode", "G101",
+                        "companyName", "TEST CO",
+                        "address", excessiveAddress,
+                        "city", "RAIPUR",
+                        "operatingDivision", "RAIPUR",
+                        "zone", "SECR",
+                        "panNumber", "ABCDE1234F",
+                        "gstinNumbers", "22ABCDE1234F1Z5")));
         assertEquals("Address cannot exceed 100 characters.", ex.getMessage());
     }
 
@@ -2492,7 +2433,8 @@ class CustomerServiceImplTest {
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(captor.capture());
         String body = captor.getValue().getText();
-        assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
+        assertTrue(body.contains(
+                "MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
         assertFalse(body.contains("SHOP NO 209, EDGE"));
     }
 
@@ -2500,19 +2442,17 @@ class CustomerServiceImplTest {
     void registerNewEntryJDBC_rejectsMismatchedPanAndGstin() {
         DataSource dataSource = mock(DataSource.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-                "codeType", "global",
-                "customerCode", "G101",
-                "companyName", "TEST CO",
-                "address", "Valid Address",
-                "city", "RAIPUR",
-                "operatingDivision", "RAIPUR",
-                "zone", "SECR",
-                "panNumber", "ABCDE1234F",
-                "gstinNumbers", "22XYZAB9999K1Z5"
-            ))
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                        "codeType", "global",
+                        "customerCode", "G101",
+                        "companyName", "TEST CO",
+                        "address", "Valid Address",
+                        "city", "RAIPUR",
+                        "operatingDivision", "RAIPUR",
+                        "zone", "SECR",
+                        "panNumber", "ABCDE1234F",
+                        "gstinNumbers", "22XYZAB9999K1Z5")));
         assertTrue(ex.getMessage().contains("does not match PAN number"));
     }
 
@@ -2520,19 +2460,17 @@ class CustomerServiceImplTest {
     void registerNewEntryJDBC_rejectsInvalidGstinFormat() {
         DataSource dataSource = mock(DataSource.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-                "codeType", "global",
-                "customerCode", "G101",
-                "companyName", "TEST CO",
-                "address", "Valid Address",
-                "city", "RAIPUR",
-                "operatingDivision", "RAIPUR",
-                "zone", "SECR",
-                "panNumber", "ABCDE1234F",
-                "gstinNumbers", "INVALIDGSTIN"
-            ))
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                        "codeType", "global",
+                        "customerCode", "G101",
+                        "companyName", "TEST CO",
+                        "address", "Valid Address",
+                        "city", "RAIPUR",
+                        "operatingDivision", "RAIPUR",
+                        "zone", "SECR",
+                        "panNumber", "ABCDE1234F",
+                        "gstinNumbers", "INVALIDGSTIN")));
         assertTrue(ex.getMessage().contains("valid 15-character GSTIN numbers"));
     }
 
@@ -2540,19 +2478,17 @@ class CustomerServiceImplTest {
     void registerNewEntryJDBC_rejectsInvalidPanFormat() {
         DataSource dataSource = mock(DataSource.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
-                "codeType", "global",
-                "customerCode", "G101",
-                "companyName", "TEST CO",
-                "address", "Valid Address",
-                "city", "RAIPUR",
-                "operatingDivision", "RAIPUR",
-                "zone", "SECR",
-                "panNumber", "INVALIDPAN",
-                "gstinNumbers", "22ABCDE1234F1Z5"
-            ))
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).registerNewEntryJDBC(Map.of(
+                        "codeType", "global",
+                        "customerCode", "G101",
+                        "companyName", "TEST CO",
+                        "address", "Valid Address",
+                        "city", "RAIPUR",
+                        "operatingDivision", "RAIPUR",
+                        "zone", "SECR",
+                        "panNumber", "INVALIDPAN",
+                        "gstinNumbers", "22ABCDE1234F1Z5")));
         assertTrue(ex.getMessage().contains("valid PAN number"));
     }
 
@@ -2570,18 +2506,16 @@ class CustomerServiceImplTest {
         Map<String, String> originalRecord = originalOldCustomerValues("OLD ROAD,MARKET AREA");
         when(lookupRs.getString(anyString())).thenAnswer(inv -> originalRecord.get(inv.getArgument(0)));
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-            service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-                "codeType", "global",
-                "customerCode", "AB12",
-                "companyName", "M/S OLD COMPANY",
-                "address", "OLD ROAD,MARKET AREA",
-                "city", "PATNA",
-                "pincode", "800001",
-                "panNumber", "AAAAA1111A",
-                "gstinNumbers", "27XYZAB9999K1Z5"
-            ))
-        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
+                        "codeType", "global",
+                        "customerCode", "AB12",
+                        "companyName", "M/S OLD COMPANY",
+                        "address", "OLD ROAD,MARKET AREA",
+                        "city", "PATNA",
+                        "pincode", "800001",
+                        "panNumber", "AAAAA1111A",
+                        "gstinNumbers", "27XYZAB9999K1Z5")));
         assertTrue(ex.getMessage().contains("does not match PAN number"));
     }
 
@@ -2605,17 +2539,17 @@ class CustomerServiceImplTest {
 
         String enteredAddress = "SHOP NO 209, EDGE COMMERCIAL COMPLEX, VIDHANSHABHA ROAD, MOWA, RAIPUR, CHHATTISGARH, 492004";
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "AB12",
-            "companyName", "M/S TEST CO",
-            "address", enteredAddress,
-            "city", "RAIPUR",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S TEST CO",
+                "address", enteredAddress,
+                "city", "RAIPUR",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         String body = emailedBody(mailSender);
-        assertTrue(body.contains("MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
+        assertTrue(body.contains(
+                "MAVGLBLCUSTADDRTEXT = 'SHOP NO 209,EDGE COMMERCIAL COMPLEX,VIDHANSHABHA ROAD,MOWA,RAIPUR,CHHATTISGARH,492004'"));
         assertFalse(body.contains("SHOP NO 209, EDGE"));
     }
 
@@ -2638,22 +2572,23 @@ class CustomerServiceImplTest {
         when(lookupRs.getString("MAVGNBLCUSTCITYNAME")).thenReturn("PATNA");
 
         service(dataSource, mailSender).updateOldCustomerJDBC(Map.of(
-            "codeType", "global",
-            "customerCode", "AB12",
-            "companyName", "M/S OLD COMPANY",
-            "address", "OLD ROAD",
-            "panNumber", "AAECR3577N",
-            "gstinNumbers", "27AAECR3577NLZE"
-        ));
+                "codeType", "global",
+                "customerCode", "AB12",
+                "companyName", "M/S OLD COMPANY",
+                "address", "OLD ROAD",
+                "panNumber", "AAECR3577N",
+                "gstinNumbers", "27AAECR3577NLZE"));
 
         String body = emailedBody(mailSender);
         assertTrue(body.contains("MAVCUSTPANNUMB = 'AAECR3577N'"));
+        assertTrue(body.contains("MAVCUSTGSTNUMB = '27AAECR3577NLZE'"));
         assertTrue(body.contains("INSERT INTO MEMGLBLCUSTDTLS"));
         assertTrue(body.contains("'27AAECR3577NLZE'"));
     }
 
     @Test
-    void updateOldCustomerJDBC_preventsAccidentalOverwriteOfExistingPanAndGstinWhenEmptyOrNullSupplied() throws SQLException {
+    void updateOldCustomerJDBC_preventsAccidentalOverwriteOfExistingPanAndGstinWhenEmptyOrNullSupplied()
+            throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement lookupPs = mock(PreparedStatement.class);
@@ -2707,15 +2642,14 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVIMPLREMK")).thenReturn("SR.DCM/CKP");
         when(rs.getString("MAVVERIFICATIONDATE")).thenReturn("2026-11-10");
 
-        List<com.cris.customerportal.dto.OldCustomerResponse> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .searchGlobalCustomersByCompanyName("tata");
+        List<com.cris.customerportal.dto.OldCustomerResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .searchGlobalCustomersByCompanyName("tata");
 
         assertEquals(1, results.size());
         assertEquals("TISCO", results.get(0).getCustomerCode());
         assertEquals("TATA STEEL LTD", results.get(0).getCompanyName());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("FROM MEMGLBLCUST WHERE INSTR(UPPER(NVL(MAVGLBLCUSTNAME, '')), ?) > 0")));
+        verify(connection).prepareStatement(
+                argThat(sql -> sql.contains("FROM MEMGLBLCUST WHERE INSTR(UPPER(NVL(MAVGLBLCUSTNAME, '')), ?) > 0")));
         verify(ps).setString(1, "TATA");
     }
 
@@ -2733,15 +2667,14 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVHNDAGNTCODE")).thenReturn("AG01");
         when(rs.getString("MAVHNDAGNTNAME")).thenReturn("AGENT ONE");
 
-        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .searchHandlingAgents("AG", "CODE");
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .searchHandlingAgents("AG", "CODE");
 
         assertEquals(1, results.size());
         assertEquals("AG01", results.get(0).getCode());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")
-                && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")));
+        verify(connection)
+                .prepareStatement(argThat(sql -> sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")
+                        && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")));
         verify(ps).setString(1, "AG");
     }
 
@@ -2759,15 +2692,14 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVHNDAGNTCODE")).thenReturn("AG01");
         when(rs.getString("MAVHNDAGNTNAME")).thenReturn("LOGISTICS INC");
 
-        List<com.cris.customerportal.dto.GlobalAgentResponse> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .searchHandlingAgents("LOGISTICS", "NAME");
+        List<com.cris.customerportal.dto.GlobalAgentResponse> results = service(dataSource, mock(JavaMailSender.class))
+                .searchHandlingAgents("LOGISTICS", "NAME");
 
         assertEquals(1, results.size());
         assertEquals("AG01", results.get(0).getCode());
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")
-                && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")));
+        verify(connection)
+                .prepareStatement(argThat(sql -> sql.contains("WHERE INSTR(UPPER(NVL(MAVHNDGAGNTNAME, '')), ?) > 0")
+                        && !sql.contains("OR INSTR(UPPER(NVL(MAVHNDGAGNTCODE, '')), ?) > 0")));
         verify(ps).setString(1, "LOGISTICS");
     }
 
@@ -2785,15 +2717,14 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("OWN1");
         when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("OWNER ONE");
 
-        List<Map<String, String>> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .searchOwnershipCodes("OWN1", "CODE");
+        List<Map<String, String>> results = service(dataSource, mock(JavaMailSender.class))
+                .searchOwnershipCodes("OWN1", "CODE");
 
         assertEquals(1, results.size());
         assertEquals("OWN1", results.get(0).get("ownershipCode"));
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")
-                && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")));
+        verify(connection)
+                .prepareStatement(argThat(sql -> sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")
+                        && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")));
         verify(ps).setString(1, "OWN1");
     }
 
@@ -2811,15 +2742,14 @@ class CustomerServiceImplTest {
         when(rs.getString("MAVWGONOWNRSHIPCODE")).thenReturn("OWN1");
         when(rs.getString("MAVWGONOWNRSHIPDESC")).thenReturn("FREIGHT CORP");
 
-        List<Map<String, String>> results =
-                service(dataSource, mock(JavaMailSender.class))
-                    .searchOwnershipCodes("FREIGHT", "NAME");
+        List<Map<String, String>> results = service(dataSource, mock(JavaMailSender.class))
+                .searchOwnershipCodes("FREIGHT", "NAME");
 
         assertEquals(1, results.size());
         assertEquals("FREIGHT CORP", results.get(0).get("companyName"));
-        verify(connection).prepareStatement(argThat(sql ->
-                sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")
-                && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")));
+        verify(connection)
+                .prepareStatement(argThat(sql -> sql.contains("WHERE INSTR(UPPER(NVL(MAVWGONOWNRSHIPDESC, '')), ?) > 0")
+                        && !sql.contains("OR INSTR(UPPER(NVL(MAVWGONOWNRSHIPCODE, '')), ?) > 0")));
         verify(ps).setString(1, "FREIGHT");
     }
 
@@ -2836,10 +2766,10 @@ class CustomerServiceImplTest {
 
     private CustomerServiceImpl service(DataSource dataSource, JavaMailSender mailSender) {
         CustomerServiceImpl service = new CustomerServiceImpl(
-            mock(CustomerRepository.class),
-            dataSource);
+                mock(CustomerRepository.class),
+                dataSource);
         ReflectionTestUtils.setField(service, "dbaEmailService",
-            new DbaEmailService(mailSender, "portal@example.com", "dba@example.com"));
+                new DbaEmailService(mailSender, "portal@example.com", "dba@example.com"));
         return service;
     }
 
@@ -2948,8 +2878,7 @@ class CustomerServiceImplTest {
         when(rsCust.getString("EFFECTIVE_TO")).thenReturn(null);
 
         CustomerServiceImpl service = service(dataSource, mailSender);
-        GstinDuplicateCheckResult result =
-            service.checkGstinDuplicate("20APEPA6196G1Z9", null, "GLOBAL");
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9", null, "GLOBAL");
 
         assertTrue(result.isDuplicate());
         assertEquals("DUPLICATE", result.getStatus());
@@ -2985,8 +2914,7 @@ class CustomerServiceImplTest {
         when(rsHndg.getString("EFFECTIVE_FROM")).thenReturn("2026-02-01");
 
         CustomerServiceImpl service = service(dataSource, mailSender);
-        GstinDuplicateCheckResult result =
-            service.checkGstinDuplicate("20APEPA6196G1Z9", null, "HANDLING_AGENT");
+        GstinDuplicateCheckResult result = service.checkGstinDuplicate("20APEPA6196G1Z9", null, "HANDLING_AGENT");
 
         assertTrue(result.isDuplicate());
         assertEquals("DUPLICATE", result.getStatus());
@@ -3075,8 +3003,7 @@ class CustomerServiceImplTest {
         when(ps.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(false);
 
-        GstinDuplicateCheckResult result =
-            service(dataSource, mock(JavaMailSender.class))
+        GstinDuplicateCheckResult result = service(dataSource, mock(JavaMailSender.class))
                 .checkGstinDuplicate("20APEPA6196G1Z9", null, "HANDLING_AGENT");
 
         assertFalse(result.isDuplicate());
@@ -3102,7 +3029,7 @@ class CustomerServiceImplTest {
         ReflectionTestUtils.setField(service, "dbaEmailService", dbaEmailService);
 
         String gstinDetailsJson = "[{\"gstin\":\"20APEPA6196G1Z9\",\"address\":\"Shop 1, Delhi\",\"city\":\"Delhi\",\"pincode\":\"110001\"},"
-            + "{\"gstin\":\"20APEPA6196G2Z8\",\"address\":\"Warehouse 2, Haryana\",\"city\":\"Gurgaon\",\"pincode\":\"122001\"}]";
+                + "{\"gstin\":\"20APEPA6196G2Z8\",\"address\":\"Warehouse 2, Haryana\",\"city\":\"Gurgaon\",\"pincode\":\"122001\"}]";
 
         Map<String, String> formData = new HashMap<>();
         formData.put("codeType", "global");
@@ -3320,8 +3247,7 @@ class CustomerServiceImplTest {
         assertEquals("AVAILABLE", service.checkPanDuplicate("INVALID123").getStatus());
 
         // Valid but not in DB
-        com.cris.customerportal.dto.PanDuplicateCheckResult res =
-            service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
         assertFalse(res.isDuplicate());
         assertEquals("AVAILABLE", res.getStatus());
         assertTrue(res.getCompanies().isEmpty());
@@ -3337,7 +3263,8 @@ class CustomerServiceImplTest {
         ResultSet rsDtls = mock(ResultSet.class);
         when(dataSource.getConnection()).thenReturn(conn);
 
-        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))")))
+                .thenReturn(psParent);
         when(psParent.executeQuery()).thenReturn(rsParent);
         when(rsParent.next()).thenReturn(true, false);
         when(rsParent.getString("MAVGLBLCUSTCODE")).thenReturn("ABPC");
@@ -3347,7 +3274,8 @@ class CustomerServiceImplTest {
         when(rsParent.getString("CITY")).thenReturn("DELHI");
         when(rsParent.getString("MAVPCOCODE")).thenReturn("110001");
 
-        when(conn.prepareStatement(contains("FROM MEMGLBLCUSTDTLS WHERE UPPER(TRIM(MAVGLBLCUSTCODE))"))).thenReturn(psDtls);
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUSTDTLS WHERE UPPER(TRIM(MAVGLBLCUSTCODE))")))
+                .thenReturn(psDtls);
         when(psDtls.executeQuery()).thenReturn(rsDtls);
         when(rsDtls.next()).thenReturn(true, false);
         when(rsDtls.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z5");
@@ -3356,8 +3284,7 @@ class CustomerServiceImplTest {
         when(rsDtls.getString("MANPINCODE")).thenReturn("110001");
 
         CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
-        com.cris.customerportal.dto.PanDuplicateCheckResult res =
-            service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F", "GLOBAL");
 
         assertTrue(res.isDuplicate());
         assertEquals("DUPLICATE", res.getStatus());
@@ -3383,7 +3310,8 @@ class CustomerServiceImplTest {
         ResultSet rsDtls = mock(ResultSet.class);
         when(dataSource.getConnection()).thenReturn(conn);
 
-        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNT WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNT WHERE UPPER(TRIM(MAVCUSTPANNUMB))")))
+                .thenReturn(psParent);
         when(psParent.executeQuery()).thenReturn(rsParent);
         when(rsParent.next()).thenReturn(true, false);
         when(rsParent.getString("CODE")).thenReturn("HA01");
@@ -3393,7 +3321,8 @@ class CustomerServiceImplTest {
         when(rsParent.getString("CITY")).thenReturn("MUMBAI");
         when(rsParent.getString("MAVPCOCODE")).thenReturn("400001");
 
-        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS WHERE UPPER(TRIM(MAVHNDGAGNTCODE))"))).thenReturn(psDtls);
+        when(conn.prepareStatement(contains("FROM MEMGLBLHNDGAGNTDTLS WHERE UPPER(TRIM(MAVHNDGAGNTCODE))")))
+                .thenReturn(psDtls);
         when(psDtls.executeQuery()).thenReturn(rsDtls);
         when(rsDtls.next()).thenReturn(true, false);
         when(rsDtls.getString("MAVCUSTGSTNUMB")).thenReturn("27ABCDE1234F1Z8");
@@ -3402,8 +3331,8 @@ class CustomerServiceImplTest {
         when(rsDtls.getString("MANPINCODE")).thenReturn("400001");
 
         CustomerServiceImpl service = service(dataSource, mock(JavaMailSender.class));
-        com.cris.customerportal.dto.PanDuplicateCheckResult res =
-            service.checkPanDuplicate("ABCDE1234F", "HANDLING_AGENT");
+        com.cris.customerportal.dto.PanDuplicateCheckResult res = service.checkPanDuplicate("ABCDE1234F",
+                "HANDLING_AGENT");
 
         assertTrue(res.isDuplicate());
         assertEquals("DUPLICATE", res.getStatus());
@@ -3441,8 +3370,8 @@ class CustomerServiceImplTest {
         when(ps.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(false);
 
-        com.cris.customerportal.dto.PanDuplicateCheckResult result =
-            service(dataSource, mock(JavaMailSender.class)).checkPanDuplicate("ABCDE1234F", "HANDLING_AGENT");
+        com.cris.customerportal.dto.PanDuplicateCheckResult result = service(dataSource, mock(JavaMailSender.class))
+                .checkPanDuplicate("ABCDE1234F", "HANDLING_AGENT");
 
         assertFalse(result.isDuplicate());
         assertEquals("AVAILABLE", result.getStatus());
@@ -3459,7 +3388,8 @@ class CustomerServiceImplTest {
         ResultSet rsParent = mock(ResultSet.class);
         when(dataSource.getConnection()).thenReturn(conn);
 
-        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))"))).thenReturn(psParent);
+        when(conn.prepareStatement(contains("FROM MEMGLBLCUST WHERE UPPER(TRIM(MAVCUSTPANNUMB))")))
+                .thenReturn(psParent);
         when(psParent.executeQuery()).thenReturn(rsParent);
         when(rsParent.next()).thenReturn(true, false);
         when(rsParent.getString("MAVGLBLCUSTCODE")).thenReturn("ABPC");
@@ -3479,9 +3409,8 @@ class CustomerServiceImplTest {
         formData.put("gstinNumbers", "06ABCDE1234F1Z2");
 
         ResourceAlreadyExistsException ex = assertThrows(
-            ResourceAlreadyExistsException.class,
-            () -> service.registerNewEntryJDBC(formData)
-        );
+                ResourceAlreadyExistsException.class,
+                () -> service.registerNewEntryJDBC(formData));
         assertTrue(ex.getMessage().contains("Company Already Exists"));
         assertTrue(ex.getMessage().contains("ABPC"));
     }
@@ -3501,9 +3430,8 @@ class CustomerServiceImplTest {
         formData.put("panNumber", "ABCDE1234F");
 
         IllegalArgumentException ex = assertThrows(
-            IllegalArgumentException.class,
-            () -> service.updateOldCustomerJDBC(formData)
-        );
+                IllegalArgumentException.class,
+                () -> service.updateOldCustomerJDBC(formData));
         assertTrue(ex.getMessage().contains("Customer code mismatch"));
         assertTrue(ex.getMessage().contains("ABPC"));
     }
@@ -3567,19 +3495,15 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
 
-        // 1. Parent INSERT must NOT contain any GSTIN
+        // 1. Parent INSERT must contain primary GSTIN
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUST VALUES('ABPC','M/S ABP PRIVATE LIMITED','DELHI ROAD','DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/DLI',NULL,'ABCDE1234F');"
-        ));
-        assertFalse(body.contains("07ABCDE1234F1Z1','ABCDE1234F'"));
+                "INSERT INTO MEMGLBLCUST VALUES('ABPC','M/S ABP PRIVATE LIMITED','DELHI ROAD','DELHI',NULL,NULL,NULL,SYSDATE,'SR.DCM/DLI',NULL,'07ABCDE1234F1Z1','ABCDE1234F');"));
 
         // 2. Both GSTINs must have detail table INSERTs
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ABPC', 'M/S ABP PRIVATE LIMITED', 'DELHI ROAD', 'DELHI', 110001, SYSDATE, NULL, '07ABCDE1234F1Z1', 'ABCDE1234F', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ABPC', 'M/S ABP PRIVATE LIMITED', 'DELHI ROAD', 'DELHI', 110001, SYSDATE, NULL, '07ABCDE1234F1Z1', 'ABCDE1234F', SYSDATE, NULL);"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ABPC', 'M/S ABP PRIVATE LIMITED', 'DELHI ROAD', 'DELHI', 110001, SYSDATE, NULL, '27ABCDE1234F1Z2', 'ABCDE1234F', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('ABPC', 'M/S ABP PRIVATE LIMITED', 'DELHI ROAD', 'DELHI', 110001, SYSDATE, NULL, '27ABCDE1234F1Z2', 'ABCDE1234F', SYSDATE, NULL);"));
     }
 
     @Test
@@ -3612,23 +3536,20 @@ class CustomerServiceImplTest {
 
         String body = emailedBody(mailSender);
 
-        // 1. Parent INSERT must NOT contain any GSTIN
+        // 1. Parent INSERT must contain primary GSTIN
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED','22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,'SR.DCM/MDU',NULL,'AAACJ2055K');"
-        ));
-        assertFalse(body.contains("09AAACJ2055K1Z1','AAACJ2055K'"));
+                "INSERT INTO MEMGLBLHNDGAGNT VALUES('JDPL','M/S JINDAL PIPES LIMITED','22ND MILE STONE,DELHI HAPUR ROAD','PARBHANI',NULL,NULL,NULL,SYSDATE,'SR.DCM/MDU',NULL,'09AAACJ2055K1Z1','AAACJ2055K');"));
 
         // 2. Both GSTINs must have detail table INSERTs
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1Z1', 'AAACJ2055K', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '09AAACJ2055K1Z1', 'AAACJ2055K', SYSDATE, NULL);"));
         assertTrue(body.contains(
-            "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '27AAACJ2055K1Z2', 'AAACJ2055K', SYSDATE, NULL);"
-        ));
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('JDPL', 'M/S JINDAL PIPES LIMITED', '22ND MILE STONE,DELHI HAPUR ROAD', 'PARBHANI', 431401, SYSDATE, NULL, '27AAACJ2055K1Z2', 'AAACJ2055K', SYSDATE, NULL);"));
     }
 
     @Test
-    void updateOldCustomerJDBC_additionalGstinForExistingPan_generatesOnlyDetailInsert_neverParentInsert() throws SQLException {
+    void updateOldCustomerJDBC_additionalGstinForExistingPan_generatesOnlyDetailInsert_neverParentInsert()
+            throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         JavaMailSender mailSender = mock(JavaMailSender.class);
@@ -3646,6 +3567,7 @@ class CustomerServiceImplTest {
                 when(rs.getString("MAVGLBLCUSTNAME")).thenReturn("ABP Private Limited");
                 when(rs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("Delhi Road");
                 when(rs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+                when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z1");
             } else if (sql.contains("FROM MEMGLBLCUSTDTLS WHERE") && sql.contains("MAVGLBLCUSTCODE = ?")) {
                 when(rs.next()).thenReturn(true, false);
                 when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("07ABCDE1234F1Z1");
@@ -3666,7 +3588,8 @@ class CustomerServiceImplTest {
         formData.put("companyName", "ABP Private Limited");
         formData.put("address", "Delhi Road");
         formData.put("panNumber", "ABCDE1234F");
-        formData.put("gstinDetails", "[{\"gstin\":\"07ABCDE1234F1Z1\",\"address\":\"Delhi Road\"},{\"gstin\":\"27ABCDE1234F1Z2\",\"address\":\"Mumbai Road\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}]");
+        formData.put("gstinDetails",
+                "[{\"gstin\":\"07ABCDE1234F1Z1\",\"address\":\"Delhi Road\"},{\"gstin\":\"27ABCDE1234F1Z2\",\"address\":\"Mumbai Road\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}]");
 
         service.updateOldCustomerJDBC(formData);
 
@@ -3679,5 +3602,223 @@ class CustomerServiceImplTest {
         // Must contain detail table INSERT for the new GSTIN
         assertTrue(body.contains("INSERT INTO MEMGLBLCUSTDTLS"));
         assertTrue(body.contains("27ABCDE1234F1Z2"));
+    }
+
+    @Test
+    void testScenario1_newGlobalCustomerWithOneGstin() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(startsWith("SELECT 1 FROM MEMGLBLCUST"))).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "GC01");
+        formData.put("companyName", "ALPHA TRADERS");
+        formData.put("address", "101 MAIN ROAD");
+        formData.put("city", "MUMBAI");
+        formData.put("pincode", "400001");
+        formData.put("zone", "Western Railway");
+        formData.put("operatingDivision", "Mumbai (CSTM)");
+        formData.put("panNumber", "ABCDE1234F");
+        formData.put("gstinNumbers", "27ABCDE1234F1Z5");
+        formData.put("gstinDetails", "[{\"gstin\":\"27ABCDE1234F1Z5\",\"address\":\"101 MAIN ROAD\",\"city\":\"MUMBAI\",\"pincode\":\"400001\"}]");
+        service(dataSource, mailSender).registerNewEntryJDBC(formData);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUST VALUES('GC01','M/S ALPHA TRADERS','101 MAIN ROAD','MUMBAI',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'27ABCDE1234F1Z5','ABCDE1234F');"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('GC01', 'M/S ALPHA TRADERS', '101 MAIN ROAD', 'MUMBAI', 400001, SYSDATE, NULL, '27ABCDE1234F1Z5', 'ABCDE1234F', SYSDATE, NULL);"));
+    }
+
+    @Test
+    void testScenario2_newGlobalCustomerWithThreeGstins() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(startsWith("SELECT 1 FROM MEMGLBLCUST"))).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "GC03");
+        formData.put("companyName", "TRIPLE ENTERPRISES");
+        formData.put("address", "101 MAIN ROAD");
+        formData.put("city", "MUMBAI");
+        formData.put("pincode", "400001");
+        formData.put("zone", "Western Railway");
+        formData.put("operatingDivision", "Mumbai (CSTM)");
+        formData.put("panNumber", "ABCDE1234F");
+        formData.put("gstinNumbers", "27ABCDE1234F1Z5,07ABCDE1234F1Z1,29ABCDE1234F1Z2");
+        formData.put("gstinDetails", "[{\"gstin\":\"27ABCDE1234F1Z5\",\"address\":\"101 MAIN ROAD\",\"city\":\"MUMBAI\",\"pincode\":\"400001\"},"
+            + "{\"gstin\":\"07ABCDE1234F1Z1\",\"address\":\"202 CONNAUGHT PLACE\",\"city\":\"DELHI\",\"pincode\":\"110001\"},"
+            + "{\"gstin\":\"29ABCDE1234F1Z2\",\"address\":\"303 MG ROAD\",\"city\":\"BENGALURU\",\"pincode\":\"560001\"}]");
+        service(dataSource, mailSender).registerNewEntryJDBC(formData);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUST VALUES('GC03','M/S TRIPLE ENTERPRISES','101 MAIN ROAD','MUMBAI',NULL,NULL,NULL,SYSDATE,'SR.DCM/CSTM',NULL,'27ABCDE1234F1Z5','ABCDE1234F');"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('GC03', 'M/S TRIPLE ENTERPRISES', '101 MAIN ROAD', 'MUMBAI', 400001, SYSDATE, NULL, '27ABCDE1234F1Z5', 'ABCDE1234F', SYSDATE, NULL);"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('GC03', 'M/S TRIPLE ENTERPRISES', '202 CONNAUGHT PLACE', 'DELHI', 110001, SYSDATE, NULL, '07ABCDE1234F1Z1', 'ABCDE1234F', SYSDATE, NULL);"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('GC03', 'M/S TRIPLE ENTERPRISES', '303 MG ROAD', 'BENGALURU', 560001, SYSDATE, NULL, '29ABCDE1234F1Z2', 'ABCDE1234F', SYSDATE, NULL);"));
+        assertFalse(
+                body.contains("INSERT INTO MEMGLBLCUST VALUES('GC03','M/S TRIPLE ENTERPRISES','202 CONNAUGHT PLACE'"));
+    }
+
+    @Test
+    void testScenario3_newHandlingAgentWithMultipleGstins() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement existsPs = mock(PreparedStatement.class);
+        ResultSet existsRs = mock(ResultSet.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(startsWith("SELECT 1 FROM MEMGLBLHNDGAGNT"))).thenReturn(existsPs);
+        when(existsPs.executeQuery()).thenReturn(existsRs);
+        when(existsRs.next()).thenReturn(false);
+
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "handling_agent");
+        formData.put("customerCode", "HA02");
+        formData.put("companyName", "M/S FORWARD LOGISTICS");
+        formData.put("address", "PORT ROAD");
+        formData.put("city", "CHENNAI");
+        formData.put("pincode", "600001");
+        formData.put("zone", "Southern Railway");
+        formData.put("operatingDivision", "Madurai (MDU)");
+        formData.put("panNumber", "FGHIJ5678K");
+        formData.put("gstinNumbers", "33FGHIJ5678K1Z3,27FGHIJ5678K1Z4");
+        formData.put("gstinDetails", "[{\"gstin\":\"33FGHIJ5678K1Z3\",\"address\":\"PORT ROAD\",\"city\":\"CHENNAI\",\"pincode\":\"600001\"},"
+            + "{\"gstin\":\"27FGHIJ5678K1Z4\",\"address\":\"HARBOUR ROAD\",\"city\":\"MUMBAI\",\"pincode\":\"400001\"}]");
+        service(dataSource, mailSender).registerNewEntryJDBC(formData);
+
+        String body = emailedBody(mailSender);
+        assertFalse(body.contains("MEMGLBLCUST"));
+        assertTrue(body.contains("Table: MEMGLBLHNDGAGNT, MEMGLBLHNDGAGNTDTLS"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLHNDGAGNT VALUES('HA02','M/S FORWARD LOGISTICS','PORT ROAD','CHENNAI',NULL,NULL,NULL,SYSDATE,'SR.DCM/MDU',NULL,'33FGHIJ5678K1Z3','FGHIJ5678K');"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('HA02', 'M/S FORWARD LOGISTICS', 'PORT ROAD', 'CHENNAI', 600001, SYSDATE, NULL, '33FGHIJ5678K1Z3', 'FGHIJ5678K', SYSDATE, NULL);"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('HA02', 'M/S FORWARD LOGISTICS', 'HARBOUR ROAD', 'MUMBAI', 400001, SYSDATE, NULL, '27FGHIJ5678K1Z4', 'FGHIJ5678K', SYSDATE, NULL);"));
+    }
+
+    @Test
+    void testScenario4_updateExistingGlobalCustomer_includesPrimaryGstinAndDetailInsertAndDetailUpdate()
+            throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(inv -> {
+            String sql = inv.getArgument(0);
+            PreparedStatement ps = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(ps.executeQuery()).thenReturn(rs);
+            if (sql.contains("FROM MEMGLBLCUST WHERE")) {
+                when(rs.next()).thenReturn(true, false);
+                when(rs.getString("MAVGLBLCUSTCODE")).thenReturn("EX01");
+                when(rs.getString("MAVGLBLCUSTNAME")).thenReturn("M/S EXISTING CORP");
+                when(rs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD OFFICE");
+                when(rs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+                when(rs.getString("MAVCUSTGSTNUMB")).thenReturn(null);
+            } else if (sql.contains("FROM MEMGLBLCUSTDTLS WHERE MAVGLBLCUSTCODE = ?")) {
+                when(rs.next()).thenReturn(true, false);
+                when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("27ABCDE1234F1Z1");
+                when(rs.getString("MAVGLBLCUSTADDRTEXT")).thenReturn("OLD DETAIL ADDRESS");
+                when(rs.getString("EFFECTIVE_FROM")).thenReturn("2026-01-01 10:00:00");
+            } else {
+                when(rs.next()).thenReturn(false);
+            }
+            return ps;
+        });
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "global");
+        formData.put("customerCode", "EX01");
+        formData.put("companyName", "M/S EXISTING CORP");
+        formData.put("panNumber", "ABCDE1234F");
+        formData.put("gstinDetails", "["
+                + "{\"gstin\":\"27ABCDE1234F1Z1\",\"address\":\"CORRECTED DETAIL ADDRESS\",\"city\":\"MUMBAI\"},"
+                + "{\"gstin\":\"07ABCDE1234F1Z2\",\"address\":\"NEW DELHI BRANCH\",\"city\":\"DELHI\",\"pincode\":\"110001\"}"
+                + "]");
+
+        service.updateOldCustomerJDBC(formData);
+
+        String body = emailedBody(mailSender);
+        assertTrue(body.contains("UPDATE MEMGLBLCUST SET\nMAVCUSTGSTNUMB = '27ABCDE1234F1Z1'\nWHERE MAVGLBLCUSTCODE = 'EX01';"));
+        assertTrue(body.contains(
+                "UPDATE MEMGLBLCUSTDTLS SET MAVGLBLCUSTADDRTEXT = 'CORRECTED DETAIL ADDRESS' WHERE MAVGLBLCUSTCODE = 'EX01' AND MAVCUSTGSTNUMB = '27ABCDE1234F1Z1';"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLCUSTDTLS (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVGNBLCUSTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('EX01', 'M/S EXISTING CORP', 'NEW DELHI BRANCH', 'DELHI', 110001, SYSDATE, NULL, '07ABCDE1234F1Z2', 'ABCDE1234F', SYSDATE, NULL);"));
+        assertFalse(body.contains("AND MAVCUSTGSTNUMB = '07ABCDE1234F1Z2';"));
+    }
+
+    @Test
+    void testScenario5_updateExistingHandlingAgent_usesHandlingAgentTables() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(inv -> {
+            String sql = inv.getArgument(0);
+            PreparedStatement ps = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(ps.executeQuery()).thenReturn(rs);
+            if (sql.contains("FROM MEMGLBLHNDGAGNT WHERE")) {
+                when(rs.next()).thenReturn(true, false);
+                when(rs.getString("MAVHNDAGNTCODE")).thenReturn("HA01");
+                when(rs.getString("MAVHNDAGNTNAME")).thenReturn("M/S HANDLING CORP");
+                when(rs.getString("MAVHNDAGNTADDRTEXT")).thenReturn("OLD PORT");
+                when(rs.getString("MAVCUSTPANNUMB")).thenReturn("ABCDE1234F");
+                when(rs.getString("MAVCUSTGSTNUMB")).thenReturn(null);
+            } else if (sql.contains("FROM MEMGLBLHNDGAGNTDTLS WHERE MAVHNDGAGNTCODE = ?")) {
+                when(rs.next()).thenReturn(true, false);
+                when(rs.getString("MAVCUSTGSTNUMB")).thenReturn("33ABCDE1234F1Z1");
+                when(rs.getString("MAVHNDGAGNTADDRTEXT")).thenReturn("OLD HA DETAIL ADDR");
+                when(rs.getString("EFFECTIVE_FROM")).thenReturn("2026-01-01 10:00:00");
+            } else {
+                when(rs.next()).thenReturn(false);
+            }
+            return ps;
+        });
+
+        CustomerServiceImpl service = service(dataSource, mailSender);
+        Map<String, String> formData = new HashMap<>();
+        formData.put("codeType", "handling_agent");
+        formData.put("customerCode", "HA01");
+        formData.put("companyName", "M/S HANDLING CORP");
+        formData.put("panNumber", "ABCDE1234F");
+        formData.put("gstinDetails", "["
+                + "{\"gstin\":\"33ABCDE1234F1Z1\",\"address\":\"CORRECTED HA DETAIL ADDR\",\"city\":\"CHENNAI\"},"
+                + "{\"gstin\":\"27ABCDE1234F1Z2\",\"address\":\"NEW MUMBAI BRANCH\",\"city\":\"MUMBAI\",\"pincode\":\"400001\"}"
+                + "]");
+
+        service.updateOldCustomerJDBC(formData);
+
+        String body = emailedBody(mailSender);
+        assertFalse(body.contains("MEMGLBLCUST"));
+        assertTrue(body.contains(
+                "UPDATE MEMGLBLHNDGAGNT SET\nMAVCUSTGSTNUMB = '33ABCDE1234F1Z1'\nWHERE MAVHNDGAGNTCODE = 'HA01';"));
+        assertTrue(body.contains(
+                "UPDATE MEMGLBLHNDGAGNTDTLS SET MAVHNDGAGNTADDRTEXT = 'CORRECTED HA DETAIL ADDR' WHERE MAVHNDGAGNTCODE = 'HA01' AND MAVCUSTGSTNUMB = '33ABCDE1234F1Z1';"));
+        assertTrue(body.contains(
+                "INSERT INTO MEMGLBLHNDGAGNTDTLS (MAVHNDGAGNTCODE, MAVHNDGAGNTNAME, MAVHNDGAGNTADDRTEXT, MAVHNDGAGNTCITYNAME, MANPINCODE, MADIMPLDATE, MAVRMRK, MAVCUSTGSTNUMB, MAVCUSTPANNUMB, MADDATEEFCTFROM, MADDATEEFCTTO) VALUES ('HA01', 'M/S HANDLING CORP', 'NEW MUMBAI BRANCH', 'MUMBAI', 400001, SYSDATE, NULL, '27ABCDE1234F1Z2', 'ABCDE1234F', SYSDATE, NULL);"));
     }
 }

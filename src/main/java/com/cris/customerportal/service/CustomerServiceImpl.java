@@ -302,6 +302,7 @@ public class CustomerServiceImpl implements CustomerService {
   public com.cris.customerportal.dto.OldCustomerResponse lookupOldCustomerByCode(String customerCode) {
     initDbColumns();
     String sql = "SELECT MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, MAVCUSTPANNUMB, "
+        + glblGstCol + " AS MAVCUSTGSTNUMB, "
         + glblCityCol + " AS MAVGNBLCUSTCITYNAME, MAVPCOCODE, MAVIMPLREMK, "
         + "NVL(MADEDMNDDATE, MADIMPLDATE) AS MAVVERIFICATIONDATE "
         + "FROM MEMGLBLCUST WHERE MAVGLBLCUSTCODE = ?";
@@ -316,6 +317,7 @@ public class CustomerServiceImpl implements CustomerService {
       response.setCompanyName(rs.getString("MAVGLBLCUSTNAME"));
       response.setAddress(rs.getString("MAVGLBLCUSTADDRTEXT"));
       response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+      response.setPrimaryGstin(rs.getString("MAVCUSTGSTNUMB"));
       response.setCity(rs.getString("MAVGNBLCUSTCITYNAME"));
       response.setPincode(rs.getString("MAVPCOCODE"));
       response.setDivision(rs.getString("MAVIMPLREMK"));
@@ -1184,10 +1186,11 @@ public class CustomerServiceImpl implements CustomerService {
 
 
 
+  String primaryGstin = gstinNumbers.isEmpty() ? null : gstinNumbers.get(0);
   String divisionDesignation = DivisionDesignationResolver.resolve(formData.get("operatingDivision"));
   sql = "global".equals(type)
-      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)"
-      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?)";
+      ? "INSERT INTO MEMGLBLCUST (MAVGLBLCUSTCODE, MAVGLBLCUSTNAME, MAVGLBLCUSTADDRTEXT, " + glblCityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + glblDateCol + ", " + glblGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)"
+      : "INSERT INTO " + tableName + " (" + colName + ", " + nameCol + ", " + addrCol + ", " + cityCol + ", MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, MADIMPLDATE, MAVIMPLREMK, " + hndgDateCol + ", " + hndgGstCol + ", MAVCUSTPANNUMB) VALUES (?, ?, ?, ?, ?, ?, ?, SYSDATE, ?, NULL, ?, ?)";
 
   String finalCode = (providedCode != null && !providedCode.isEmpty())
       ? providedCode.trim().toUpperCase(Locale.ROOT)
@@ -1216,6 +1219,7 @@ public class CustomerServiceImpl implements CustomerService {
     insertParameters.add(null);
     insertParameters.add(null);
     insertParameters.add(divisionDesignation);
+    insertParameters.add(primaryGstin);
     insertParameters.add(formData.get("panNumber"));
    String executableSql = formatBoundSql(sql, insertParameters) + ";";
    List<DbaEmailService.SqlRequest> emailRequests = new ArrayList<>();
@@ -1363,6 +1367,7 @@ public class CustomerServiceImpl implements CustomerService {
   String addressColumn;
   String cityColumn;
   String panColumn = "MAVCUSTPANNUMB";
+  String gstColumn = isGlobal ? glblGstCol : hndgGstCol;
   String pincodeColumn = "MAVPCOCODE";
   String divisionColumn = "MAVIMPLREMK";
   if (isGlobal) {
@@ -1384,6 +1389,7 @@ public class CustomerServiceImpl implements CustomerService {
    oldCustomer.setAddress(agent.getAddress());
    oldCustomer.setCity(agent.getCity());
    oldCustomer.setPanNumber(agent.getPanNumber());
+   oldCustomer.setPrimaryGstin(agent.getPrimaryGstin());
    oldCustomer.setGstinNumbers(agent.getGstinNumbers());
    oldCustomer.setPincode(agent.getPcoCode());
    oldCustomer.setDivision(agent.getDivision());
@@ -1399,6 +1405,27 @@ public class CustomerServiceImpl implements CustomerService {
   current.put(addressColumn, oldCustomer.getAddress());
   current.put(cityColumn, oldCustomer.getCity());
   current.put(panColumn, oldCustomer.getPanNumber());
+
+  String existingParentGstin = normalizeNullableValue(oldCustomer.getPrimaryGstin());
+  if (existingParentGstin != null) {
+   existingParentGstin = existingParentGstin.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+   if ("NULL".equalsIgnoreCase(existingParentGstin) || "UNDEFINED".equalsIgnoreCase(existingParentGstin)) {
+    existingParentGstin = null;
+   }
+  }
+  current.put(gstColumn, existingParentGstin);
+
+  String establishedPrimaryGstin = existingParentGstin;
+  if (establishedPrimaryGstin == null && oldCustomer.getGstins() != null && !oldCustomer.getGstins().isEmpty()) {
+   establishedPrimaryGstin = normalizeNullableValue(oldCustomer.getGstins().get(0).getGstin());
+   if (establishedPrimaryGstin != null) {
+    establishedPrimaryGstin = establishedPrimaryGstin.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+    if ("NULL".equalsIgnoreCase(establishedPrimaryGstin) || "UNDEFINED".equalsIgnoreCase(establishedPrimaryGstin)) {
+     establishedPrimaryGstin = null;
+    }
+   }
+  }
+  boolean gstinAlreadyExists = (establishedPrimaryGstin != null && !establishedPrimaryGstin.isEmpty());
   Map<String, String> requested = new LinkedHashMap<>();
   requested.put(nameColumn, normalizeNullableValue(formData.get("companyName")));
   String rawAddress = formData.get("address");
@@ -1435,6 +1462,51 @@ public class CustomerServiceImpl implements CustomerService {
   } else {
    requested.put(panColumn, panVal);
   }
+
+  List<String> incomingGstinList = new ArrayList<>();
+  String rawGstinDetailsJson = formData.get("gstinDetails");
+  if (rawGstinDetailsJson != null && !rawGstinDetailsJson.trim().isEmpty()) {
+   try {
+    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    List<Map<String, Object>> parsed = mapper.readValue(rawGstinDetailsJson, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+    if (parsed != null) {
+     for (Map<String, Object> item : parsed) {
+      if (item != null && item.get("gstin") != null) {
+       String g = item.get("gstin").toString().replaceAll("[\\[\\]\"'\\s]", "").toUpperCase(Locale.ROOT);
+       if (!g.isEmpty() && !"NULL".equalsIgnoreCase(g) && !"UNDEFINED".equalsIgnoreCase(g) && !incomingGstinList.contains(g)) {
+        incomingGstinList.add(g);
+       }
+      }
+     }
+    }
+   } catch (Exception ignore) {}
+  }
+  if (incomingGstinList.isEmpty() && formData.containsKey("gstinNumbers") && formData.get("gstinNumbers") != null) {
+   for (String g : formData.get("gstinNumbers").split(",")) {
+    String trimmed = g.replaceAll("[\\[\\]\"'\\s]", "").toUpperCase(Locale.ROOT);
+    if (!trimmed.isEmpty() && !"NULL".equalsIgnoreCase(trimmed) && !"UNDEFINED".equalsIgnoreCase(trimmed) && !incomingGstinList.contains(trimmed)) {
+     incomingGstinList.add(trimmed);
+    }
+   }
+  }
+
+  String requestedPrimaryGstin;
+  if (gstinAlreadyExists) {
+   if (incomingGstinList.contains(establishedPrimaryGstin)) {
+    requestedPrimaryGstin = establishedPrimaryGstin;
+   } else if (!incomingGstinList.isEmpty()) {
+    requestedPrimaryGstin = incomingGstinList.get(0);
+   } else {
+    requestedPrimaryGstin = establishedPrimaryGstin;
+   }
+  } else {
+   if (!incomingGstinList.isEmpty()) {
+    requestedPrimaryGstin = incomingGstinList.get(0);
+   } else {
+    requestedPrimaryGstin = null;
+   }
+  }
+  requested.put(gstColumn, requestedPrimaryGstin);
 
   String rawGst = formData.get("gstinNumbers");
   String gstVal = normalizeNullableValue(rawGst);
@@ -1848,7 +1920,8 @@ public class CustomerServiceImpl implements CustomerService {
          + hndgCityCol + " AS MAVHNDAGNTCITYNAME,"
          + " MAVCENTBLNG, MAVPCOCODE, MAVEDMNDFLAG, "
          + "MAVIMPLREMK, "
-         + "MAVCUSTPANNUMB"
+         + "MAVCUSTPANNUMB, "
+         + hndgGstCol + " AS MAVCUSTGSTNUMB"
          + " FROM MEMGLBLHNDGAGNT WHERE " + hndgCodeCol + " = ?";
      try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -1866,6 +1939,7 @@ public class CustomerServiceImpl implements CustomerService {
        response.setEdMndFlag(rs.getString("MAVEDMNDFLAG"));
        response.setDivision(rs.getString("MAVIMPLREMK"));
        response.setPanNumber(rs.getString("MAVCUSTPANNUMB"));
+       response.setPrimaryGstin(rs.getString("MAVCUSTGSTNUMB"));
        response.setStatus("Active");
       }
      }

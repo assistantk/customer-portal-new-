@@ -104,7 +104,7 @@ interface ParsedAddress {
 }
 
 interface PdfPage {
-  getTextContent(): Promise<{ items: Array<{ str?: string }> }>;
+  getTextContent(): Promise<{ items: Array<{ str?: string; transform?: number[]; width?: number; height?: number }> }>;
   getViewport(options: { scale: number; rotation?: number }): { width: number; height: number };
   render(options: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }): { promise: Promise<void> };
   cleanup(): void;
@@ -414,32 +414,123 @@ function findStateName(text: string): { name: string } | null {
   return { name: KNOWN_STATES.find(state => state.toLowerCase() === match[1].toLowerCase()) || titleCase(match[1]) };
 }
 
-function isInvalidBusinessName(name: string | null | undefined): boolean {
+export function isInvalidBusinessName(name: string | null | undefined): boolean {
   if (!name) return true;
   const clean = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  return [
+  if (clean.length < 3) return true;
+
+  const invalidExact = new Set([
     'na', 'nil', 'null', 'none', 'notapplicable', 'notavailable', 'n/a',
-    'governmentofindia', 'registrationcertificate'
-  ].includes(clean) || clean.length < 2;
+    'governmentofindia', 'registrationcertificate', 'formgstreg06', 'gstreg06',
+    'designation', 'superintendent', 'commissioner', 'approvingauthority',
+    'signature', 'signaturenotverified', 'digitallysigned', 'jurisdiction',
+    'legalname', 'tradename', 'constitutionofbusiness', 'taxpayertype',
+    'ms', 'messrs', 'shri', 'smt', 'mr', 'mrs', 'name'
+  ]);
+  if (invalidExact.has(clean)) return true;
+
+  const withoutHonorific = name.trim().replace(/^(?:m\/s\.?|messrs\.?|shri|smt)\s+/i, '').trim();
+  const cleanWithoutHonorific = withoutHonorific.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (cleanWithoutHonorific.length < 2) return true;
+  if (invalidExact.has(cleanWithoutHonorific)) return true;
+
+  if (/^(?:m\/s\.?\s+)?name\b/i.test(name.trim())) {
+    return true;
+  }
+
+  if (/\b(?:designation|superintendent|commissioner|approving\s+authority)\b/i.test(name)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function reconstructSpatialText(
+  items: Array<{ str?: string; transform?: number[]; width?: number; height?: number }>
+): string {
+  if (!items || items.length === 0) return '';
+  const validItems = items.filter(it => it && typeof it.str === 'string' && it.str.length > 0);
+  if (validItems.length === 0) return '';
+
+  const hasCoordinates = validItems.some(it => Array.isArray(it.transform) && it.transform.length >= 6);
+  if (!hasCoordinates) {
+    return validItems.map(it => it.str).filter(Boolean).join(' ').trim();
+  }
+
+  const positioned = validItems.map(it => {
+    const x = it.transform && it.transform.length >= 6 ? it.transform[4] : 0;
+    const y = it.transform && it.transform.length >= 6 ? it.transform[5] : 0;
+    return { str: it.str || '', x, y };
+  });
+
+  positioned.sort((a, b) => {
+    const yDiff = b.y - a.y;
+    if (Math.abs(yDiff) > 4) {
+      return yDiff;
+    }
+    return a.x - b.x;
+  });
+
+  const lines: string[] = [];
+  let currentLine: Array<{ str: string; x: number }> = [];
+  let currentY: number | null = null;
+
+  for (const item of positioned) {
+    if (currentY === null) {
+      currentY = item.y;
+      currentLine.push(item);
+    } else if (Math.abs(currentY - item.y) <= 4) {
+      currentLine.push(item);
+    } else {
+      currentLine.sort((a, b) => a.x - b.x);
+      const lineStr = currentLine.map(it => it.str.trim()).filter(Boolean).join(' ');
+      if (lineStr) lines.push(lineStr);
+      currentLine = [item];
+      currentY = item.y;
+    }
+  }
+  if (currentLine.length > 0) {
+    currentLine.sort((a, b) => a.x - b.x);
+    const lineStr = currentLine.map(it => it.str.trim()).filter(Boolean).join(' ');
+    if (lineStr) lines.push(lineStr);
+  }
+
+  return lines.join('\n');
 }
 
 function trimUnrelatedBusinessValue(value: string): string {
   return value
     .replace(/\s*[|¦]\s*[^|¦]{0,12}$/, '')
     .replace(/\b(?:null|n\/a|na|not\s+applicable|not\s+available)\b/gi, '')
-    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
+    .replace(/\b(?:designation|superintendent|commissioner|assistant\s+commissioner|approving\s+authority|signature|jurisdiction\s+office|jurisdiction|photo|date\s+of\s+issue|particulars\s+of\s+approving\s+authority)\b.*$/gi, '')
+    .replace(/\bname\s*[:\-].*$/gi, '')
+    .replace(/\bname\s+[A-Z\s]+(?:\bdesignation\b).*$/gi, '')
+    .replace(/\bname\s+[A-Z\s]{3,}.*$/gi, '')
+    .replace(/\b(?:additional\s+trade\s+names?(?:\s*,\s*if\s+any)?|trade\s+name(?:\s*,\s*if\s+any)?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|government\s+of\s+india|status)\b.*$/gi, '')
     .replace(/\s*\d+\s*[\.\)\(\{\}\[\]:\-\s]*$/g, '')
     .replace(/^[\d\s\.\)\(\{\}\[\]:\-]+/g, '')
     .replace(/^(?:government\s+of\s+india|registration\s+certificate)\s*[:\-]?\s*/gi, '')
-    .replace(/^[\s:;,\-|?{}()\[\]]+|[\s:;,\-|?{}()\[\]]+$/g, '')
+    .replace(/^[\s:;,\-|?{}()\[\]\\/]+|[\s:;,\-|?{}()\[\]\\/]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function extractFieldValue(text: string, labelPattern: RegExp, nextFieldPattern: RegExp): string | null {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  const matches = [...normalized.matchAll(labelPattern)];
+  const matches = [...text.matchAll(labelPattern)];
   for (const match of matches) {
+    const start = match.index! + match[0].length;
+    const remaining = text.slice(start);
+    const boundaryIndex = remaining.search(nextFieldPattern);
+    const candidate = trimUnrelatedBusinessValue(remaining.slice(0, boundaryIndex >= 0 ? boundaryIndex : remaining.length));
+    if (isInvalidBusinessName(candidate)) continue;
+    if (candidate.length >= 2 && candidate.length <= 120 && (candidate.match(/[a-z]/ig) || []).length >= 2) {
+      return candidate;
+    }
+  }
+
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalizedMatches = [...normalized.matchAll(labelPattern)];
+  for (const match of normalizedMatches) {
     const start = match.index! + match[0].length;
     const remaining = normalized.slice(start);
     const boundaryIndex = remaining.search(nextFieldPattern);
@@ -454,13 +545,13 @@ function extractFieldValue(text: string, labelPattern: RegExp, nextFieldPattern:
 
 function extractLegalName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:legal|regal|1egal|iegal|leal)\s+name(?:\s+of\s+business)?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|[\n\r]|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|trade\s+name(?:\s*,\s*if\s+any)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|approving\s+authority|designation|superintendent|commissioner|assistant\s+commissioner|jurisdiction|jurisdiction\s+office|signature|photo|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status|name\s*[:\-])\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
 function extractTradeName(text: string): string | null {
   const labelPattern = /\b(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:trade|frade|tr[a4]de)\s+name(?:\s*[,;:]?\s*if\s+any\b|\s*\(\s*if\s+any\s*\))?\s*[:\-]?\s*/ig;
-  const nextFieldPattern = /(?:^|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status)\b/i;
+  const nextFieldPattern = /(?:^|[\n\r]|\b)(?:\d+\s*[\.\)\(\{\}\[\]]*\s*)?(?:additional\s+trade\s+names?|legal\s+name(?:\s+of\s+business)?|constitution\s+of\s+business|gstin(?:\s*\/\?\s*uin)?|gst\s+identification\s+number|pan(?:\s+(?:number|no\.?))?|principal\s+place\s+of\s+business|address\s+of\s+(?:principal\s+place|business)|date\s+of\s+(?:liability|validity|issue|registration)|period\s+of\s+validity|type\s+of\s+registration|particulars\s+of\s+approving\s+authority|approving\s+authority|designation|superintendent|commissioner|assistant\s+commissioner|jurisdiction|jurisdiction\s+office|signature|photo|taxpayer\s+type|nature\s+of\s+business\s+activities|state\s+jurisdiction|centre\s+jurisdiction|center\s+jurisdiction|details?\s+of\s+(?:managing|proprietor|director|partner|promoter)|registration\s+certificate|status|name\s*[:\-])\b/i;
   return extractFieldValue(text, labelPattern, nextFieldPattern);
 }
 
@@ -770,7 +861,7 @@ export class PanOcrService {
             reportOcrProgress(reportProgress, `Reading PDF text from page ${pageNumber} of ${pdf.numPages}...`);
             const page = await pdf.getPage(pageNumber);
             const content = await page.getTextContent();
-            const digitalText = content.items.map(item => item.str || '').filter(Boolean).join(' ').trim();
+            const digitalText = reconstructSpatialText(content.items as any[]);
             page.cleanup();
             const isScanned = digitalText.length < 50;
             pageRecords.push({ pageNumber, text: digitalText, isScanned });
