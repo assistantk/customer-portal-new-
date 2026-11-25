@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import javax.servlet.annotation.WebListener;
 import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpSessionEvent;
 import javax.servlet.http.HttpSessionListener;
@@ -17,7 +16,6 @@ import javax.servlet.http.HttpSessionListener;
  * cleanly unregistered from {@link ActiveUserSessionRegistry}.
  */
 @Component
-@WebListener
 public class SessionCleanupListener implements HttpSessionListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionCleanupListener.class);
