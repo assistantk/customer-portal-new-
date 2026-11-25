@@ -671,12 +671,13 @@ public class DbaEmailService {
             throw new IllegalArgumentException("Expected VALUES after the " + table + " INSERT column list.");
         }
 
+        String columnListPart = sql.substring(columnListStart, columnListEnd + 1).trim();
         String valuesPart = sql.substring(valuesStart);
         if ("MEMGLBLCUST".equalsIgnoreCase(table)) {
-            return (insertPrefix + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
+            return (insertPrefix + " " + columnListPart + " " + compactSqlValues(valuesPart)).toUpperCase(Locale.ROOT);
         }
         String normalizedValues = normalizeHandlingAgentInsertName(valuesPart);
-        return (insertPrefix + " " + compactSqlValues(normalizedValues)).toUpperCase(Locale.ROOT);
+        return (insertPrefix + " " + columnListPart + " " + compactSqlValues(normalizedValues)).toUpperCase(Locale.ROOT);
     }
 
     private String formatSqlTextLiterals(String sql) {
@@ -1004,20 +1005,7 @@ public class DbaEmailService {
     }
 
     private String toEmailSql(DatabaseOperationAudit audit) {
-        String sql = audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
-        String tableName = audit.getTableName();
-        if (!"INSERT".equalsIgnoreCase(audit.getOperationType())
-                || tableName == null
-                || (!"MEMGLBLCUST".equalsIgnoreCase(tableName)
-                    && !"MEMGLBLHNDGAGNT".equalsIgnoreCase(tableName))) {
-            return sql;
-        }
-
-        Pattern columnListInsert = Pattern.compile(
-                "^(\\s*INSERT\\s+INTO\\s+" + Pattern.quote(tableName) + ")\\s*\\([^)]*\\)(\\s+VALUES\\b.*)$",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-        Matcher matcher = columnListInsert.matcher(sql);
-        return matcher.matches() ? matcher.group(1) + matcher.group(2) : sql;
+        return audit.getSqlStatement() == null ? "" : audit.getSqlStatement();
     }
 
     private String formatStringLiterals(String sql) {
