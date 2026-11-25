@@ -210,6 +210,7 @@ class CustomerServiceGstinRemovalTest {
             parent.put(global ? "MAVGLBLCUSTNAME" : "MAVHNDAGNTNAME", "Example Company");
             parent.put(global ? "MAVGLBLCUSTADDRTEXT" : "MAVHNDAGNTADDRTEXT", "Company Road");
             parent.put("MAVCUSTPANNUMB", "ABCDE1234F");
+            parent.put("MAVCUSTGSTNUMB", GSTINS[0]);
             parent.put(global ? cityColumn : "MAVHNDAGNTCITYNAME", "Delhi");
             parent.put("MAVPCOCODE", "110001");
             parent.put("MAVIMPLREMK", "");
